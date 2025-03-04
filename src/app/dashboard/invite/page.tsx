@@ -1,4 +1,5 @@
 "use client";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -12,7 +13,8 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { toast } from "sonner"; // Add this
+import { toast } from "sonner";
+import { Loader2 } from "lucide-react";
 
 const inviteSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -20,16 +22,20 @@ const inviteSchema = z.object({
 });
 
 export default function Invite() {
+  const [isLoading, setIsLoading] = useState(false);
+
   const form = useForm<z.infer<typeof inviteSchema>>({
     resolver: zodResolver(inviteSchema),
     defaultValues: { name: "", cell: "" },
   });
 
-  const onSubmit = (data: z.infer<typeof inviteSchema>) => {
+  const onSubmit = async (data: z.infer<typeof inviteSchema>) => {
+    setIsLoading(true);
+    await new Promise((resolve) => setTimeout(resolve, 1000));
     toast.success("Invite sent!", {
       description: `Invitation sent to ${data.name} at ${data.cell}`,
     });
-    console.log("Invite data:", data);
+    setIsLoading(false);
   };
 
   return (
@@ -66,8 +72,12 @@ export default function Invite() {
               </FormItem>
             )}
           />
-          <Button type="submit" className="w-full">
-            Send Invite
+          <Button type="submit" className="w-full" disabled={isLoading}>
+            {isLoading ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              "Send Invite"
+            )}
           </Button>
         </form>
       </Form>

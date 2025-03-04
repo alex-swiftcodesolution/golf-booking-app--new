@@ -1,4 +1,5 @@
 "use client";
+import { useState } from "react"; // Add useState
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -12,7 +13,8 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { toast } from "sonner"; // Add this
+import { toast } from "sonner";
+import { Loader2 } from "lucide-react"; // Add spinner icon
 
 const loginSchema = z.object({
   email: z.string().email("Please enter a valid email"),
@@ -20,19 +22,19 @@ const loginSchema = z.object({
 });
 
 export default function Login() {
+  const [isLoading, setIsLoading] = useState(false); // Loading state
   const form = useForm<z.infer<typeof loginSchema>>({
     resolver: zodResolver(loginSchema),
-    defaultValues: {
-      email: "",
-      password: "",
-    },
+    defaultValues: { email: "", password: "" },
   });
 
-  const onSubmit = (data: z.infer<typeof loginSchema>) => {
+  const onSubmit = async (data: z.infer<typeof loginSchema>) => {
+    setIsLoading(true);
+    await new Promise((resolve) => setTimeout(resolve, 1000)); // Simulate API delay
     toast.success("Login successful!", {
       description: `Welcome back, ${data.email}`,
     });
-    console.log("Login data:", data);
+    setIsLoading(false);
   };
 
   return (
@@ -75,8 +77,12 @@ export default function Login() {
                 </FormItem>
               )}
             />
-            <Button type="submit" className="w-full">
-              Login
+            <Button type="submit" className="w-full" disabled={isLoading}>
+              {isLoading ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                "Login"
+              )}
             </Button>
           </form>
         </Form>

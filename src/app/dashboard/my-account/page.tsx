@@ -1,4 +1,5 @@
 "use client";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -13,7 +14,8 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { toast } from "sonner"; // Add this
+import { toast } from "sonner";
+import { Loader2 } from "lucide-react";
 
 const profileSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -36,6 +38,9 @@ const paymentSchema = z.object({
 });
 
 export default function MyAccount() {
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [paymentLoading, setPaymentLoading] = useState(false);
+
   const profileForm = useForm<z.infer<typeof profileSchema>>({
     resolver: zodResolver(profileSchema),
     defaultValues: {
@@ -59,18 +64,22 @@ export default function MyAccount() {
     },
   });
 
-  const onProfileSubmit = (data: z.infer<typeof profileSchema>) => {
+  const onProfileSubmit = async (data: z.infer<typeof profileSchema>) => {
+    setProfileLoading(true);
+    await new Promise((resolve) => setTimeout(resolve, 1000));
     toast.success("Profile updated!", {
       description: `Changes saved for ${data.name}`,
     });
-    console.log("Profile data:", data);
+    setProfileLoading(false);
   };
 
-  const onPaymentSubmit = (data: z.infer<typeof paymentSchema>) => {
+  const onPaymentSubmit = async (data: z.infer<typeof paymentSchema>) => {
+    setPaymentLoading(true);
+    await new Promise((resolve) => setTimeout(resolve, 1000));
     toast.success("Payment method updated!", {
       description: `Card ending in ${data.cardNumber.slice(-4)} saved`,
     });
-    console.log("Payment data:", data);
+    setPaymentLoading(false);
   };
 
   return (
@@ -87,7 +96,6 @@ export default function MyAccount() {
               onSubmit={profileForm.handleSubmit(onProfileSubmit)}
               className="space-y-4 mt-4"
             >
-              {/* Form fields remain the same, just add toasts */}
               <FormField
                 control={profileForm.control}
                 name="name"
@@ -174,8 +182,16 @@ export default function MyAccount() {
                   </FormItem>
                 )}
               />
-              <Button type="submit" className="w-full">
-                Save Profile
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={profileLoading}
+              >
+                {profileLoading ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  "Save Profile"
+                )}
               </Button>
             </form>
           </Form>
@@ -253,8 +269,16 @@ export default function MyAccount() {
                   </FormItem>
                 )}
               />
-              <Button type="submit" className="w-full">
-                Save Payment
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={paymentLoading}
+              >
+                {paymentLoading ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  "Save Payment"
+                )}
               </Button>
             </form>
           </Form>

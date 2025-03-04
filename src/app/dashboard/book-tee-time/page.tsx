@@ -5,6 +5,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -13,7 +14,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Label } from "@/components/ui/label";
 import {
   Form,
   FormControl,
@@ -22,7 +22,8 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { toast } from "sonner"; // Add this
+import { toast } from "sonner";
+import { Loader2 } from "lucide-react";
 
 const teeTimeSchema = z.object({
   location: z.string().min(1, "Please select a location"),
@@ -41,6 +42,7 @@ const teeTimeSchema = z.object({
 
 export default function BookTeeTime() {
   const [guestCount, setGuestCount] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
 
   const form = useForm<z.infer<typeof teeTimeSchema>>({
     resolver: zodResolver(teeTimeSchema),
@@ -53,7 +55,9 @@ export default function BookTeeTime() {
     },
   });
 
-  const onSubmit = (data: z.infer<typeof teeTimeSchema>) => {
+  const onSubmit = async (data: z.infer<typeof teeTimeSchema>) => {
+    setIsLoading(true);
+    await new Promise((resolve) => setTimeout(resolve, 1000));
     toast.success("Tee time booked!", {
       description: `Booked at ${data.location} on ${data.date} at ${
         data.startTime
@@ -61,7 +65,7 @@ export default function BookTeeTime() {
         data.guests?.length ? ` with ${data.guests.length} guest(s)` : ""
       }`,
     });
-    console.log("Tee Time data:", data);
+    setIsLoading(false);
   };
 
   const addGuest = (count: number) => {
@@ -248,8 +252,12 @@ export default function BookTeeTime() {
               </div>
             )}
           </div>
-          <Button type="submit" className="w-full">
-            Confirm Booking
+          <Button type="submit" className="w-full" disabled={isLoading}>
+            {isLoading ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              "Confirm Booking"
+            )}
           </Button>
         </form>
       </Form>
