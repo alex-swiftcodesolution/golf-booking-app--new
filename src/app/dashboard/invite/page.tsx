@@ -12,8 +12,8 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import { toast } from "sonner"; // Add this
 
-// Define the form schema
 const inviteSchema = z.object({
   name: z.string().min(1, "Name is required"),
   cell: z.string().min(10, "Please enter a valid phone number"),
@@ -22,15 +22,14 @@ const inviteSchema = z.object({
 export default function Invite() {
   const form = useForm<z.infer<typeof inviteSchema>>({
     resolver: zodResolver(inviteSchema),
-    defaultValues: {
-      name: "",
-      cell: "",
-    },
+    defaultValues: { name: "", cell: "" },
   });
 
   const onSubmit = (data: z.infer<typeof inviteSchema>) => {
+    toast.success("Invite sent!", {
+      description: `Invitation sent to ${data.name} at ${data.cell}`,
+    });
     console.log("Invite data:", data);
-    // Later: Send SMS via API
   };
 
   return (

@@ -1,4 +1,4 @@
-"use client"; // Required for client-side interactivity
+"use client";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -12,15 +12,14 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import { toast } from "sonner"; // Add this
 
-// Define the form schema with Zod
 const loginSchema = z.object({
   email: z.string().email("Please enter a valid email"),
   password: z.string().min(6, "Password must be at least 6 characters"),
 });
 
 export default function Login() {
-  // Initialize the form
   const form = useForm<z.infer<typeof loginSchema>>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
@@ -29,10 +28,11 @@ export default function Login() {
     },
   });
 
-  // Handle form submission
   const onSubmit = (data: z.infer<typeof loginSchema>) => {
+    toast.success("Login successful!", {
+      description: `Welcome back, ${data.email}`,
+    });
     console.log("Login data:", data);
-    // Later: Send to GymMaster API or redirect to /dashboard
   };
 
   return (

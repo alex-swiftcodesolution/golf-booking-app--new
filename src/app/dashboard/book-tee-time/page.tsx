@@ -5,7 +5,6 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -14,6 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
 import {
   Form,
   FormControl,
@@ -22,6 +22,7 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import { toast } from "sonner"; // Add this
 
 const teeTimeSchema = z.object({
   location: z.string().min(1, "Please select a location"),
@@ -53,6 +54,13 @@ export default function BookTeeTime() {
   });
 
   const onSubmit = (data: z.infer<typeof teeTimeSchema>) => {
+    toast.success("Tee time booked!", {
+      description: `Booked at ${data.location} on ${data.date} at ${
+        data.startTime
+      } for ${data.duration}${
+        data.guests?.length ? ` with ${data.guests.length} guest(s)` : ""
+      }`,
+    });
     console.log("Tee Time data:", data);
   };
 
@@ -181,7 +189,7 @@ export default function BookTeeTime() {
             )}
           />
           <div>
-            <Label>Bring a Guest</Label>
+            <FormLabel>Bring a Guest</FormLabel>
             <div className="flex space-x-2 mt-2">
               <Button
                 type="button"

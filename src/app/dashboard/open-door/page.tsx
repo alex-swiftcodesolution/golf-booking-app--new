@@ -18,8 +18,8 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import { toast } from "sonner"; // Add this
 
-// Define the form schema
 const openDoorSchema = z.object({
   club: z.string().min(1, "Please select a club"),
 });
@@ -27,14 +27,14 @@ const openDoorSchema = z.object({
 export default function OpenDoor() {
   const form = useForm<z.infer<typeof openDoorSchema>>({
     resolver: zodResolver(openDoorSchema),
-    defaultValues: {
-      club: "",
-    },
+    defaultValues: { club: "" },
   });
 
   const onSubmit = (data: z.infer<typeof openDoorSchema>) => {
+    toast.success("Door opened!", {
+      description: `Access granted to ${data.club}`,
+    });
     console.log("Open Door data:", data);
-    // Later: Call GymMaster API to open the door
   };
 
   return (

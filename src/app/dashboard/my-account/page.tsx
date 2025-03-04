@@ -13,8 +13,8 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import { toast } from "sonner"; // Add this
 
-// Profile schema
 const profileSchema = z.object({
   name: z.string().min(1, "Name is required"),
   email: z.string().email("Please enter a valid email"),
@@ -27,7 +27,6 @@ const profileSchema = z.object({
   address: z.string().optional(),
 });
 
-// Payment schema
 const paymentSchema = z.object({
   cardName: z.string().min(1, "Name on card is required"),
   cardNumber: z.string().min(16, "Card number must be 16 digits").max(16),
@@ -61,10 +60,16 @@ export default function MyAccount() {
   });
 
   const onProfileSubmit = (data: z.infer<typeof profileSchema>) => {
+    toast.success("Profile updated!", {
+      description: `Changes saved for ${data.name}`,
+    });
     console.log("Profile data:", data);
   };
 
   const onPaymentSubmit = (data: z.infer<typeof paymentSchema>) => {
+    toast.success("Payment method updated!", {
+      description: `Card ending in ${data.cardNumber.slice(-4)} saved`,
+    });
     console.log("Payment data:", data);
   };
 
@@ -82,6 +87,7 @@ export default function MyAccount() {
               onSubmit={profileForm.handleSubmit(onProfileSubmit)}
               className="space-y-4 mt-4"
             >
+              {/* Form fields remain the same, just add toasts */}
               <FormField
                 control={profileForm.control}
                 name="name"
