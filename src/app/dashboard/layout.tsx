@@ -1,8 +1,9 @@
-"use client"; // Required for client-side interactivity
-import { useState, useEffect } from "react"; // Add useEffect
-import { motion } from "framer-motion";
+"use client";
+import { useState, useEffect } from "react";
+import { usePathname } from "next/navigation"; // Add this
 import { Button } from "@/components/ui/button";
-import { Menu } from "lucide-react"; // For hamburger icon
+import { Menu } from "lucide-react";
+import { motion } from "motion/react";
 import Link from "next/link";
 
 export default function DashboardLayout({
@@ -10,33 +11,32 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  // Set sidebar open by default on desktop (md and larger screens)
-  const [isSidebarOpen, setIsSidebarOpen] = useState(
-    typeof window !== "undefined" && window.innerWidth >= 768
-  );
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const pathname = usePathname(); // Track current route
 
-  // Handle window resize to update sidebar state
+  // Close sidebar on route change
+  useEffect(() => {
+    setIsMobileMenuOpen(false); // Close sidebar when pathname changes
+  }, [pathname]);
+
   useEffect(() => {
     const handleResize = () => {
-      setIsSidebarOpen(window.innerWidth >= 768);
+      if (window.innerWidth >= 768) {
+        setIsMobileMenuOpen(false);
+      }
     };
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  const sidebarVariants = {
-    open: { x: 0, transition: { duration: 0.3 } },
-    closed: { x: "-100%", transition: { duration: 0.3 } },
-  };
-
   return (
     <div className="flex min-h-screen bg-gray-100">
-      {/* Sidebar */}
-      <motion.aside
-        initial={isSidebarOpen ? "open" : "closed"}
-        animate={isSidebarOpen ? "open" : "closed"}
-        variants={sidebarVariants}
-        className="fixed inset-y-0 left-0 w-64 bg-white shadow-md md:relative md:w-64"
+      <aside
+        className={`fixed inset-y-0 left-0 z-10 w-64 bg-white shadow-md transform transition-transform duration-300 md:relative md:w-64 ${
+          isMobileMenuOpen
+            ? "translate-x-0"
+            : "-translate-x-full md:translate-x-0"
+        }`}
       >
         <div className="p-4">
           <h2 className="text-xl font-bold">Club App</h2>
@@ -79,17 +79,15 @@ export default function DashboardLayout({
             </Link>
           </nav>
         </div>
-      </motion.aside>
+      </aside>
 
-      {/* Main Content */}
       <div className="flex-1 flex flex-col">
-        {/* Navbar */}
-        <header className="flex items-center justify-between bg-white p-4 shadow-md">
+        <header className="flex items-center justify-between bg-white p-4 shadow-md w-full top-0 z-20">
           <Button
             variant="ghost"
             size="icon"
             className="md:hidden"
-            onClick={() => setIsSidebarOpen(!isSidebarOpen)}
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
           >
             <Menu className="h-6 w-6" />
           </Button>
@@ -99,8 +97,7 @@ export default function DashboardLayout({
           </Button>
         </header>
 
-        {/* Page Content */}
-        <main className="flex-1 p-6">
+        <main className="flex-1 p-6 mt-16 md:mt-0">
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
