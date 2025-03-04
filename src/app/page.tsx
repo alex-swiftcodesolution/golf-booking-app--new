@@ -8,6 +8,9 @@ export default function Home() {
       <Button asChild>
         <Link href="/login">Login</Link>
       </Button>
+      <p className="mt-6">
+        <Link href="/demo">Demo Note</Link>
+      </p>
     </div>
   );
 }
