@@ -5,8 +5,8 @@ import { Toaster } from "@/components/ui/sonner";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata = {
-  title: "Club Membership App",
-  description: "Manage your club membership",
+  title: "Club Membership App - Demo",
+  description: "A demo of the club membership web application",
 };
 
 export default function RootLayout({
