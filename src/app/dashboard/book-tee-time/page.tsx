@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { useForm, useFieldArray } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Button } from "@/components/ui/button";
@@ -57,11 +57,10 @@ const teeTimeSchema = z.object({
     .optional(),
 });
 
-// Mock unavailable slots (e.g., pre-booked times)
+// Mock unavailable slots
 const unavailableSlots = new Set(["9:30 AM", "10:00 AM", "2:00 PM", "2:30 PM"]);
 
 export default function BookTeeTime() {
-  const [guestCount, setGuestCount] = useState(0);
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [showItinerary, setShowItinerary] = useState(false);
@@ -75,11 +74,6 @@ export default function BookTeeTime() {
       duration: "1hr",
       guests: [],
     },
-  });
-
-  const { fields, append, remove } = useFieldArray({
-    control: form.control,
-    name: "guests",
   });
 
   const onSubmit = async (data: z.infer<typeof teeTimeSchema>) => {
@@ -97,7 +91,6 @@ export default function BookTeeTime() {
   };
 
   const addGuest = (count: number) => {
-    setGuestCount(count);
     const currentGuests = form.getValues("guests") || [];
     form.setValue(
       "guests",
@@ -126,7 +119,7 @@ export default function BookTeeTime() {
   };
 
   return (
-    <div className="space-y-8 p-6">
+    <div className="space-y-6">
       <h1 className="text-3xl font-bold">Book a Tee Time</h1>
       <Form {...form}>
         <form
@@ -286,10 +279,10 @@ export default function BookTeeTime() {
                 3
               </Button>
             </div>
-            {fields.length > 0 && (
+            {(form.watch("guests") || []).length > 0 && (
               <div className="mt-4 space-y-4">
-                {fields.map((field, index) => (
-                  <div key={field.id} className="space-y-2">
+                {(form.watch("guests") || []).map((guest, index) => (
+                  <div key={index} className="space-y-2">
                     <FormField
                       control={form.control}
                       name={`guests.${index}.name`}
@@ -350,11 +343,11 @@ export default function BookTeeTime() {
                   <strong>Duration:</strong>{" "}
                   {form.watch("duration") || "Not selected"}
                 </p>
-                {form.watch("guests")?.length > 0 && (
+                {(form.watch("guests") || []).length > 0 && (
                   <div>
                     <strong>Guests:</strong>
                     <ul className="list-disc pl-5">
-                      {form.watch("guests").map((guest, index) => (
+                      {(form.watch("guests") || []).map((guest, index) => (
                         <li key={index}>
                           {guest.name} ({guest.cell})
                         </li>
