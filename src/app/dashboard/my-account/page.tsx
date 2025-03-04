@@ -83,7 +83,7 @@ export default function MyAccount() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8 p-6">
       <h1 className="text-3xl font-bold">My Account</h1>
       <Tabs defaultValue="profile" className="w-full max-w-md">
         <TabsList className="grid w-full grid-cols-2">

@@ -1,11 +1,10 @@
 "use client";
 import { useState } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useFieldArray } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -24,6 +23,24 @@ import {
 } from "@/components/ui/form";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 
 const teeTimeSchema = z.object({
   location: z.string().min(1, "Please select a location"),
@@ -42,7 +59,9 @@ const teeTimeSchema = z.object({
 
 export default function BookTeeTime() {
   const [guestCount, setGuestCount] = useState(0);
+  const [selectedTime, setSelectedTime] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [showItinerary, setShowItinerary] = useState(false);
 
   const form = useForm<z.infer<typeof teeTimeSchema>>({
     resolver: zodResolver(teeTimeSchema),
@@ -55,9 +74,14 @@ export default function BookTeeTime() {
     },
   });
 
+  const { fields, append, remove } = useFieldArray({
+    control: form.control,
+    name: "guests",
+  });
+
   const onSubmit = async (data: z.infer<typeof teeTimeSchema>) => {
     setIsLoading(true);
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 1000)); // Simulate API delay
     toast.success("Tee time booked!", {
       description: `Booked at ${data.location} on ${data.date} at ${
         data.startTime
@@ -66,6 +90,7 @@ export default function BookTeeTime() {
       }`,
     });
     setIsLoading(false);
+    setShowItinerary(false); // Close itinerary after confirmation
   };
 
   const addGuest = (count: number) => {
@@ -77,6 +102,19 @@ export default function BookTeeTime() {
         .fill(null)
         .map((_, i) => currentGuests[i] || { name: "", cell: "" })
     );
+  };
+
+  // Mock schedule data (bays and time slots)
+  const bays = ["Bay 1", "Bay 2", "Bay 3"];
+  const timeSlots = Array.from({ length: 16 }, (_, i) => {
+    const hour = 9 + Math.floor(i / 2); // Start at 9 AM
+    const minute = i % 2 === 0 ? "00" : "30";
+    return `${hour}:${minute} ${hour >= 12 ? "PM" : "AM"}`;
+  });
+
+  const handleTimeSelect = (time: string) => {
+    setSelectedTime(time);
+    form.setValue("startTime", time);
   };
 
   return (
@@ -127,35 +165,42 @@ export default function BookTeeTime() {
           <FormField
             control={form.control}
             name="startTime"
-            render={({ field }) => (
+            render={() => (
               <FormItem>
                 <FormLabel>Available Times</FormLabel>
-                <div className="grid grid-cols-3 gap-2 mt-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => field.onChange("9:00 AM")}
-                  >
-                    9:00 AM
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => field.onChange("9:30 AM")}
-                  >
-                    9:30 AM
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => field.onChange("10:00 AM")}
-                  >
-                    10:00 AM
-                  </Button>
+                <div className="mt-2">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Time</TableHead>
+                        {bays.map((bay) => (
+                          <TableHead key={bay}>{bay}</TableHead>
+                        ))}
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {timeSlots.map((time) => (
+                        <TableRow key={time}>
+                          <TableCell>{time}</TableCell>
+                          {bays.map((bay) => (
+                            <TableCell key={`${bay}-${time}`}>
+                              <Button
+                                variant={
+                                  selectedTime === time ? "default" : "outline"
+                                }
+                                onClick={() => handleTimeSelect(time)}
+                                className="w-full"
+                                disabled={selectedTime && selectedTime !== time} // Only one selection
+                              >
+                                {selectedTime === time ? "Selected" : "Book"}
+                              </Button>
+                            </TableCell>
+                          ))}
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
                 </div>
-                <FormControl>
-                  <Input type="hidden" {...field} />
-                </FormControl>
                 <FormMessage />
               </FormItem>
             )}
@@ -219,8 +264,8 @@ export default function BookTeeTime() {
             </div>
             {guestCount > 0 && (
               <div className="mt-4 space-y-4">
-                {Array.from({ length: guestCount }).map((_, index) => (
-                  <div key={index} className="space-y-2">
+                {fields.map((field, index) => (
+                  <div key={field.id} className="space-y-2">
                     <FormField
                       control={form.control}
                       name={`guests.${index}.name`}
@@ -252,13 +297,70 @@ export default function BookTeeTime() {
               </div>
             )}
           </div>
-          <Button type="submit" className="w-full" disabled={isLoading}>
-            {isLoading ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              "Confirm Booking"
-            )}
-          </Button>
+          <Dialog open={showItinerary} onOpenChange={setShowItinerary}>
+            <DialogTrigger asChild>
+              <Button type="button" className="w-full" disabled={!selectedTime}>
+                Review Itinerary
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Itinerary</DialogTitle>
+                <DialogDescription>
+                  Review your booking details below.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4">
+                <p>
+                  <strong>Location:</strong>{" "}
+                  {form.watch("location") || "Not selected"}
+                </p>
+                <p>
+                  <strong>Date:</strong> {form.watch("date") || "Not selected"}
+                </p>
+                <p>
+                  <strong>Start Time:</strong>{" "}
+                  {form.watch("startTime") || "Not selected"}
+                </p>
+                <p>
+                  <strong>Duration:</strong>{" "}
+                  {form.watch("duration") || "Not selected"}
+                </p>
+                {form.watch("guests")?.length > 0 && (
+                  <div>
+                    <strong>Guests:</strong>
+                    <ul className="list-disc pl-5">
+                      {form.watch("guests").map((guest, index) => (
+                        <li key={index}>
+                          {guest.name} ({guest.cell})
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+              <DialogFooter>
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={isLoading || !selectedTime}
+                  onClick={form.handleSubmit(onSubmit)}
+                >
+                  {isLoading ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    "Confirm Booking"
+                  )}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => setShowItinerary(false)}
+                >
+                  Edit
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </form>
       </Form>
     </div>

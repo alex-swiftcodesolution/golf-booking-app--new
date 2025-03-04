@@ -7,7 +7,7 @@ export default function MyTeeTimes() {
   ]; // Mock data
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8 p-6">
       <h1 className="text-3xl font-bold mb-6">My Tee Times</h1>
       <div className="w-full max-w-md space-y-4">
         {bookings.map((booking) => (
