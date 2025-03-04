@@ -126,7 +126,7 @@ export default function BookTeeTime() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8 p-6">
       <h1 className="text-3xl font-bold">Book a Tee Time</h1>
       <Form {...form}>
         <form

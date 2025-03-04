@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react"; // Add useState
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -14,7 +14,8 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react"; // Add spinner icon
+import { Loader2 } from "lucide-react";
+import { useRouter } from "next/navigation"; // Import useRouter
 
 const loginSchema = z.object({
   email: z.string().email("Please enter a valid email"),
@@ -23,6 +24,8 @@ const loginSchema = z.object({
 
 export default function Login() {
   const [isLoading, setIsLoading] = useState(false); // Loading state
+  const router = useRouter(); // Initialize router
+
   const form = useForm<z.infer<typeof loginSchema>>({
     resolver: zodResolver(loginSchema),
     defaultValues: { email: "", password: "" },
@@ -35,6 +38,7 @@ export default function Login() {
       description: `Welcome back, ${data.email}`,
     });
     setIsLoading(false);
+    router.push("/dashboard"); // Redirect to dashboard
   };
 
   return (
