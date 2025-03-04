@@ -1,5 +1,5 @@
 "use client"; // Required for client-side interactivity
-import { useState } from "react";
+import { useState, useEffect } from "react"; // Add useEffect
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Menu } from "lucide-react"; // For hamburger icon
@@ -10,7 +10,19 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  // Set sidebar open by default on desktop (md and larger screens)
+  const [isSidebarOpen, setIsSidebarOpen] = useState(
+    typeof window !== "undefined" && window.innerWidth >= 768
+  );
+
+  // Handle window resize to update sidebar state
+  useEffect(() => {
+    const handleResize = () => {
+      setIsSidebarOpen(window.innerWidth >= 768);
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   const sidebarVariants = {
     open: { x: 0, transition: { duration: 0.3 } },
@@ -21,7 +33,7 @@ export default function DashboardLayout({
     <div className="flex min-h-screen bg-gray-100">
       {/* Sidebar */}
       <motion.aside
-        initial="closed"
+        initial={isSidebarOpen ? "open" : "closed"}
         animate={isSidebarOpen ? "open" : "closed"}
         variants={sidebarVariants}
         className="fixed inset-y-0 left-0 w-64 bg-white shadow-md md:relative md:w-64"
@@ -36,31 +48,31 @@ export default function DashboardLayout({
               Dashboard
             </Link>
             <Link
-              href="/open-door"
+              href="/dashboard/open-door"
               className="block rounded-md p-2 hover:bg-gray-100"
             >
               Open the Door
             </Link>
             <Link
-              href="/my-account"
+              href="/dashboard/my-account"
               className="block rounded-md p-2 hover:bg-gray-100"
             >
               My Account
             </Link>
             <Link
-              href="/book-tee-time"
+              href="/dashboard/book-tee-time"
               className="block rounded-md p-2 hover:bg-gray-100"
             >
               Book a Tee Time
             </Link>
             <Link
-              href="/my-tee-times"
+              href="/dashboard/my-tee-times"
               className="block rounded-md p-2 hover:bg-gray-100"
             >
               My Tee Times
             </Link>
             <Link
-              href="/invite"
+              href="/dashboard/invite"
               className="block rounded-md p-2 hover:bg-gray-100"
             >
               Invite New Member
