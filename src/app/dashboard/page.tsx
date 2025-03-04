@@ -5,7 +5,7 @@ export default function Dashboard() {
   const accountStatus = "Good"; // Mock status (later from API)
 
   return (
-    <div className="flex min-h-screen flex-col items-center p-6">
+    <div className="space-y-6">
       <h1 className="text-3xl font-bold mb-6">Member Dashboard</h1>
       <Card className="w-full max-w-md">
         <CardHeader>

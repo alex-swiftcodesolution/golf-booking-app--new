@@ -5,7 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 export default function MyAccount() {
   return (
-    <div className="flex min-h-screen items-center justify-center p-6">
+    <div className="space-y-6">
       <Tabs defaultValue="profile" className="w-full max-w-md">
         <TabsList className="grid w-full grid-cols-2">
           <TabsTrigger value="profile">Update Profile</TabsTrigger>

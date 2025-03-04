@@ -12,7 +12,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 export default function BookTeeTime() {
   return (
-    <div className="flex min-h-screen flex-col items-center p-6">
+    <div className="space-y-6">
       <h1 className="text-3xl font-bold mb-6">Book a Tee Time</h1>
       <div className="w-full max-w-md space-y-6">
         {/* Location */}
