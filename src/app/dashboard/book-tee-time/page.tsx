@@ -57,6 +57,9 @@ const teeTimeSchema = z.object({
     .optional(),
 });
 
+// Mock unavailable slots (e.g., pre-booked times)
+const unavailableSlots = new Set(["9:30 AM", "10:00 AM", "2:00 PM", "2:30 PM"]);
+
 export default function BookTeeTime() {
   const [guestCount, setGuestCount] = useState(0);
   const [selectedTime, setSelectedTime] = useState<string | null>(null);
@@ -81,7 +84,7 @@ export default function BookTeeTime() {
 
   const onSubmit = async (data: z.infer<typeof teeTimeSchema>) => {
     setIsLoading(true);
-    await new Promise((resolve) => setTimeout(resolve, 1000)); // Simulate API delay
+    await new Promise((resolve) => setTimeout(resolve, 1000));
     toast.success("Tee time booked!", {
       description: `Booked at ${data.location} on ${data.date} at ${
         data.startTime
@@ -90,7 +93,7 @@ export default function BookTeeTime() {
       }`,
     });
     setIsLoading(false);
-    setShowItinerary(false); // Close itinerary after confirmation
+    setShowItinerary(false);
   };
 
   const addGuest = (count: number) => {
@@ -104,17 +107,22 @@ export default function BookTeeTime() {
     );
   };
 
-  // Mock schedule data (bays and time slots)
   const bays = ["Bay 1", "Bay 2", "Bay 3"];
   const timeSlots = Array.from({ length: 16 }, (_, i) => {
-    const hour = 9 + Math.floor(i / 2); // Start at 9 AM
+    const hour = 9 + Math.floor(i / 2);
     const minute = i % 2 === 0 ? "00" : "30";
     return `${hour}:${minute} ${hour >= 12 ? "PM" : "AM"}`;
   });
 
   const handleTimeSelect = (time: string) => {
-    setSelectedTime(time);
-    form.setValue("startTime", time);
+    if (!unavailableSlots.has(time)) {
+      setSelectedTime(time);
+      form.setValue("startTime", time);
+    } else {
+      toast.error("Slot unavailable", {
+        description: "This time is already booked.",
+      });
+    }
   };
 
   return (
@@ -174,25 +182,41 @@ export default function BookTeeTime() {
                       <TableRow>
                         <TableHead>Time</TableHead>
                         {bays.map((bay) => (
-                          <TableHead key={bay}>{bay}</TableHead>
+                          <TableHead key={bay} className="text-center">
+                            {bay}
+                          </TableHead>
                         ))}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {timeSlots.map((time) => (
                         <TableRow key={time}>
-                          <TableCell>{time}</TableCell>
+                          <TableCell className="font-medium">{time}</TableCell>
                           {bays.map((bay) => (
-                            <TableCell key={`${bay}-${time}`}>
+                            <TableCell
+                              key={`${bay}-${time}`}
+                              className="text-center"
+                            >
                               <Button
                                 variant={
-                                  selectedTime === time ? "default" : "outline"
+                                  selectedTime === time
+                                    ? "default"
+                                    : unavailableSlots.has(time)
+                                    ? "destructive"
+                                    : "outline"
                                 }
                                 onClick={() => handleTimeSelect(time)}
                                 className="w-full"
-                                disabled={selectedTime && selectedTime !== time} // Only one selection
+                                disabled={
+                                  (selectedTime && selectedTime !== time) ||
+                                  unavailableSlots.has(time)
+                                }
                               >
-                                {selectedTime === time ? "Selected" : "Book"}
+                                {selectedTime === time
+                                  ? "Selected"
+                                  : unavailableSlots.has(time)
+                                  ? "Unavailable"
+                                  : "Book"}
                               </Button>
                             </TableCell>
                           ))}
@@ -262,7 +286,7 @@ export default function BookTeeTime() {
                 3
               </Button>
             </div>
-            {guestCount > 0 && (
+            {fields.length > 0 && (
               <div className="mt-4 space-y-4">
                 {fields.map((field, index) => (
                   <div key={field.id} className="space-y-2">

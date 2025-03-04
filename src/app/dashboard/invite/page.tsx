@@ -23,6 +23,7 @@ const inviteSchema = z.object({
 
 export default function Invite() {
   const [isLoading, setIsLoading] = useState(false);
+  const referralCode = "REF12345"; // Mock referral code
 
   const form = useForm<z.infer<typeof inviteSchema>>({
     resolver: zodResolver(inviteSchema),
@@ -31,15 +32,16 @@ export default function Invite() {
 
   const onSubmit = async (data: z.infer<typeof inviteSchema>) => {
     setIsLoading(true);
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 1000)); // Simulate API delay
     toast.success("Invite sent!", {
-      description: `Invitation sent to ${data.name} at ${data.cell}`,
+      description: `SMS sent to ${data.cell} with signup link and code ${referralCode}`,
     });
+    console.log("Invite data:", data);
     setIsLoading(false);
   };
 
   return (
-    <div className="space-y-8 p-6">
+    <div className="space-y-6">
       <h1 className="text-3xl font-bold">Invite a New Member</h1>
       <Form {...form}>
         <form
@@ -81,6 +83,10 @@ export default function Invite() {
           </Button>
         </form>
       </Form>
+      <p className="text-sm text-gray-600">
+        Referral Code: <strong>{referralCode}</strong> (Share this with your
+        invitee)
+      </p>
     </div>
   );
 }
