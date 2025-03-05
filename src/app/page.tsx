@@ -9,7 +9,7 @@ export default function Home() {
         <Link href="/login">Login</Link>
       </Button>
       <p className="mt-6">
-        <Link href="/demo">Demo Note</Link>
+        <Link href="/demo">{`{Demo Note}`}</Link>
       </p>
     </div>
   );
