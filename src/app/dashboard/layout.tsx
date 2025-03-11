@@ -26,7 +26,7 @@ export default function DashboardLayout({
       const sidebar = document.querySelector("aside");
       const toggleButton = document.querySelector(
         "button[aria-label='toggle-menu']"
-      ); // Identify toggle button
+      );
       if (
         isMobileMenuOpen &&
         sidebar &&
@@ -46,13 +46,13 @@ export default function DashboardLayout({
     if (window.innerWidth < 768) {
       setIsMobileMenuOpen(false);
     }
-  }, [pathname]); // Only depends on pathname
+  }, [pathname]);
 
   // Handle resize to ensure sidebar stays open on desktop/tablet
   useEffect(() => {
     const handleResize = () => {
       if (window.innerWidth >= 768) {
-        setIsMobileMenuOpen(true); // Keep sidebar open on desktop/tablet
+        setIsMobileMenuOpen(true);
       }
     };
     handleResize(); // Initial call
@@ -66,11 +66,13 @@ export default function DashboardLayout({
       <aside
         className={`fixed inset-y-0 left-0 z-50 w-64 bg-white shadow-md transform transition-transform duration-300 ease-in-out ${
           isMobileMenuOpen ? "translate-x-0" : "-translate-x-full"
-        } md:translate-x-0`} // Fixed on mobile, always visible on desktop
+        } md:translate-x-0`}
       >
         <div className="p-4 h-full flex flex-col justify-between">
           <div>
-            <h2 className="text-xl font-bold sm:text-lg">Club App</h2>
+            <h2 className="text-xl font-bold sm:text-lg text-blue-600">
+              Simcoquitos 24/7 Golf Club
+            </h2>
             <nav className="mt-6 space-y-2">
               <Link
                 href="/dashboard"
@@ -143,7 +145,7 @@ export default function DashboardLayout({
             size="icon"
             className="md:hidden"
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            aria-label="toggle-menu" // Added for click-outside exclusion
+            aria-label="toggle-menu"
           >
             {isMobileMenuOpen ? (
               <X className="h-6 w-6" />
@@ -151,15 +153,18 @@ export default function DashboardLayout({
               <Menu className="h-6 w-6" />
             )}
           </Button>
-          <h1 className="text-xl font-semibold sm:text-lg flex-1 text-center md:text-left">
-            Club Membership
+          <h1 className="text-xl font-semibold sm:text-lg flex-1 text-center md:text-left text-blue-600">
+            Simcoquitos 24/7 Golf Club
           </h1>
           <Button asChild variant="outline" className="sm:text-sm">
             <Link href="/login">Logout</Link>
           </Button>
         </header>
 
-        <main className="flex-1 p-6 sm:p-4 mt-16 md:ml-64 md:mt-0">
+        <main
+          className="flex-1 p-6 sm:p-4 mt-0 md:ml-64"
+          style={{ paddingTop: "64px" }}
+        >
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
