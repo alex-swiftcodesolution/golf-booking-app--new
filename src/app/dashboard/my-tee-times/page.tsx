@@ -63,7 +63,7 @@ export default function MyTeeTimes() {
       await new Promise((resolve) => setTimeout(resolve, 1000));
       setBookings(bookings.filter((b) => b.id !== id));
       toast.success("Booking deleted!");
-    } catch (error) {
+    } catch {
       toast.error("Failed to delete booking");
     } finally {
       setIsLoading(false);
@@ -86,7 +86,7 @@ export default function MyTeeTimes() {
         );
         setBookings(updatedBookings);
         toast.success("Booking updated!");
-      } catch (error) {
+      } catch {
         toast.error("Failed to update booking");
       } finally {
         setIsLoading(false);
