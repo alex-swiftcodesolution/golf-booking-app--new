@@ -95,7 +95,8 @@ export default function BookTeeTime() {
 
   const parseTimeSlot = (time: string) => {
     const [hourMinute, period] = time.split(" ");
-    let [hour, minute] = hourMinute.split(":").map(Number);
+    let hour = Number(hourMinute.split(":")[0]); // Extract and convert hour
+    const minute = Number(hourMinute.split(":")[1]); // Extract and convert minute
     if (period === "PM" && hour !== 12) hour += 12;
     if (period === "AM" && hour === 12) hour = 0;
     return { hour, minute };
