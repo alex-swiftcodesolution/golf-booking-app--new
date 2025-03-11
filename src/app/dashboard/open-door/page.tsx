@@ -20,7 +20,8 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { Loader2, Bluetooth } from "lucide-react"; // Add Bluetooth icon
+import { motion } from "framer-motion"; // For animations
 
 const openDoorSchema = z.object({
   club: z.string().min(1, "Please select a club"),
@@ -28,6 +29,7 @@ const openDoorSchema = z.object({
 
 export default function OpenDoor() {
   const [isLoading, setIsLoading] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false); // Simulate Bluetooth connecting
 
   const form = useForm<z.infer<typeof openDoorSchema>>({
     resolver: zodResolver(openDoorSchema),
@@ -35,56 +37,96 @@ export default function OpenDoor() {
   });
 
   const onSubmit = async (data: z.infer<typeof openDoorSchema>) => {
-    setIsLoading(true);
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    setIsConnecting(true); // Simulate Bluetooth connection
+    await new Promise((resolve) => setTimeout(resolve, 1000)); // Simulate connection delay
+    setIsConnecting(false);
+
+    setIsLoading(true); // Simulate door opening
+    await new Promise((resolve) => setTimeout(resolve, 1000)); // Simulate API delay
     toast.success("Door opened!", {
       description: `Access granted to ${data.club}`,
+      icon: <Bluetooth className="h-4 w-4" />,
     });
     setIsLoading(false);
   };
 
   return (
-    <div className="space-y-8 p-6">
-      <h1 className="text-3xl font-bold">Open the Door</h1>
-      <Form {...form}>
-        <form
-          onSubmit={form.handleSubmit(onSubmit)}
-          className="w-full max-w-md space-y-4"
-        >
-          <FormField
-            control={form.control}
-            name="club"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Choose a Club</FormLabel>
-                <Select
-                  onValueChange={field.onChange}
-                  defaultValue={field.value}
-                >
-                  <FormControl>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Choose a club" />
-                    </SelectTrigger>
-                  </FormControl>
-                  <SelectContent>
-                    <SelectItem value="club1">Club 1</SelectItem>
-                    <SelectItem value="club2">Club 2</SelectItem>
-                    <SelectItem value="club3">Club 3</SelectItem>
-                  </SelectContent>
-                </Select>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <Button type="submit" className="w-full" disabled={isLoading}>
-            {isLoading ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            ) : (
-              "Open Door"
-            )}
-          </Button>
-        </form>
-      </Form>
+    <div className="space-y-6 sm:space-y-8 p-4 sm:p-6">
+      <motion.h1
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+        className="text-3xl sm:text-4xl font-bold text-center md:text-left"
+      >
+        Open the Door
+      </motion.h1>
+
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.2 }}
+        className="w-full max-w-md mx-auto space-y-4 sm:space-y-6"
+      >
+        <div className="flex items-center justify-center space-x-2 text-blue-600">
+          <Bluetooth className="h-5 w-5 sm:h-6 sm:w-6 animate-pulse" />
+          <p className="text-sm sm:text-base">
+            This feature uses Bluetooth to unlock the door
+          </p>
+        </div>
+
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <FormField
+              control={form.control}
+              name="club"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-sm sm:text-base">
+                    Choose a Club
+                  </FormLabel>
+                  <Select
+                    onValueChange={field.onChange}
+                    defaultValue={field.value}
+                  >
+                    <FormControl>
+                      <SelectTrigger className="w-full sm:text-base">
+                        <SelectValue placeholder="Choose a club" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="club1">Club 1</SelectItem>
+                      <SelectItem value="club2">Club 2</SelectItem>
+                      <SelectItem value="club3">Club 3</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage className="text-xs sm:text-sm" />
+                </FormItem>
+              )}
+            />
+            <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+              <Button
+                type="submit"
+                className="w-full py-2.5 sm:py-3 text-lg sm:text-base"
+                disabled={isLoading || isConnecting}
+              >
+                {isConnecting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Connecting...
+                  </>
+                ) : isLoading ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Opening...
+                  </>
+                ) : (
+                  "Open Door"
+                )}
+              </Button>
+            </motion.div>
+          </form>
+        </Form>
+      </motion.div>
     </div>
   );
 }
