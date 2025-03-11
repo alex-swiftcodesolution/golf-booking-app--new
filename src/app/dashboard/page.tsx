@@ -72,87 +72,71 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="space-y-8 p-6">
+    <div className="space-y-6 sm:space-y-8 p-4 sm:p-6">
       <motion.h1
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="text-4xl font-bold"
+        className="text-3xl sm:text-4xl font-bold text-center md:text-left"
       >
         Member Dashboard
       </motion.h1>
 
-      <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 sm:gap-6 md:grid-cols-2 lg:grid-cols-3">
         {/* Account Status */}
         <Card className="md:col-span-1">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5" /> Account Status
+            <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
+              <Users className="h-5 w-5 sm:h-6 sm:w-6" /> Account Status
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-4">
             <Badge
               variant={accountStatus === "Good" ? "default" : "destructive"}
-              className="text-lg mb-4"
+              className="text-base sm:text-lg mb-2"
             >
               {accountStatus}
             </Badge>
             {accountStatus === "Good" ? (
               <div className="grid grid-cols-1 gap-2">
-                <motion.div
-                  variants={buttonVariants}
-                  whileHover="hover"
-                  whileTap="tap"
-                >
-                  <Button asChild className="w-full">
-                    <Link href="/dashboard/open-door">
-                      <DoorOpen className="mr-2 h-4 w-4" /> Open the Door
-                    </Link>
-                  </Button>
-                </motion.div>
-                <motion.div
-                  variants={buttonVariants}
-                  whileHover="hover"
-                  whileTap="tap"
-                >
-                  <Button asChild variant="outline" className="w-full">
-                    <Link href="/dashboard/my-account">My Account</Link>
-                  </Button>
-                </motion.div>
-                <motion.div
-                  variants={buttonVariants}
-                  whileHover="hover"
-                  whileTap="tap"
-                >
-                  <Button asChild variant="outline" className="w-full">
-                    <Link href="/dashboard/book-tee-time">Book a Tee Time</Link>
-                  </Button>
-                </motion.div>
-                <motion.div
-                  variants={buttonVariants}
-                  whileHover="hover"
-                  whileTap="tap"
-                >
-                  <Button asChild variant="outline" className="w-full">
-                    <Link href="/dashboard/my-tee-times">My Tee Times</Link>
-                  </Button>
-                </motion.div>
-                <motion.div
-                  variants={buttonVariants}
-                  whileHover="hover"
-                  whileTap="tap"
-                >
-                  <Button asChild variant="outline" className="w-full">
-                    <Link href="/dashboard/invite">Invite New Member</Link>
-                  </Button>
-                </motion.div>
+                {[
+                  {
+                    href: "/dashboard/open-door",
+                    text: "Open the Door",
+                    icon: DoorOpen,
+                  },
+                  { href: "/dashboard/my-account", text: "My Account" },
+                  { href: "/dashboard/book-tee-time", text: "Book a Tee Time" },
+                  { href: "/dashboard/my-tee-times", text: "My Tee Times" },
+                  { href: "/dashboard/invite", text: "Invite New Member" },
+                ].map((item, index) => (
+                  <motion.div
+                    key={index}
+                    variants={buttonVariants}
+                    whileHover="hover"
+                    whileTap="tap"
+                  >
+                    <Button
+                      asChild
+                      className="w-full justify-start"
+                      variant={index > 0 ? "outline" : "default"}
+                    >
+                      <Link href={item.href}>
+                        {item.icon && (
+                          <item.icon className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />
+                        )}
+                        {item.text}
+                      </Link>
+                    </Button>
+                  </motion.div>
+                ))}
               </div>
             ) : (
               <motion.div
                 variants={buttonVariants}
                 whileHover="hover"
                 whileTap="tap"
-                className="mt-4"
+                className="mt-2"
               >
                 <Button asChild className="w-full">
                   <Link href="/dashboard/my-account">Update Payment</Link>
@@ -165,27 +149,27 @@ export default function Dashboard() {
         {/* Upcoming Tee Times */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Clock className="h-5 w-5" /> Upcoming Tee Times
+            <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
+              <Clock className="h-5 w-5 sm:h-6 sm:w-6" /> Upcoming Tee Times
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-3">
             {upcomingTeeTimes.length > 0 ? (
-              <ul className="space-y-4">
-                {upcomingTeeTimes.map((teeTime) => (
+              <ul className="space-y-3">
+                {upcomingTeeTimes.map((teeTime, index) => (
                   <motion.li
                     key={teeTime.id}
                     initial={{ opacity: 0, x: -20 }}
                     animate={{ opacity: 1, x: 0 }}
-                    transition={{ duration: 0.3 }}
-                    className="flex items-center gap-4"
+                    transition={{ duration: 0.3, delay: index * 0.1 }}
+                    className="flex items-center gap-3"
                   >
-                    <Clock className="h-5 w-5 text-gray-500" />
+                    <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-gray-500" />
                     <div>
-                      <p className="font-semibold">
+                      <p className="font-semibold text-sm sm:text-base">
                         {teeTime.date} at {teeTime.time}
                       </p>
-                      <p className="text-sm text-gray-600">
+                      <p className="text-xs sm:text-sm text-gray-600">
                         {teeTime.location}
                       </p>
                     </div>
@@ -193,15 +177,17 @@ export default function Dashboard() {
                 ))}
               </ul>
             ) : (
-              <p className="text-gray-600">No upcoming tee times.</p>
+              <p className="text-gray-600 text-sm sm:text-base">
+                No upcoming tee times.
+              </p>
             )}
             <motion.div
               variants={buttonVariants}
               whileHover="hover"
               whileTap="tap"
-              className="mt-4"
+              className="mt-2"
             >
-              <Button asChild variant="link">
+              <Button asChild variant="link" className="p-0">
                 <Link href="/dashboard/my-tee-times">View All</Link>
               </Button>
             </motion.div>
@@ -211,44 +197,57 @@ export default function Dashboard() {
         {/* Booking Trends */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Calendar className="h-5 w-5" /> Booking Trends
+            <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
+              <Calendar className="h-5 w-5 sm:h-6 sm:w-6" /> Booking Trends
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <Bar
-              data={bookingData}
-              options={{
-                responsive: true,
-                plugins: { legend: { position: "top" } },
-              }}
-            />
+            <div className="h-48 sm:h-56">
+              <Bar
+                data={bookingData}
+                options={{
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  plugins: {
+                    legend: { position: "top" },
+                    title: { display: false },
+                  },
+                  scales: { y: { beginAtZero: true } },
+                }}
+              />
+            </div>
           </CardContent>
         </Card>
 
         {/* Guest Passes */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5" /> Guest Passes
+            <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
+              <Users className="h-5 w-5 sm:h-6 sm:w-6" /> Guest Passes
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <Doughnut
-              data={guestPassData}
-              options={{
-                responsive: true,
-                plugins: { legend: { position: "top" } },
-              }}
-            />
-            <p className="mt-2 text-center text-sm text-gray-600">
+            <div className="h-48 sm:h-56 flex items-center justify-center">
+              <Doughnut
+                data={guestPassData}
+                options={{
+                  responsive: true,
+                  maintainAspectRatio: false,
+                  plugins: {
+                    legend: { position: "top" },
+                    title: { display: false },
+                  },
+                }}
+              />
+            </div>
+            <p className="mt-2 text-center text-sm sm:text-base text-gray-600">
               {guestPassesRemaining} of {totalGuestPasses} passes remaining
             </p>
             <motion.div
               variants={buttonVariants}
               whileHover="hover"
               whileTap="tap"
-              className="mt-4"
+              className="mt-2"
             >
               <Button asChild variant="outline" className="w-full">
                 <Link href="/dashboard/book-tee-time">Use a Pass</Link>
@@ -258,35 +257,41 @@ export default function Dashboard() {
         </Card>
 
         {/* Recent Invites */}
-        <Card>
+        <Card className="md:col-span-1">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5" /> Recent Invites
+            <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
+              <Users className="h-5 w-5 sm:h-6 sm:w-6" /> Recent Invites
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-3">
             {recentInvites.length > 0 ? (
-              <ul className="space-y-4">
+              <ul className="space-y-3">
                 {recentInvites.map((invite, index) => (
                   <motion.li
                     key={index}
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: index * 0.1 }}
-                    className="flex items-center gap-4"
+                    className="flex items-center gap-3"
                   >
-                    <div className="w-10 h-10 rounded-full bg-gray-300 flex items-center justify-center">
+                    <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-gray-300 flex items-center justify-center text-sm sm:text-base">
                       {invite.name.charAt(0)}
                     </div>
                     <div>
-                      <p className="font-semibold">{invite.name}</p>
-                      <p className="text-sm text-gray-600">{invite.email}</p>
+                      <p className="font-semibold text-sm sm:text-base">
+                        {invite.name}
+                      </p>
+                      <p className="text-xs sm:text-sm text-gray-600">
+                        {invite.email}
+                      </p>
                     </div>
                   </motion.li>
                 ))}
               </ul>
             ) : (
-              <p className="text-gray-600">No recent invites.</p>
+              <p className="text-gray-600 text-sm sm:text-base">
+                No recent invites.
+              </p>
             )}
           </CardContent>
         </Card>
