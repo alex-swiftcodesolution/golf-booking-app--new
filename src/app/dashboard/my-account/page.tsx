@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/form";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
+import { motion } from "framer-motion"; // For animations
 
 const profileSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -83,207 +84,254 @@ export default function MyAccount() {
   };
 
   return (
-    <div className="space-y-8 p-6">
-      <h1 className="text-3xl font-bold">My Account</h1>
-      <Tabs defaultValue="profile" className="w-full max-w-md">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="profile">Update Profile</TabsTrigger>
-          <TabsTrigger value="payment">Update Payment</TabsTrigger>
-        </TabsList>
-        <TabsContent value="profile">
-          <Form {...profileForm}>
-            <form
-              onSubmit={profileForm.handleSubmit(onProfileSubmit)}
-              className="space-y-4 mt-4"
+    <div className="space-y-6 sm:space-y-8 p-4 sm:p-6">
+      <motion.h1
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+        className="text-3xl sm:text-4xl font-bold text-center"
+      >
+        My Account
+      </motion.h1>
+
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, delay: 0.2 }}
+        className="w-full max-w-md mx-auto"
+      >
+        <Tabs defaultValue="profile" className="w-full">
+          <TabsList className="grid w-full grid-cols-2 sm:flex sm:space-x-4 mb-6">
+            <TabsTrigger
+              value="profile"
+              className="w-full sm:w-auto py-2 sm:py-2.5 text-sm sm:text-base"
             >
-              <FormField
-                control={profileForm.control}
-                name="name"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Name</FormLabel>
-                    <FormControl>
-                      <Input placeholder="John Doe" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={profileForm.control}
-                name="email"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Email</FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder="john@example.com"
-                        type="email"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={profileForm.control}
-                name="cell"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Cell</FormLabel>
-                    <FormControl>
-                      <Input placeholder="123-456-7890" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={profileForm.control}
-                name="password"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Password</FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder="New password"
-                        type="password"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={profileForm.control}
-                name="dob"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Date of Birth</FormLabel>
-                    <FormControl>
-                      <Input type="date" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={profileForm.control}
-                name="address"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Address</FormLabel>
-                    <FormControl>
-                      <Input placeholder="123 Main St" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <Button
-                type="submit"
-                className="w-full"
-                disabled={profileLoading}
+              Update Profile
+            </TabsTrigger>
+            <TabsTrigger
+              value="payment"
+              className="w-full sm:w-auto py-2 sm:py-2.5 text-sm sm:text-base"
+            >
+              Update Payment
+            </TabsTrigger>
+          </TabsList>
+          <TabsContent value="profile">
+            <Form {...profileForm}>
+              <form
+                onSubmit={profileForm.handleSubmit(onProfileSubmit)}
+                className="space-y-4"
               >
-                {profileLoading ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  "Save Profile"
-                )}
-              </Button>
-            </form>
-          </Form>
-        </TabsContent>
-        <TabsContent value="payment">
-          <Form {...paymentForm}>
-            <form
-              onSubmit={paymentForm.handleSubmit(onPaymentSubmit)}
-              className="space-y-4 mt-4"
-            >
-              <FormField
-                control={paymentForm.control}
-                name="cardName"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Name on Card</FormLabel>
-                    <FormControl>
-                      <Input placeholder="John Doe" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={paymentForm.control}
-                name="cardNumber"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Card Number</FormLabel>
-                    <FormControl>
-                      <Input placeholder="1234 5678 9012 3456" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <div className="grid grid-cols-2 gap-4">
                 <FormField
-                  control={paymentForm.control}
-                  name="exp"
+                  control={profileForm.control}
+                  name="name"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Expiration</FormLabel>
+                      <FormLabel className="text-sm sm:text-base">
+                        Name
+                      </FormLabel>
                       <FormControl>
-                        <Input placeholder="MM/YY" {...field} />
+                        <Input placeholder="John Doe" {...field} />
                       </FormControl>
-                      <FormMessage />
+                      <FormMessage className="text-xs sm:text-sm" />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={profileForm.control}
+                  name="email"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm sm:text-base">
+                        Email
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="john@example.com"
+                          type="email"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage className="text-xs sm:text-sm" />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={profileForm.control}
+                  name="cell"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm sm:text-base">
+                        Cell
+                      </FormLabel>
+                      <FormControl>
+                        <Input placeholder="123-456-7890" {...field} />
+                      </FormControl>
+                      <FormMessage className="text-xs sm:text-sm" />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={profileForm.control}
+                  name="password"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm sm:text-base">
+                        Password
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="New password"
+                          type="password"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage className="text-xs sm:text-sm" />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={profileForm.control}
+                  name="dob"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm sm:text-base">
+                        Date of Birth
+                      </FormLabel>
+                      <FormControl>
+                        <Input type="date" {...field} />
+                      </FormControl>
+                      <FormMessage className="text-xs sm:text-sm" />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={profileForm.control}
+                  name="address"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm sm:text-base">
+                        Address
+                      </FormLabel>
+                      <FormControl>
+                        <Input placeholder="123 Main St" {...field} />
+                      </FormControl>
+                      <FormMessage className="text-xs sm:text-sm" />
+                    </FormItem>
+                  )}
+                />
+                <Button
+                  type="submit"
+                  className="w-full py-2.5 sm:py-3 text-lg sm:text-base"
+                  disabled={profileLoading}
+                >
+                  {profileLoading ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    "Save Profile"
+                  )}
+                </Button>
+              </form>
+            </Form>
+          </TabsContent>
+          <TabsContent value="payment">
+            <Form {...paymentForm}>
+              <form
+                onSubmit={paymentForm.handleSubmit(onPaymentSubmit)}
+                className="space-y-4"
+              >
+                <FormField
+                  control={paymentForm.control}
+                  name="cardName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm sm:text-base">
+                        Name on Card
+                      </FormLabel>
+                      <FormControl>
+                        <Input placeholder="John Doe" {...field} />
+                      </FormControl>
+                      <FormMessage className="text-xs sm:text-sm" />
                     </FormItem>
                   )}
                 />
                 <FormField
                   control={paymentForm.control}
-                  name="cvv"
+                  name="cardNumber"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>CVV</FormLabel>
+                      <FormLabel className="text-sm sm:text-base">
+                        Card Number
+                      </FormLabel>
                       <FormControl>
-                        <Input placeholder="123" {...field} />
+                        <Input placeholder="1234 5678 9012 3456" {...field} />
                       </FormControl>
-                      <FormMessage />
+                      <FormMessage className="text-xs sm:text-sm" />
                     </FormItem>
                   )}
                 />
-              </div>
-              <FormField
-                control={paymentForm.control}
-                name="billingAddress"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Billing Address</FormLabel>
-                    <FormControl>
-                      <Input placeholder="123 Main St" {...field} />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <Button
-                type="submit"
-                className="w-full"
-                disabled={paymentLoading}
-              >
-                {paymentLoading ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  "Save Payment"
-                )}
-              </Button>
-            </form>
-          </Form>
-        </TabsContent>
-      </Tabs>
+                <div className="grid grid-cols-2 gap-4">
+                  <FormField
+                    control={paymentForm.control}
+                    name="exp"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-sm sm:text-base">
+                          Expiration
+                        </FormLabel>
+                        <FormControl>
+                          <Input placeholder="MM/YY" {...field} />
+                        </FormControl>
+                        <FormMessage className="text-xs sm:text-sm" />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={paymentForm.control}
+                    name="cvv"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-sm sm:text-base">
+                          CVV
+                        </FormLabel>
+                        <FormControl>
+                          <Input placeholder="123" {...field} />
+                        </FormControl>
+                        <FormMessage className="text-xs sm:text-sm" />
+                      </FormItem>
+                    )}
+                  />
+                </div>
+                <FormField
+                  control={paymentForm.control}
+                  name="billingAddress"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm sm:text-base">
+                        Billing Address
+                      </FormLabel>
+                      <FormControl>
+                        <Input placeholder="123 Main St" {...field} />
+                      </FormControl>
+                      <FormMessage className="text-xs sm:text-sm" />
+                    </FormItem>
+                  )}
+                />
+                <Button
+                  type="submit"
+                  className="w-full py-2.5 sm:py-3 text-lg sm:text-base"
+                  disabled={paymentLoading}
+                >
+                  {paymentLoading ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    "Save Payment"
+                  )}
+                </Button>
+              </form>
+            </Form>
+          </TabsContent>
+        </Tabs>
+      </motion.div>
     </div>
   );
 }
