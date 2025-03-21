@@ -1,70 +1,22 @@
+// src/app/dashboard/page.tsx
 "use client";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Calendar, Clock, Users, DoorOpen } from "lucide-react";
+import { Clock, Users, DoorOpen } from "lucide-react";
 import Link from "next/link";
-import { Bar, Doughnut } from "react-chartjs-2";
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  ArcElement,
-  Title,
-  Tooltip,
-  Legend,
-} from "chart.js";
-
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  ArcElement,
-  Title,
-  Tooltip,
-  Legend
-);
 
 export default function Dashboard() {
   const accountStatus = "Good"; // Mock status
   const upcomingTeeTimes = [
-    { id: 1, date: "2023-10-25", time: "9:00 AM", location: "Location 1" },
-    { id: 2, date: "2023-10-26", time: "2:00 PM", location: "Location 2" },
+    { id: 1, date: "2025-03-22", time: "9:00 AM", location: "Location 1" },
+    { id: 2, date: "2025-03-23", time: "2:00 PM", location: "Location 2" },
   ]; // Mock data
-  const guestPassesRemaining = 3; // Mock data
-  const totalGuestPasses = 5; // Mock data
   const recentInvites = [
-    { name: "Jane Doe", email: "jane@example.com", date: "2023-10-24" },
-    { name: "John Smith", email: "john@example.com", date: "2023-10-23" },
+    { name: "Jane Doe", email: "jane@example.com", date: "2025-03-20" },
+    { name: "John Smith", email: "john@example.com", date: "2025-03-19" },
   ]; // Mock data
-
-  // Mock data for charts
-  const bookingData = {
-    labels: ["Week 1", "Week 2", "Week 3", "Week 4"],
-    datasets: [
-      {
-        label: "Tee Times Booked",
-        data: [2, 4, 1, 3],
-        backgroundColor: "rgba(59, 130, 246, 0.8)",
-        borderColor: "rgba(29, 78, 216, 1)",
-        borderWidth: 1,
-      },
-    ],
-  };
-
-  const guestPassData = {
-    labels: ["Used", "Remaining"],
-    datasets: [
-      {
-        data: [totalGuestPasses - guestPassesRemaining, guestPassesRemaining],
-        backgroundColor: ["rgba(220, 38, 38, 0.7)", "rgba(14, 165, 233, 0.7)"],
-        borderColor: ["rgba(220, 38, 38, 1)", "rgba(14, 165, 233, 1)"],
-        borderWidth: 1,
-      },
-    ],
-  };
 
   const buttonVariants = {
     hover: { scale: 1.05, transition: { duration: 0.2 } },
@@ -189,68 +141,6 @@ export default function Dashboard() {
             >
               <Button asChild variant="link" className="p-0">
                 <Link href="/dashboard/my-tee-times">View All</Link>
-              </Button>
-            </motion.div>
-          </CardContent>
-        </Card>
-
-        {/* Booking Trends */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
-              <Calendar className="h-5 w-5 sm:h-6 sm:w-6" /> Booking Trends
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-48 sm:h-56">
-              <Bar
-                data={bookingData}
-                options={{
-                  responsive: true,
-                  maintainAspectRatio: false,
-                  plugins: {
-                    legend: { position: "top" },
-                    title: { display: false },
-                  },
-                  scales: { y: { beginAtZero: true } },
-                }}
-              />
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Guest Passes */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
-              <Users className="h-5 w-5 sm:h-6 sm:w-6" /> Guest Passes
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-48 sm:h-56 flex items-center justify-center">
-              <Doughnut
-                data={guestPassData}
-                options={{
-                  responsive: true,
-                  maintainAspectRatio: false,
-                  plugins: {
-                    legend: { position: "top" },
-                    title: { display: false },
-                  },
-                }}
-              />
-            </div>
-            <p className="mt-2 text-center text-sm sm:text-base text-gray-600">
-              {guestPassesRemaining} of {totalGuestPasses} passes remaining
-            </p>
-            <motion.div
-              variants={buttonVariants}
-              whileHover="hover"
-              whileTap="tap"
-              className="mt-2"
-            >
-              <Button asChild variant="outline" className="w-full">
-                <Link href="/dashboard/book-tee-time">Use a Pass</Link>
               </Button>
             </motion.div>
           </CardContent>

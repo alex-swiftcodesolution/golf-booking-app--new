@@ -157,7 +157,7 @@ export default function DashboardLayout({
             Simcoquitos 24/7 Golf Club
           </h1>
           <Button asChild variant="outline" className="sm:text-sm">
-            <Link href="/login">Logout</Link>
+            <Link href="/">Logout</Link>
           </Button>
         </header>
 
