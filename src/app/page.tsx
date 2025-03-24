@@ -1,9 +1,9 @@
+// src/app/page.tsx
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-// import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
@@ -103,14 +103,30 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100 p-4">
+    <div className="relative min-h-screen flex items-center justify-center p-4">
+      {/* Background Video */}
+      <video
+        autoPlay
+        loop
+        muted
+        playsInline
+        className="absolute top-0 left-0 w-full h-full object-cover z-0"
+      >
+        <source src="/bg-video.mp4" type="video/mp4" />
+        Your browser does not support the video tag.
+      </video>
+
+      {/* Overlay for better readability */}
+      <div className="absolute top-0 left-0 w-full h-full bg-black/50 z-10"></div>
+
+      {/* Login Card */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="w-full max-w-md"
+        className="relative z-20 w-full max-w-md"
       >
-        <Card>
+        <Card className="bg-white/90 backdrop-blur-sm">
           <CardHeader>
             <CardTitle className="text-2xl sm:text-3xl text-center">
               Member Login
