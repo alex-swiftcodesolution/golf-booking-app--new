@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Menu, X } from "lucide-react";
 import { motion } from "framer-motion";
 import Link from "next/link";
+import { BookingProvider } from "@/context/BookingContext";
 
 export default function DashboardLayout({
   children,
@@ -61,119 +62,121 @@ export default function DashboardLayout({
   }, []);
 
   return (
-    <div className="flex min-h-screen bg-gray-100">
-      {/* Sidebar */}
-      <aside
-        className={`fixed inset-y-0 left-0 z-50 w-64 bg-white shadow-md transform transition-transform duration-300 ease-in-out ${
-          isMobileMenuOpen ? "translate-x-0" : "-translate-x-full"
-        } md:translate-x-0`}
-      >
-        <div className="p-4 h-full flex flex-col justify-between">
-          <div>
-            <h2 className="text-xl font-bold sm:text-lg text-blue-600">
-              Simcoquitos 24/7 Golf Club
-            </h2>
-            <nav className="mt-6 space-y-2">
-              <Link
-                href="/dashboard"
-                className={`block rounded-md p-2 text-sm hover:bg-gray-100 ${
-                  pathname === "/dashboard" ? "bg-gray-200 font-medium" : ""
-                }`}
-              >
-                Dashboard
-              </Link>
-              <Link
-                href="/dashboard/open-door"
-                className={`block rounded-md p-2 text-sm hover:bg-gray-100 ${
-                  pathname === "/dashboard/open-door"
-                    ? "bg-gray-200 font-medium"
-                    : ""
-                }`}
-              >
-                Open the Door
-              </Link>
-              <Link
-                href="/dashboard/my-account"
-                className={`block rounded-md p-2 text-sm hover:bg-gray-100 ${
-                  pathname === "/dashboard/my-account"
-                    ? "bg-gray-200 font-medium"
-                    : ""
-                }`}
-              >
-                My Account
-              </Link>
-              <Link
-                href="/dashboard/book-tee-time"
-                className={`block rounded-md p-2 text-sm hover:bg-gray-100 ${
-                  pathname === "/dashboard/book-tee-time"
-                    ? "bg-gray-200 font-medium"
-                    : ""
-                }`}
-              >
-                Book a Tee Time
-              </Link>
-              <Link
-                href="/dashboard/my-tee-times"
-                className={`block rounded-md p-2 text-sm hover:bg-gray-100 ${
-                  pathname === "/dashboard/my-tee-times"
-                    ? "bg-gray-200 font-medium"
-                    : ""
-                }`}
-              >
-                My Tee Times
-              </Link>
-              <Link
-                href="/dashboard/invite"
-                className={`block rounded-md p-2 text-sm hover:bg-gray-100 ${
-                  pathname === "/dashboard/invite"
-                    ? "bg-gray-200 font-medium"
-                    : ""
-                }`}
-              >
-                Invite New Member
-              </Link>
-            </nav>
-          </div>
-        </div>
-      </aside>
-
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col">
-        <header className="fixed top-0 left-0 w-full z-40 bg-white shadow-md p-4 sm:p-2 flex items-center justify-between">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="md:hidden"
-            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            aria-label="toggle-menu"
-          >
-            {isMobileMenuOpen ? (
-              <X className="h-6 w-6" />
-            ) : (
-              <Menu className="h-6 w-6" />
-            )}
-          </Button>
-          <h1 className="text-xl font-semibold sm:text-lg flex-1 text-center md:text-left text-blue-600">
-            Simcoquitos 24/7 Golf Club
-          </h1>
-          <Button asChild variant="outline" className="sm:text-sm">
-            <Link href="/">Logout</Link>
-          </Button>
-        </header>
-
-        <main
-          className="flex-1 p-6 sm:p-4 mt-0 md:ml-64"
-          style={{ paddingTop: "64px" }}
+    <BookingProvider>
+      <div className="flex min-h-screen bg-gray-100">
+        {/* Sidebar */}
+        <aside
+          className={`fixed inset-y-0 left-0 z-50 w-64 bg-white shadow-md transform transition-transform duration-300 ease-in-out ${
+            isMobileMenuOpen ? "translate-x-0" : "-translate-x-full"
+          } md:translate-x-0`}
         >
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.5 }}
+          <div className="p-4 h-full flex flex-col justify-between">
+            <div>
+              <h2 className="text-xl font-bold sm:text-lg text-blue-600">
+                Simcoquitos 24/7 Golf Club
+              </h2>
+              <nav className="mt-6 space-y-2">
+                <Link
+                  href="/dashboard"
+                  className={`block rounded-md p-2 text-sm hover:bg-gray-100 ${
+                    pathname === "/dashboard" ? "bg-gray-200 font-medium" : ""
+                  }`}
+                >
+                  Dashboard
+                </Link>
+                <Link
+                  href="/dashboard/open-door"
+                  className={`block rounded-md p-2 text-sm hover:bg-gray-100 ${
+                    pathname === "/dashboard/open-door"
+                      ? "bg-gray-200 font-medium"
+                      : ""
+                  }`}
+                >
+                  Open the Door
+                </Link>
+                <Link
+                  href="/dashboard/my-account"
+                  className={`block rounded-md p-2 text-sm hover:bg-gray-100 ${
+                    pathname === "/dashboard/my-account"
+                      ? "bg-gray-200 font-medium"
+                      : ""
+                  }`}
+                >
+                  My Account
+                </Link>
+                <Link
+                  href="/dashboard/book-tee-time"
+                  className={`block rounded-md p-2 text-sm hover:bg-gray-100 ${
+                    pathname === "/dashboard/book-tee-time"
+                      ? "bg-gray-200 font-medium"
+                      : ""
+                  }`}
+                >
+                  Book a Tee Time
+                </Link>
+                <Link
+                  href="/dashboard/my-tee-times"
+                  className={`block rounded-md p-2 text-sm hover:bg-gray-100 ${
+                    pathname === "/dashboard/my-tee-times"
+                      ? "bg-gray-200 font-medium"
+                      : ""
+                  }`}
+                >
+                  My Tee Times
+                </Link>
+                <Link
+                  href="/dashboard/invite"
+                  className={`block rounded-md p-2 text-sm hover:bg-gray-100 ${
+                    pathname === "/dashboard/invite"
+                      ? "bg-gray-200 font-medium"
+                      : ""
+                  }`}
+                >
+                  Invite New Member
+                </Link>
+              </nav>
+            </div>
+          </div>
+        </aside>
+
+        {/* Main Content */}
+        <div className="flex-1 flex flex-col">
+          <header className="fixed top-0 left-0 w-full z-40 bg-white shadow-md p-4 sm:p-2 flex items-center justify-between">
+            <Button
+              variant="ghost"
+              size="icon"
+              className="md:hidden"
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              aria-label="toggle-menu"
+            >
+              {isMobileMenuOpen ? (
+                <X className="h-6 w-6" />
+              ) : (
+                <Menu className="h-6 w-6" />
+              )}
+            </Button>
+            <h1 className="text-sm font-semibold sm:text-md flex-1 text-center md:text-left text-blue-600">
+              Simcognitos 24/7 Golf Club
+            </h1>
+            <Button asChild variant="outline" className="sm:text-sm">
+              <Link href="/">Logout</Link>
+            </Button>
+          </header>
+
+          <main
+            className="flex-1 p-6 sm:p-4 mt-0 md:ml-64"
+            style={{ paddingTop: "64px" }}
           >
-            {children}
-          </motion.div>
-        </main>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.5 }}
+            >
+              {children}
+            </motion.div>
+          </main>
+        </div>
       </div>
-    </div>
+    </BookingProvider>
   );
 }

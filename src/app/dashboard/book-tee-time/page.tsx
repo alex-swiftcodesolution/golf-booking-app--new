@@ -33,6 +33,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { motion } from "framer-motion";
+import { useBookings } from "@/context/BookingContext";
 
 // Schema for booking tee time
 const teeTimeSchema = z.object({
@@ -77,6 +78,8 @@ export default function BookTeeTime() {
   const [isLoading, setIsLoading] = useState(false);
   const [showItinerary, setShowItinerary] = useState(false);
   const [guestCount, setGuestCount] = useState(0);
+
+  const { addBooking } = useBookings();
 
   const form = useForm<z.infer<typeof teeTimeSchema>>({
     resolver: zodResolver(teeTimeSchema),
@@ -157,7 +160,7 @@ export default function BookTeeTime() {
         .map((_, i) => currentGuests[i] || { name: "", cell: "" })
     );
     if (count === 0) {
-      form.clearErrors("guests"); // Clear guest validation errors when count is 0
+      form.clearErrors("guests");
     }
   };
 
@@ -175,6 +178,19 @@ export default function BookTeeTime() {
       const guests = data.guests || [];
       const extraGuests = Math.max(guests.length - freeGuestPassesPerMonth, 0);
       const extraCharge = extraGuests * guestPassCharge;
+
+      // Add the booking to the shared state
+      addBooking({
+        date: data.date,
+        time: data.startTime,
+        location: data.location,
+        bay: selectedBay!,
+        guests: guests,
+        guestPassUsage: {
+          free: Math.min(guests.length, freeGuestPassesPerMonth),
+          charged: extraGuests,
+        },
+      });
 
       if (guests.length > 0) {
         guests.forEach((guest) => {
@@ -214,15 +230,10 @@ export default function BookTeeTime() {
   };
 
   const isFormValid = () => {
-    const values = form.watch(); // Reactively watch form values
-    // Check if required fields are filled
+    const values = form.watch();
     const requiredFieldsValid =
       values.location && values.date && values.startTime;
-
-    // If guestCount is 0, ignore guest validation errors; otherwise, include isValid check
     const valid = requiredFieldsValid && (guestCount === 0 || isValid);
-
-    // Debug log to check form state
     console.log("isFormValid:", {
       location: values.location,
       date: values.date,
@@ -386,13 +397,13 @@ export default function BookTeeTime() {
                     <Table>
                       <TableHeader>
                         <TableRow>
-                          <TableHead className="text-xs sm:text-sm w-20 sticky top-0 bg-white">
+                          <TableHead className="text-xs w-[80px] sm:w-[100px] sticky top-0 bg-white">
                             Time
                           </TableHead>
                           {bays.map((bay) => (
                             <TableHead
                               key={bay}
-                              className="text-center text-xs sm:text-sm w-24 sticky top-0 bg-white"
+                              className="text-center text-xs w-[60px] sm:w-[80px] sticky top-0 bg-white"
                             >
                               {bay}
                             </TableHead>
@@ -402,7 +413,7 @@ export default function BookTeeTime() {
                       <TableBody>
                         {timeSlots.map((time) => (
                           <TableRow key={time}>
-                            <TableCell className="font-medium text-xs sm:text-sm">
+                            <TableCell className="font-medium text-xs">
                               {time}
                             </TableCell>
                             {bays.map((bay) => (
@@ -420,7 +431,7 @@ export default function BookTeeTime() {
                                       : "outline"
                                   }
                                   onClick={() => handleTimeSelect(time, bay)}
-                                  className="w-full text-xs py-1"
+                                  className="w-full text-[10px] sm:text-xs py-0.5 sm:py-1 px-1 sm:px-2"
                                   disabled={
                                     unavailableSlots.has(time) ||
                                     !form.watch("location")
@@ -429,7 +440,7 @@ export default function BookTeeTime() {
                                   {selectedTime === time && selectedBay === bay
                                     ? "Chosen"
                                     : unavailableSlots.has(time)
-                                    ? "Unavailable"
+                                    ? "N/A"
                                     : "Choose"}
                                 </Button>
                               </TableCell>

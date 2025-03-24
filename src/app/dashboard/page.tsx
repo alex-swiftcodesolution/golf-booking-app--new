@@ -1,4 +1,3 @@
-// src/app/dashboard/page.tsx
 "use client";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -6,13 +5,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Clock, Users, DoorOpen } from "lucide-react";
 import Link from "next/link";
+import { useBookings } from "@/context/BookingContext";
 
 export default function Dashboard() {
+  const { bookings } = useBookings();
   const accountStatus = "Good"; // Mock status
-  const upcomingTeeTimes = [
-    { id: 1, date: "2025-03-22", time: "9:00 AM", location: "Location 1" },
-    { id: 2, date: "2025-03-23", time: "2:00 PM", location: "Location 2" },
-  ]; // Mock data
   const recentInvites = [
     { name: "Jane Doe", email: "jane@example.com", date: "2025-03-20" },
     { name: "John Smith", email: "john@example.com", date: "2025-03-19" },
@@ -106,9 +103,9 @@ export default function Dashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {upcomingTeeTimes.length > 0 ? (
+            {bookings.length > 0 ? (
               <ul className="space-y-3">
-                {upcomingTeeTimes.map((teeTime, index) => (
+                {bookings.map((teeTime, index) => (
                   <motion.li
                     key={teeTime.id}
                     initial={{ opacity: 0, x: -20 }}
@@ -122,7 +119,7 @@ export default function Dashboard() {
                         {teeTime.date} at {teeTime.time}
                       </p>
                       <p className="text-xs sm:text-sm text-gray-600">
-                        {teeTime.location}
+                        {teeTime.location} ({teeTime.bay})
                       </p>
                     </div>
                   </motion.li>
