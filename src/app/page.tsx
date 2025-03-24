@@ -1,7 +1,7 @@
-// src/app/page.tsx
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image"; // Import Image component from Next.js
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -127,7 +127,17 @@ export default function LoginPage() {
         className="relative z-20 w-full max-w-md"
       >
         <Card className="bg-white/90 backdrop-blur-sm">
-          <CardHeader>
+          <CardHeader className="flex flex-col items-center">
+            {/* Client Logo */}
+            <div className="mb-4">
+              <Image
+                src="/logo.png"
+                alt="Logo"
+                width={150} // Base width for desktop
+                height={50} // Adjust height based on logo aspect ratio
+                className="w-32 sm:w-40 h-auto" // Responsive width: smaller on mobile, larger on desktop
+              />
+            </div>
             <CardTitle className="text-2xl sm:text-3xl text-center">
               Member Login
             </CardTitle>
