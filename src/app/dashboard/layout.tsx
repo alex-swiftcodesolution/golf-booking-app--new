@@ -72,7 +72,7 @@ export default function DashboardLayout({
         >
           <div className="p-4 h-full flex flex-col justify-between">
             <div>
-              <h2 className="text-xl font-bold sm:text-lg text-blue-600">
+              <h2 className="text-md font-bold sm:text-md text-blue-600">
                 Simcoquitos 24/7 Golf Club
               </h2>
               <nav className="mt-6 space-y-2">
@@ -155,8 +155,8 @@ export default function DashboardLayout({
                 <Menu className="h-6 w-6" />
               )}
             </Button>
-            <h1 className="text-sm font-semibold sm:text-md flex-1 text-center md:text-left text-blue-600">
-              Simcognitos 24/7 Golf Club
+            <h1 className="text-xs font-semibold sm:text-xs flex-1 text-center md:text-left text-blue-600">
+              .
             </h1>
             <Button asChild variant="outline" className="sm:text-sm">
               <Link href="/">Logout</Link>
