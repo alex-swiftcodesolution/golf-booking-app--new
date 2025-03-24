@@ -1,6 +1,8 @@
+// src/app/dashboard/layout.tsx
 "use client";
 import { useState, useEffect } from "react";
 import { usePathname } from "next/navigation";
+import Image from "next/image"; // Import Image component from Next.js
 import { Button } from "@/components/ui/button";
 import { Menu, X } from "lucide-react";
 import { motion } from "framer-motion";
@@ -58,7 +60,7 @@ export default function DashboardLayout({
     };
     handleResize(); // Initial call
     window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
+    return () => window.addEventListener("resize", handleResize);
   }, []);
 
   return (
@@ -72,9 +74,16 @@ export default function DashboardLayout({
         >
           <div className="p-4 h-full flex flex-col justify-between">
             <div>
-              <h2 className="text-md font-bold sm:text-md text-blue-600">
-                Simcoquitos 24/7 Golf Club
-              </h2>
+              {/* Client Logo */}
+              <div className="mb-6 flex justify-center">
+                <Image
+                  src="/logo.png"
+                  alt="Logo"
+                  width={150} // Base width
+                  height={50} // Adjust height based on logo aspect ratio
+                  className="w-36 h-auto" // Fixed width within sidebar, maintaining aspect ratio
+                />
+              </div>
               <nav className="mt-6 space-y-2">
                 <Link
                   href="/dashboard"
