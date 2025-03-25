@@ -18,21 +18,36 @@ import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { motion } from "framer-motion"; // For animations
 
-const profileSchema = z.object({
-  name: z.string().min(1, "Name is required"),
-  email: z.string().email("Please enter a valid email"),
-  cell: z.string().min(10, "Please enter a valid phone number"),
-  password: z
-    .string()
-    .min(6, "Password must be at least 6 characters")
-    .optional(),
-  dob: z.string().optional(),
-  address: z.string().optional(),
-});
+const profileSchema = z
+  .object({
+    name: z.string().min(1, "Name is required"),
+    email: z.string().email("Please enter a valid email"),
+    cell: z
+      .string()
+      .min(10, "Please enter a valid phone number")
+      .regex(
+        /^\+?\d{1,3}[-.\s]?\d{3}[-.\s]?\d{3}[-.\s]?\d{4}$/,
+        "Please enter a valid phone number (e.g., +1-123-456-7890)"
+      ),
+    password: z
+      .string()
+      .min(6, "Password must be at least 6 characters")
+      .optional(),
+    confirmPassword: z.string().optional(),
+    dob: z.string().optional(),
+    address: z.string().optional(),
+  })
+  .refine((data) => !data.password || data.password === data.confirmPassword, {
+    message: "Passwords must match",
+    path: ["confirmPassword"],
+  });
 
 const paymentSchema = z.object({
   cardName: z.string().min(1, "Name on card is required"),
-  cardNumber: z.string().min(16, "Card number must be 16 digits").max(16),
+  cardNumber: z
+    .string()
+    .transform((val) => val.replace(/[\s-]/g, ""))
+    .refine((val) => val.length === 16, "Card number must be 16 digits"),
   exp: z.string().regex(/^\d{2}\/\d{2}$/, "Use MM/YY format"),
   cvv: z.string().min(3, "CVV must be 3 or 4 digits").max(4),
   billingAddress: z.string().min(1, "Billing address is required"),
@@ -45,12 +60,12 @@ export default function MyAccount() {
   const profileForm = useForm<z.infer<typeof profileSchema>>({
     resolver: zodResolver(profileSchema),
     defaultValues: {
-      name: "",
-      email: "",
-      cell: "",
+      name: "John Doe", // Mock data
+      email: "john@example.com",
+      cell: "123-456-7890",
       password: "",
-      dob: "",
-      address: "",
+      dob: "1990-01-01",
+      address: "123 Main St",
     },
   });
 
@@ -67,20 +82,44 @@ export default function MyAccount() {
 
   const onProfileSubmit = async (data: z.infer<typeof profileSchema>) => {
     setProfileLoading(true);
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    toast.success("Profile updated!", {
-      description: `Changes saved for ${data.name}`,
-    });
-    setProfileLoading(false);
+    // await new Promise((resolve) => setTimeout(resolve, 1000));
+    // toast.success("Profile updated!", {
+    //   description: `Changes saved for ${data.name}`,
+    // });
+    // setProfileLoading(false);
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      toast.success("Profile updated!", {
+        description: `Changes saved for ${data.name}`,
+      });
+    } catch {
+      toast.error("Failed to update profile", {
+        description: "Please try again later.",
+      });
+    } finally {
+      setProfileLoading(false);
+    }
   };
 
   const onPaymentSubmit = async (data: z.infer<typeof paymentSchema>) => {
     setPaymentLoading(true);
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    toast.success("Payment method updated!", {
-      description: `Card ending in ${data.cardNumber.slice(-4)} saved`,
-    });
-    setPaymentLoading(false);
+    // await new Promise((resolve) => setTimeout(resolve, 1000));
+    // toast.success("Payment method updated!", {
+    //   description: `Card ending in ${data.cardNumber.slice(-4)} saved`,
+    // });
+    // setPaymentLoading(false);
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      toast.success("Payment method updated!", {
+        description: `Card ending in ${data.cardNumber.slice(-4)} saved`,
+      });
+    } catch {
+      toast.error("Failed to update payment method", {
+        description: "Please check your details and try again.",
+      });
+    } finally {
+      setPaymentLoading(false);
+    }
   };
 
   return (
@@ -105,12 +144,14 @@ export default function MyAccount() {
             <TabsTrigger
               value="profile"
               className="w-full sm:w-auto py-2 sm:py-2.5 text-sm sm:text-base"
+              aria-label="Update profile information"
             >
               Update Profile
             </TabsTrigger>
             <TabsTrigger
               value="payment"
               className="w-full sm:w-auto py-2 sm:py-2.5 text-sm sm:text-base"
+              aria-label="Update payment method"
             >
               Update Payment
             </TabsTrigger>
@@ -181,6 +222,25 @@ export default function MyAccount() {
                       <FormControl>
                         <Input
                           placeholder="New password"
+                          type="password"
+                          {...field}
+                        />
+                      </FormControl>
+                      <FormMessage className="text-xs sm:text-sm" />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={profileForm.control}
+                  name="confirmPassword"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm sm:text-base">
+                        Confirm Password
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          placeholder="Confirm new password"
                           type="password"
                           {...field}
                         />

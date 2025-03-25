@@ -60,7 +60,8 @@ export default function DashboardLayout({
     };
     handleResize(); // Initial call
     window.addEventListener("resize", handleResize);
-    return () => window.addEventListener("resize", handleResize);
+    // return () => window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
   }, []);
 
   return (
@@ -78,7 +79,7 @@ export default function DashboardLayout({
               <div className="mb-6 flex justify-center">
                 <Image
                   src="/logo.png"
-                  alt="Logo"
+                  alt="Simcognito's 24/7 golf club logo"
                   width={150} // Base width
                   height={50} // Adjust height based on logo aspect ratio
                   className="w-36 h-auto" // Fixed width within sidebar, maintaining aspect ratio
@@ -90,6 +91,7 @@ export default function DashboardLayout({
                   className={`block rounded-md p-2 text-sm hover:bg-gray-100 ${
                     pathname === "/dashboard" ? "bg-gray-200 font-medium" : ""
                   }`}
+                  aria-current={pathname === "/dashboard" ? "page" : undefined}
                 >
                   Dashboard
                 </Link>
@@ -100,6 +102,9 @@ export default function DashboardLayout({
                       ? "bg-gray-200 font-medium"
                       : ""
                   }`}
+                  aria-current={
+                    pathname === "/dashboard/open-door" ? "page" : undefined
+                  }
                 >
                   Open the Door
                 </Link>
@@ -110,6 +115,9 @@ export default function DashboardLayout({
                       ? "bg-gray-200 font-medium"
                       : ""
                   }`}
+                  aria-current={
+                    pathname === "/dashboard/my-account" ? "page" : undefined
+                  }
                 >
                   My Account
                 </Link>
@@ -120,6 +128,9 @@ export default function DashboardLayout({
                       ? "bg-gray-200 font-medium"
                       : ""
                   }`}
+                  aria-current={
+                    pathname === "/dashboard/book-tee-time" ? "page" : undefined
+                  }
                 >
                   Book a Tee Time
                 </Link>
@@ -130,6 +141,9 @@ export default function DashboardLayout({
                       ? "bg-gray-200 font-medium"
                       : ""
                   }`}
+                  aria-current={
+                    pathname === "/dashboard/my-tee-times" ? "page" : undefined
+                  }
                 >
                   My Tee Times
                 </Link>
@@ -140,6 +154,9 @@ export default function DashboardLayout({
                       ? "bg-gray-200 font-medium"
                       : ""
                   }`}
+                  aria-current={
+                    pathname === "/dashboard/invite" ? "page" : undefined
+                  }
                 >
                   Invite New Member
                 </Link>

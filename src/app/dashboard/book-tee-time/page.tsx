@@ -91,7 +91,7 @@ export default function BookTeeTime() {
     },
   });
 
-  const { isValid, errors } = useFormState({ control: form.control });
+  const { isValid } = useFormState({ control: form.control });
 
   const timeSlots = Array.from({ length: 48 }, (_, i) => {
     const hour = Math.floor(i / 2);
@@ -110,10 +110,29 @@ export default function BookTeeTime() {
     return { hour, minute };
   };
 
+  // const checkTimeSlotConflict = (startTime: string) => {
+  //   const { hour: startHour, minute: startMinute } = parseTimeSlot(startTime);
+  //   const startMinutes = startHour * 60 + startMinute;
+
+  //   const slotMinutes = startMinutes + 30;
+  //   const slotHour = Math.floor(slotMinutes / 60);
+  //   const slotMinute = slotMinutes % 60;
+  //   const period = slotHour >= 12 ? "PM" : "AM";
+  //   const displayHour =
+  //     slotHour > 12 ? slotHour - 12 : slotHour === 0 ? 12 : slotHour;
+  //   const slotTime = `${displayHour}:${
+  //     slotMinute === 0 ? "00" : "30"
+  //   } ${period}`;
+  //   return unavailableSlots.has(slotTime) ? slotTime : null;
+  // };
+
+  const { bookings } = useBookings();
+
   const checkTimeSlotConflict = (startTime: string) => {
     const { hour: startHour, minute: startMinute } = parseTimeSlot(startTime);
     const startMinutes = startHour * 60 + startMinute;
 
+    // Check the next 30-minute slot for unavailability
     const slotMinutes = startMinutes + 30;
     const slotHour = Math.floor(slotMinutes / 60);
     const slotMinute = slotMinutes % 60;
@@ -123,6 +142,20 @@ export default function BookTeeTime() {
     const slotTime = `${displayHour}:${
       slotMinute === 0 ? "00" : "30"
     } ${period}`;
+
+    // Check against existing bookings in BookingContext
+    const conflictBooking = bookings.find(
+      (booking) =>
+        booking.date === form.getValues("date") &&
+        booking.location === form.getValues("location") &&
+        booking.bay === selectedBay &&
+        (booking.time === startTime || booking.time === slotTime)
+    );
+
+    if (conflictBooking) {
+      return conflictBooking.time;
+    }
+
     return unavailableSlots.has(slotTime) ? slotTime : null;
   };
 
@@ -234,15 +267,6 @@ export default function BookTeeTime() {
     const requiredFieldsValid =
       values.location && values.date && values.startTime;
     const valid = requiredFieldsValid && (guestCount === 0 || isValid);
-    console.log("isFormValid:", {
-      location: values.location,
-      date: values.date,
-      startTime: values.startTime,
-      guestCount,
-      isValid,
-      errors,
-      valid,
-    });
     return valid;
   };
 
@@ -272,7 +296,8 @@ export default function BookTeeTime() {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel className="text-sm sm:text-base flex items-center gap-2">
-                    <Calendar className="h-5 w-5" /> Choose Date
+                    <Calendar className="h-5 w-5" aria-hidden="true" /> Choose
+                    Date
                   </FormLabel>
                   <FormControl>
                     <Input
@@ -289,7 +314,7 @@ export default function BookTeeTime() {
             {/* Bring Guests */}
             <div className="space-y-4">
               <FormLabel className="text-sm sm:text-base flex items-center gap-2">
-                <Users className="h-5 w-5" /> Bring a Guest
+                <Users className="h-5 w-5" aria-hidden="true" /> Bring a Guest
               </FormLabel>
               <div className="flex gap-2 sm:gap-4">
                 {[0, 1, 2, 3].map((count) => (
@@ -360,7 +385,8 @@ export default function BookTeeTime() {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel className="text-sm sm:text-base flex items-center gap-2">
-                    <MapPin className="h-5 w-5" /> Choose Location
+                    <MapPin className="h-5 w-5" aria-hidden="true" /> Choose
+                    Location
                   </FormLabel>
                   <FormControl>
                     <select
@@ -435,6 +461,13 @@ export default function BookTeeTime() {
                                   disabled={
                                     unavailableSlots.has(time) ||
                                     !form.watch("location")
+                                  }
+                                  aria-label={
+                                    selectedTime === time && selectedBay === bay
+                                      ? `Selected: ${time} at ${bay}`
+                                      : unavailableSlots.has(time)
+                                      ? `Unavailable: ${time} at ${bay}`
+                                      : `Choose ${time} at ${bay}`
                                   }
                                 >
                                   {selectedTime === time && selectedBay === bay

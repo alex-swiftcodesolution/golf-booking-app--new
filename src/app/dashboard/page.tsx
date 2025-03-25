@@ -36,13 +36,15 @@ export default function Dashboard() {
         <Card className="md:col-span-1">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
-              <Users className="h-5 w-5 sm:h-6 sm:w-6" /> Account Status
+              <Users className="h-5 w-5 sm:h-6 sm:w-6" aria-hidden="true" />{" "}
+              Account Status
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <Badge
               variant={accountStatus === "Good" ? "default" : "destructive"}
               className="text-base sm:text-lg mb-2"
+              aria-label={`Account status: ${accountStatus}`}
             >
               {accountStatus}
             </Badge>
@@ -99,7 +101,8 @@ export default function Dashboard() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
-              <Clock className="h-5 w-5 sm:h-6 sm:w-6" /> Upcoming Tee Times
+              <Clock className="h-5 w-5 sm:h-6 sm:w-6" aria-hidden="true" />{" "}
+              Upcoming Tee Times
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -113,7 +116,10 @@ export default function Dashboard() {
                     transition={{ duration: 0.3, delay: index * 0.1 }}
                     className="flex items-center gap-3"
                   >
-                    <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-gray-500" />
+                    <Clock
+                      className="h-4 w-4 sm:h-5 sm:w-5 text-gray-500"
+                      aria-hidden="true"
+                    />
                     <div>
                       <p className="font-semibold text-sm sm:text-base">
                         {teeTime.date} at {teeTime.time}
@@ -147,7 +153,8 @@ export default function Dashboard() {
         <Card className="md:col-span-1">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
-              <Users className="h-5 w-5 sm:h-6 sm:w-6" /> Recent Invites
+              <Users className="h-5 w-5 sm:h-6 sm:w-6" aria-hidden="true" />{" "}
+              Recent Invites
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -169,7 +176,7 @@ export default function Dashboard() {
                         {invite.name}
                       </p>
                       <p className="text-xs sm:text-sm text-gray-600">
-                        {invite.email}
+                        {invite.email} - Invited on {invite.date}
                       </p>
                     </div>
                   </motion.li>

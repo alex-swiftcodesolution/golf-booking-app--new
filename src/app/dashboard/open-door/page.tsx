@@ -38,17 +38,36 @@ export default function OpenDoor() {
 
   const onSubmit = async (data: z.infer<typeof openDoorSchema>) => {
     setIsConnecting(true); // Simulate Bluetooth connection
-    await new Promise((resolve) => setTimeout(resolve, 1000)); // Simulate connection delay
-    setIsConnecting(false);
+    // await new Promise((resolve) => setTimeout(resolve, 1000)); // Simulate connection delay
+    // setIsConnecting(false);
 
-    setIsLoading(true); // Simulate door opening
-    await new Promise((resolve) => setTimeout(resolve, 1000)); // Simulate API delay
-    toast.success("Door opened!", {
-      description: `Access granted to ${data.club}`,
-      icon: <Bluetooth className="h-4 w-4" />,
-    });
-    setIsLoading(false);
+    // setIsLoading(true); // Simulate door opening
+    // await new Promise((resolve) => setTimeout(resolve, 1000)); // Simulate API delay
+    // toast.success("Door opened!", {
+    //   description: `Access granted to ${data.club}`,
+    //   icon: <Bluetooth className="h-4 w-4" />,
+    // });
+    // setIsLoading(false);
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      setIsConnecting(false);
+
+      setIsLoading(true);
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      toast.success("Door opened!", {
+        description: `Access granted to ${data.club}`,
+        icon: <Bluetooth className="h-4 w-4" />,
+      });
+    } catch {
+      toast.error("Failed to open door", {
+        description: "Please try again later.",
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
+
+  const accountStatus = "Good"; // Replace with API call in backend phase
 
   return (
     <div className="space-y-6 sm:space-y-8 p-4 sm:p-6">
@@ -68,7 +87,10 @@ export default function OpenDoor() {
         className="w-full max-w-md mx-auto space-y-4 sm:space-y-6"
       >
         <div className="flex items-center justify-center space-x-2 text-blue-600">
-          <Bluetooth className="h-5 w-5 sm:h-6 sm:w-6 animate-pulse" />
+          <Bluetooth
+            className="h-5 w-5 sm:h-6 sm:w-6 animate-pulse"
+            aria-hidden="true"
+          />
           <p className="text-sm sm:text-base">
             This feature uses Bluetooth to unlock the door
           </p>
@@ -107,7 +129,8 @@ export default function OpenDoor() {
               <Button
                 type="submit"
                 className="w-full py-2.5 sm:py-3 text-lg sm:text-base"
-                disabled={isLoading || isConnecting}
+                disabled={isLoading || isConnecting || accountStatus !== "Good"}
+                aria-label="Open the door for the selected club"
               >
                 {isConnecting ? (
                   <>
@@ -119,6 +142,8 @@ export default function OpenDoor() {
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Opening...
                   </>
+                ) : accountStatus !== "Good" ? (
+                  "Account Status Not Good"
                 ) : (
                   "Open Door"
                 )}

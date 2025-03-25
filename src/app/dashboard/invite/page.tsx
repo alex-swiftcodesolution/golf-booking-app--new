@@ -38,7 +38,6 @@ export default function Invite() {
       toast.success("Invite sent!", {
         description: `SMS sent to ${data.cell} with signup link and code ${referralCode}`,
       });
-      console.log("Invite data:", data);
       form.reset(); // Reset form after submission
     } catch {
       toast.error("Failed to send invite");
@@ -137,8 +136,9 @@ export default function Invite() {
             variant="outline"
             className="mt-2 sm:mt-0 text-sm sm:text-base"
             onClick={handleCopyCode}
+            aria-label="Copy referral code to clipboard"
           >
-            <Copy className="mr-2 h-4 w-4" /> Copy Code
+            <Copy className="mr-2 h-4 w-4" aria-hidden="true" /> Copy Code
           </Button>
         </div>
       </motion.div>

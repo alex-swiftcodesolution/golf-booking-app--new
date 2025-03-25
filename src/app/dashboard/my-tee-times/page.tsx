@@ -31,12 +31,12 @@ export default function MyTeeTimes() {
   const handleDelete = async (id: number) => {
     setIsLoading(true);
     try {
+      const booking = bookings.find((b) => b.id === id);
+      if (!booking) throw new Error("Booking not found");
       await new Promise((resolve) => setTimeout(resolve, 1000));
       deleteBooking(id);
       toast.success("Tee time canceled", {
-        description: `Your tee time on ${
-          bookings.find((b) => b.id === id)?.date
-        } at ${bookings.find((b) => b.id === id)?.time} has been canceled.`,
+        description: `Your tee time on ${booking.date} at ${booking.time} has been canceled.`,
       });
     } catch {
       toast.error("Failed to cancel tee time", {
@@ -47,6 +47,12 @@ export default function MyTeeTimes() {
       setDeleteBookingId(null);
     }
   };
+
+  const sortedBookings = [...bookings].sort((a, b) => {
+    const dateA = new Date(`${a.date} ${a.time}`);
+    const dateB = new Date(`${b.date} ${b.time}`);
+    return dateA.getTime() - dateB.getTime();
+  });
 
   return (
     <div className="space-y-6 sm:space-y-8 p-4 sm:p-6">
@@ -79,11 +85,14 @@ export default function MyTeeTimes() {
                   <TableHead className="text-xs sm:text-sm">Location</TableHead>
                   <TableHead className="text-xs sm:text-sm">Bay</TableHead>
                   <TableHead className="text-xs sm:text-sm">Guests</TableHead>
+                  <TableHead className="text-xs sm:text-sm">
+                    Guest Pass Usage
+                  </TableHead>
                   <TableHead className="text-xs sm:text-sm">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {bookings.map((booking) => (
+                {sortedBookings.map((booking) => (
                   <TableRow key={booking.id}>
                     <TableCell className="text-xs sm:text-sm">
                       {booking.date}
@@ -102,6 +111,11 @@ export default function MyTeeTimes() {
                         ? booking.guests.map((guest) => guest.name).join(", ")
                         : "None"}
                     </TableCell>
+                    <TableCell className="text-xs sm:text-sm">
+                      {booking.guestPassUsage
+                        ? `${booking.guestPassUsage.free} free pass(es), ${booking.guestPassUsage.charged} charged`
+                        : "N/A"}
+                    </TableCell>
                     <TableCell>
                       <Dialog
                         open={deleteBookingId === booking.id}
@@ -114,6 +128,7 @@ export default function MyTeeTimes() {
                             variant="destructive"
                             size="sm"
                             onClick={() => setDeleteBookingId(booking.id)}
+                            aria-label={`Cancel tee time for ${booking.date} at ${booking.time}`}
                           >
                             Cancel
                           </Button>
@@ -187,6 +202,7 @@ export default function MyTeeTimes() {
                             variant="destructive"
                             size="sm"
                             onClick={() => setDeleteBookingId(booking.id)}
+                            aria-label={`Cancel tee time for ${booking.date} at ${booking.time}`}
                           >
                             Cancel
                           </Button>
@@ -229,6 +245,12 @@ export default function MyTeeTimes() {
                       {booking.guests.length > 0
                         ? booking.guests.map((guest) => guest.name).join(", ")
                         : "None"}
+                    </p>
+                    <p className="text-xs">
+                      <strong>Guest Pass Usage:</strong>{" "}
+                      {booking.guestPassUsage
+                        ? `${booking.guestPassUsage.free} free pass(es), ${booking.guestPassUsage.charged} charged`
+                        : "N/A"}
                     </p>
                   </div>
                 </motion.div>
