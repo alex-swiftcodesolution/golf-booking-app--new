@@ -38,16 +38,7 @@ export default function OpenDoor() {
 
   const onSubmit = async (data: z.infer<typeof openDoorSchema>) => {
     setIsConnecting(true); // Simulate Bluetooth connection
-    // await new Promise((resolve) => setTimeout(resolve, 1000)); // Simulate connection delay
-    // setIsConnecting(false);
 
-    // setIsLoading(true); // Simulate door opening
-    // await new Promise((resolve) => setTimeout(resolve, 1000)); // Simulate API delay
-    // toast.success("Door opened!", {
-    //   description: `Access granted to ${data.club}`,
-    //   icon: <Bluetooth className="h-4 w-4" />,
-    // });
-    // setIsLoading(false);
     try {
       await new Promise((resolve) => setTimeout(resolve, 1000));
       setIsConnecting(false);
