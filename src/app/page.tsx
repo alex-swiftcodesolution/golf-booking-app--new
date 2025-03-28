@@ -1,23 +1,13 @@
 "use client";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
-import Image from "next/image"; // Import Image component from Next.js
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { toast } from "sonner";
-import { motion } from "framer-motion";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
+import { useRouter } from "next/navigation";
+import Image from "next/image";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Form,
   FormControl,
@@ -26,56 +16,146 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { toast } from "sonner";
+import { Loader2, Eye, EyeOff } from "lucide-react";
+import { motion } from "framer-motion";
 
-// Schema for login form
+// Define the sign-up schema with new fields and validations
+const signUpSchema = z
+  .object({
+    referralCode: z.string().min(1, "Referral code is required"),
+    firstName: z.string().min(1, "First name is required"),
+    lastName: z.string().min(1, "Last name is required"),
+    dob: z
+      .string()
+      .min(1, "Date of birth is required")
+      .refine(
+        (dob) => {
+          const today = new Date();
+          const birthDate = new Date(dob);
+          const age = today.getFullYear() - birthDate.getFullYear();
+          const monthDiff = today.getMonth() - birthDate.getMonth();
+          if (
+            monthDiff < 0 ||
+            (monthDiff === 0 && today.getDate() < birthDate.getDate())
+          ) {
+            return age - 1 >= 18;
+          }
+          return age >= 18;
+        },
+        { message: "You must be at least 18 years old" }
+      ),
+    email: z.string().email("Please enter a valid email"),
+    password: z.string().min(6, "Password must be at least 6 characters"),
+    confirmPassword: z.string().min(6, "Please confirm your password"),
+    cell: z
+      .string()
+      .min(10, "Please enter a valid phone number")
+      .regex(
+        /^\+?\d{1,3}[-.\s]?\d{3}[-.\s]?\d{3}[-.\s]?\d{4}$/,
+        "Please enter a valid phone number (e.g., +1-123-456-7890)"
+      ),
+    referringMemberName: z.string().min(1, "Referring member name is required"),
+    location: z.string().min(1, "Please select a location"),
+    membershipType: z.string().min(1, "Please select a membership type"),
+    waiverSignature: z
+      .string()
+      .min(1, "Please sign the waiver by typing your name"),
+    cardName: z.string().min(1, "Name on card is required"),
+    cardNumber: z
+      .string()
+      .transform((val) => val.replace(/[\s-]/g, ""))
+      .refine((val) => val.length === 16, "Card number must be 16 digits"),
+    exp: z.string().regex(/^\d{2}\/\d{2}$/, "Use MM/YY format"),
+    cvv: z.string().min(3, "CVV must be 3 or 4 digits").max(4),
+    billingAddress: z.string().min(1, "Billing address is required"),
+  })
+  .refine((data) => data.password === data.confirmPassword, {
+    message: "Passwords must match",
+    path: ["confirmPassword"],
+  });
+
 const loginSchema = z.object({
-  username: z.string().min(1, "Username is required"),
+  email: z.string().email("Please enter a valid email"),
   password: z.string().min(1, "Password is required"),
 });
 
-// Schema for sign-up form
-const signupSchema = z.object({
-  referralCode: z.string().min(1, "Referral code is required"),
-  name: z.string().min(1, "Name is required"),
-  email: z
-    .string()
-    .email("Please enter a valid email")
-    .min(1, "Email is required"),
-  membershipType: z.enum(["Basic", "Premium"], {
-    required_error: "Please select a membership type",
-  }),
-});
-
-export default function LoginPage() {
+export default function Home() {
+  const [isSignUpLoading, setIsSignUpLoading] = useState(false);
+  const [isLoginLoading, setIsLoginLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [currentStep, setCurrentStep] = useState(1); // Multi-step form for sign-up
   const router = useRouter();
-  const [isLoading, setIsLoading] = useState(false);
 
-  // Login form
+  // Mock data (to be replaced with Gym Master API calls)
+  const locations = [
+    { id: "loc1", name: "Location 1" },
+    { id: "loc2", name: "Location 2" },
+  ];
+  const membershipTypes = [
+    {
+      id: "mem1",
+      name: "Basic Membership",
+      description: "Access to all facilities",
+      price: 50,
+      startDate: "2025-04-01",
+      length: "1 year",
+    },
+    {
+      id: "mem2",
+      name: "Premium Membership",
+      description: "Access to all facilities + guest passes",
+      price: 80,
+      startDate: "2025-04-01",
+      length: "1 year",
+    },
+  ];
+  const waiverText =
+    "I agree to the terms and conditions of Simcoquitos 24/7 Golf Club."; // Mock waiver
+  const validReferralCode = "REF12345"; // Mock referral code (from app/dashboard/invite/page.tsx)
+
   const loginForm = useForm<z.infer<typeof loginSchema>>({
     resolver: zodResolver(loginSchema),
-    defaultValues: {
-      username: "",
-      password: "",
-    },
+    defaultValues: { email: "", password: "" },
   });
 
-  // Sign-up form
-  const signupForm = useForm<z.infer<typeof signupSchema>>({
-    resolver: zodResolver(signupSchema),
+  const signUpForm = useForm<z.infer<typeof signUpSchema>>({
+    resolver: zodResolver(signUpSchema),
     defaultValues: {
       referralCode: "",
-      name: "",
+      firstName: "",
+      lastName: "",
+      dob: "",
       email: "",
-      membershipType: "Basic",
+      password: "",
+      confirmPassword: "",
+      cell: "",
+      referringMemberName: "",
+      location: "",
+      membershipType: "",
+      waiverSignature: "",
+      cardName: "",
+      cardNumber: "",
+      exp: "",
+      cvv: "",
+      billingAddress: "",
     },
   });
 
   const onLoginSubmit = async (data: z.infer<typeof loginSchema>) => {
-    setIsLoading(true);
+    setIsLoginLoading(true);
     try {
       await new Promise((resolve) => setTimeout(resolve, 1000));
-      toast.success("Login successful", {
-        description: `Welcome back, ${data.username}!`,
+      toast.success("Logged in!", {
+        description: `Welcome back, ${data.email}!`,
       });
       router.push("/dashboard");
     } catch {
@@ -83,82 +163,99 @@ export default function LoginPage() {
         description: "Please check your credentials and try again.",
       });
     } finally {
-      setIsLoading(false);
+      setIsLoginLoading(false);
     }
   };
 
-  const onSignupSubmit = async (data: z.infer<typeof signupSchema>) => {
+  const onSignUpSubmit = async (data: z.infer<typeof signUpSchema>) => {
+    setIsSignUpLoading(true);
     try {
+      // Mock referral code validation
+      if (data.referralCode !== validReferralCode) {
+        signUpForm.setError("referralCode", {
+          message: "Invalid referral code",
+        });
+        setIsSignUpLoading(false);
+        return;
+      }
+
+      // Mock waiver saving (to be replaced with Gym Master API)
+      console.log("Waiver signed:", data.waiverSignature);
+
       await new Promise((resolve) => setTimeout(resolve, 1000));
-      toast.success("Sign-up successful", {
-        description: `Welcome, ${data.name}! Your ${data.membershipType} membership has been created.`,
+      toast.success("Sign-up successful!", {
+        description: `Welcome, ${data.firstName}! Your membership is active.`,
       });
-      signupForm.reset();
+      signUpForm.reset();
+      setCurrentStep(1); // Reset to first step
       router.push("/dashboard");
     } catch {
       toast.error("Sign-up failed", {
-        description: "Please check your referral code and try again.",
+        description: "Please try again later.",
       });
+    } finally {
+      setIsSignUpLoading(false);
     }
   };
 
+  const nextStep = () => setCurrentStep((prev) => prev + 1);
+  const prevStep = () => setCurrentStep((prev) => prev - 1);
+
   return (
-    <div className="relative min-h-screen flex items-center justify-center p-4">
-      {/* Background Video */}
+    <div className="relative min-h-screen flex items-center justify-center">
       <video
         autoPlay
         loop
         muted
-        playsInline
-        className="absolute top-0 left-0 w-full h-full object-cover z-0"
+        className="absolute inset-0 w-full h-full object-cover z-0"
       >
         <source src="/bg-video.mp4" type="video/mp4" />
-        Your browser does not support the video tag.
       </video>
+      <div className="absolute inset-0 bg-black/50 z-10" />
+      <div className="relative z-20 w-full max-w-md p-4 sm:p-6 space-y-6 sm:space-y-8">
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          className="flex justify-center"
+        >
+          <Image
+            src="/logo-white.png"
+            alt="Simcoquitos 24/7 Golf Club Logo"
+            width={150}
+            height={150}
+            className="w-24 sm:w-32 md:w-40"
+          />
+        </motion.div>
 
-      {/* Overlay for better readability */}
-      <div className="absolute top-0 left-0 w-full h-full bg-black/50 z-10"></div>
-
-      {/* Login Card */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="relative z-20 w-full max-w-md"
-      >
-        <Card className="bg-white/90 backdrop-blur-sm">
-          <CardHeader className="flex flex-col items-center">
-            {/* Client Logo */}
-            <div className="mb-4">
-              <Image
-                src="/logo.png"
-                alt="Logo"
-                width={150} // Base width for desktop
-                height={50} // Adjust height based on logo aspect ratio
-                className="w-32 sm:w-40 h-auto" // Responsive width: smaller on mobile, larger on desktop
-              />
-            </div>
-            <CardTitle className="text-2xl sm:text-3xl text-center">
-              Member Login
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {/* Login Form */}
+        <Tabs defaultValue="login" className="w-full">
+          <TabsList className="grid w-full grid-cols-2">
+            <TabsTrigger value="login">Login</TabsTrigger>
+            <TabsTrigger value="signup">Sign Up</TabsTrigger>
+          </TabsList>
+          <TabsContent value="login">
             <Form {...loginForm}>
               <form
                 onSubmit={loginForm.handleSubmit(onLoginSubmit)}
-                className="space-y-4"
+                className="space-y-4 bg-white/90 p-4 sm:p-6 rounded-lg shadow-lg"
               >
                 <FormField
                   control={loginForm.control}
-                  name="username"
+                  name="email"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Username</FormLabel>
+                      <FormLabel className="text-sm sm:text-base">
+                        Email
+                      </FormLabel>
                       <FormControl>
-                        <Input placeholder="Enter your username" {...field} />
+                        <Input
+                          placeholder="john@example.com"
+                          type="email"
+                          {...field}
+                          className="text-sm sm:text-base"
+                        />
                       </FormControl>
-                      <FormMessage />
+                      <FormMessage className="text-xs sm:text-sm" />
                     </FormItem>
                   )}
                 />
@@ -167,125 +264,517 @@ export default function LoginPage() {
                   name="password"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Password</FormLabel>
+                      <FormLabel className="text-sm sm:text-base">
+                        Password
+                      </FormLabel>
                       <FormControl>
-                        <Input
-                          type="password"
-                          placeholder="Enter your password"
-                          {...field}
-                        />
+                        <div className="relative">
+                          <Input
+                            placeholder="Password"
+                            type={showPassword ? "text" : "password"}
+                            {...field}
+                            className="text-sm sm:text-base pr-10"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="absolute inset-y-0 right-0 flex items-center pr-3"
+                          >
+                            {showPassword ? (
+                              <EyeOff className="h-4 w-4 text-gray-500" />
+                            ) : (
+                              <Eye className="h-4 w-4 text-gray-500" />
+                            )}
+                          </button>
+                        </div>
                       </FormControl>
-                      <FormMessage />
+                      <FormMessage className="text-xs sm:text-sm" />
                     </FormItem>
                   )}
                 />
-                <Button type="submit" className="w-full" disabled={isLoading}>
-                  {isLoading ? "Logging in..." : "Login"}
+                <Button
+                  type="submit"
+                  className="w-full py-2.5 sm:py-3 text-sm sm:text-base"
+                  disabled={isLoginLoading}
+                >
+                  {isLoginLoading ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    "Login"
+                  )}
                 </Button>
               </form>
             </Form>
-
-            {/* Sign Up with Referral Code */}
-            <div className="text-center">
-              <p className="text-sm text-gray-600">
-                Not a member?{" "}
-                <Dialog>
-                  <DialogTrigger asChild>
-                    <Button variant="link" className="p-0">
-                      Sign up with a referral code
+          </TabsContent>
+          <TabsContent value="signup">
+            <Form {...signUpForm}>
+              <form
+                onSubmit={signUpForm.handleSubmit(onSignUpSubmit)}
+                className="space-y-4 bg-white/90 p-4 sm:p-6 rounded-lg shadow-lg overflow-x-auto"
+              >
+                {/* Step 1: Personal Information */}
+                {currentStep === 1 && (
+                  <>
+                    <h2 className="text-lg sm:text-xl font-semibold">
+                      Step 1: Personal Information
+                    </h2>
+                    <FormField
+                      control={signUpForm.control}
+                      name="referralCode"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-sm sm:text-base">
+                            Referral Code
+                          </FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder="Enter referral code"
+                              {...field}
+                              className="text-sm sm:text-base"
+                            />
+                          </FormControl>
+                          <FormMessage className="text-xs sm:text-sm" />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={signUpForm.control}
+                      name="firstName"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-sm sm:text-base">
+                            First Name
+                          </FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder="John"
+                              {...field}
+                              className="text-sm sm:text-base"
+                            />
+                          </FormControl>
+                          <FormMessage className="text-xs sm:text-sm" />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={signUpForm.control}
+                      name="lastName"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-sm sm:text-base">
+                            Last Name
+                          </FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder="Doe"
+                              {...field}
+                              className="text-sm sm:text-base"
+                            />
+                          </FormControl>
+                          <FormMessage className="text-xs sm:text-sm" />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={signUpForm.control}
+                      name="dob"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-sm sm:text-base">
+                            Date of Birth
+                          </FormLabel>
+                          <FormControl>
+                            <Input
+                              type="date"
+                              {...field}
+                              className="text-sm sm:text-base"
+                            />
+                          </FormControl>
+                          <FormMessage className="text-xs sm:text-sm" />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={signUpForm.control}
+                      name="email"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-sm sm:text-base">
+                            Email
+                          </FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder="john@example.com"
+                              type="email"
+                              {...field}
+                              className="text-sm sm:text-base"
+                            />
+                          </FormControl>
+                          <FormMessage className="text-xs sm:text-sm" />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={signUpForm.control}
+                      name="password"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-sm sm:text-base">
+                            Password
+                          </FormLabel>
+                          <FormControl>
+                            <div className="relative">
+                              <Input
+                                placeholder="Password"
+                                type={showPassword ? "text" : "password"}
+                                {...field}
+                                className="text-sm sm:text-base pr-10"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setShowPassword(!showPassword)}
+                                className="absolute inset-y-0 right-0 flex items-center pr-3"
+                              >
+                                {showPassword ? (
+                                  <EyeOff className="h-4 w-4 text-gray-500" />
+                                ) : (
+                                  <Eye className="h-4 w-4 text-gray-500" />
+                                )}
+                              </button>
+                            </div>
+                          </FormControl>
+                          <FormMessage className="text-xs sm:text-sm" />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={signUpForm.control}
+                      name="confirmPassword"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-sm sm:text-base">
+                            Confirm Password
+                          </FormLabel>
+                          <FormControl>
+                            <div className="relative">
+                              <Input
+                                placeholder="Confirm Password"
+                                type={showConfirmPassword ? "text" : "password"}
+                                {...field}
+                                className="text-sm sm:text-base pr-10"
+                              />
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setShowConfirmPassword(!showConfirmPassword)
+                                }
+                                className="absolute inset-y-0 right-0 flex items-center pr-3"
+                              >
+                                {showConfirmPassword ? (
+                                  <EyeOff className="h-4 w-4 text-gray-500" />
+                                ) : (
+                                  <Eye className="h-4 w-4 text-gray-500" />
+                                )}
+                              </button>
+                            </div>
+                          </FormControl>
+                          <FormMessage className="text-xs sm:text-sm" />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={signUpForm.control}
+                      name="cell"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-sm sm:text-base">
+                            Cell Phone
+                          </FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder="+1-123-456-7890"
+                              {...field}
+                              className="text-sm sm:text-base"
+                            />
+                          </FormControl>
+                          <FormMessage className="text-xs sm:text-sm" />
+                        </FormItem>
+                      )}
+                    />
+                    <Button
+                      type="button"
+                      onClick={nextStep}
+                      className="w-full py-2.5 sm:py-3 text-sm sm:text-base"
+                    >
+                      Next
                     </Button>
-                  </DialogTrigger>
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Sign Up with Referral Code</DialogTitle>
-                      <DialogDescription>
-                        Enter your referral code and details to sign up.
-                      </DialogDescription>
-                    </DialogHeader>
-                    <Form {...signupForm}>
-                      <form
-                        onSubmit={signupForm.handleSubmit(onSignupSubmit)}
-                        className="space-y-4"
-                      >
-                        <FormField
-                          control={signupForm.control}
-                          name="referralCode"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Referral Code</FormLabel>
-                              <FormControl>
-                                <Input
-                                  placeholder="Enter referral code"
-                                  {...field}
-                                />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={signupForm.control}
-                          name="name"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Name</FormLabel>
-                              <FormControl>
-                                <Input
-                                  placeholder="Enter your name"
-                                  {...field}
-                                />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={signupForm.control}
-                          name="email"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Email</FormLabel>
-                              <FormControl>
-                                <Input
-                                  placeholder="Enter your email"
-                                  {...field}
-                                />
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={signupForm.control}
-                          name="membershipType"
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel>Membership Type</FormLabel>
-                              <FormControl>
-                                <select
-                                  {...field}
-                                  className="w-full p-2 border rounded-md"
+                  </>
+                )}
+
+                {/* Step 2: Membership Details */}
+                {currentStep === 2 && (
+                  <>
+                    <h2 className="text-lg sm:text-xl font-semibold">
+                      Step 2: Membership Details
+                    </h2>
+                    <FormField
+                      control={signUpForm.control}
+                      name="referringMemberName"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-sm sm:text-base">
+                            Referring Member Name
+                          </FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder="Jane Smith"
+                              {...field}
+                              className="text-sm sm:text-base"
+                            />
+                          </FormControl>
+                          <FormMessage className="text-xs sm:text-sm" />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={signUpForm.control}
+                      name="location"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-sm sm:text-base">
+                            Location
+                          </FormLabel>
+                          <Select
+                            onValueChange={field.onChange}
+                            defaultValue={field.value}
+                          >
+                            <FormControl>
+                              <SelectTrigger className="w-full text-sm sm:text-base">
+                                <SelectValue placeholder="Choose a location" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent className="w-full max-w-[calc(100vw-2rem)] sm:max-w-md">
+                              {locations.map((loc) => (
+                                <SelectItem
+                                  key={loc.id}
+                                  value={loc.id}
+                                  className="text-sm sm:text-base"
                                 >
-                                  <option value="Basic">Basic</option>
-                                  <option value="Premium">Premium</option>
-                                </select>
-                              </FormControl>
-                              <FormMessage />
-                            </FormItem>
-                          )}
-                        />
-                        <Button type="submit" className="w-full">
-                          Sign Up
-                        </Button>
-                      </form>
-                    </Form>
-                  </DialogContent>
-                </Dialog>
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      </motion.div>
+                                  {loc.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage className="text-xs sm:text-sm" />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={signUpForm.control}
+                      name="membershipType"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-sm sm:text-base">
+                            Membership Type
+                          </FormLabel>
+                          <Select
+                            onValueChange={field.onChange}
+                            defaultValue={field.value}
+                          >
+                            <FormControl>
+                              <SelectTrigger className="w-full text-sm sm:text-base">
+                                <SelectValue placeholder="Choose a membership type" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent className="w-full max-w-[calc(100vw-2rem)] sm:max-w-md">
+                              {membershipTypes.map((type) => (
+                                <SelectItem
+                                  key={type.id}
+                                  value={type.id}
+                                  className="text-sm sm:text-base whitespace-normal"
+                                >
+                                  {type.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage className="text-xs sm:text-sm" />
+                        </FormItem>
+                      )}
+                    />
+                    <div className="w-full flex flex-col space-y-2 sm:space-y-2 sm:space-x-2">
+                      <Button
+                        type="button"
+                        onClick={prevStep}
+                        className="w-full py-2.5 sm:py-3 text-sm sm:text-base"
+                        variant="outline"
+                      >
+                        Back
+                      </Button>
+                      <Button
+                        type="button"
+                        onClick={nextStep}
+                        className="w-full py-2.5 sm:py-3 text-sm sm:text-base"
+                      >
+                        Next
+                      </Button>
+                    </div>
+                  </>
+                )}
+
+                {/* Step 3: Waiver and Payment */}
+                {currentStep === 3 && (
+                  <>
+                    <h2 className="text-lg sm:text-xl font-semibold">
+                      Step 3: Waiver and Payment
+                    </h2>
+                    <FormField
+                      control={signUpForm.control}
+                      name="waiverSignature"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-sm sm:text-base">
+                            Sign the Waiver
+                          </FormLabel>
+                          <p className="text-sm text-gray-600 mb-2">
+                            {waiverText}
+                          </p>
+                          <FormControl>
+                            <Input
+                              placeholder="Type your full name to sign"
+                              {...field}
+                              className="text-sm sm:text-base"
+                            />
+                          </FormControl>
+                          <FormMessage className="text-xs sm:text-sm" />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={signUpForm.control}
+                      name="cardName"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-sm sm:text-base">
+                            Name on Card
+                          </FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder="John Doe"
+                              {...field}
+                              className="text-sm sm:text-base"
+                            />
+                          </FormControl>
+                          <FormMessage className="text-xs sm:text-sm" />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={signUpForm.control}
+                      name="cardNumber"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-sm sm:text-base">
+                            Card Number
+                          </FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder="1234 5678 9012 3456"
+                              {...field}
+                              className="text-sm sm:text-base"
+                            />
+                          </FormControl>
+                          <FormMessage className="text-xs sm:text-sm" />
+                        </FormItem>
+                      )}
+                    />
+                    <div className="grid grid-cols-2 gap-4">
+                      <FormField
+                        control={signUpForm.control}
+                        name="exp"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-sm sm:text-base">
+                              Expiration
+                            </FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="MM/YY"
+                                {...field}
+                                className="text-sm sm:text-base"
+                              />
+                            </FormControl>
+                            <FormMessage className="text-xs sm:text-sm" />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={signUpForm.control}
+                        name="cvv"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-sm sm:text-base">
+                              CVV
+                            </FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="123"
+                                {...field}
+                                className="text-sm sm:text-base"
+                              />
+                            </FormControl>
+                            <FormMessage className="text-xs sm:text-sm" />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
+                    <FormField
+                      control={signUpForm.control}
+                      name="billingAddress"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-sm sm:text-base">
+                            Billing Address
+                          </FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder="123 Main St"
+                              {...field}
+                              className="text-sm sm:text-base"
+                            />
+                          </FormControl>
+                          <FormMessage className="text-xs sm:text-sm" />
+                        </FormItem>
+                      )}
+                    />
+                    <div className="flex flex-col space-y-2 sm:flex-row sm:space-y-0 sm:space-x-2">
+                      <Button
+                        type="button"
+                        onClick={prevStep}
+                        className="w-full py-2.5 sm:py-3 text-sm sm:text-base"
+                        variant="outline"
+                      >
+                        Back
+                      </Button>
+                      <Button
+                        type="submit"
+                        className="w-full py-2.5 sm:py-3 text-sm sm:text-base"
+                        disabled={isSignUpLoading}
+                      >
+                        {isSignUpLoading ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          "Sign Up"
+                        )}
+                      </Button>
+                    </div>
+                  </>
+                )}
+              </form>
+            </Form>
+          </TabsContent>
+        </Tabs>
+      </div>
     </div>
   );
 }

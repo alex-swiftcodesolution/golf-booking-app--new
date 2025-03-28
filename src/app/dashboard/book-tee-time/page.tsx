@@ -27,7 +27,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -39,7 +38,14 @@ import { useBookings } from "@/context/BookingContext";
 const teeTimeSchema = z.object({
   location: z.string().min(1, "Please select a location"),
   date: z.string().min(1, "Please select a date"),
-  startTime: z.string().min(1, "Please select a start time"),
+  timeSlots: z
+    .array(
+      z.object({
+        time: z.string().min(1, "Time is required"),
+        bay: z.string().min(1, "Bay is required"),
+      })
+    )
+    .min(1, "Please select at least one time slot"),
   guests: z
     .array(
       z.object({
@@ -73,20 +79,21 @@ const freeGuestPassesPerMonth = 2;
 const guestPassCharge = 10; // $10 per extra guest pass
 
 export default function BookTeeTime() {
-  const [selectedTime, setSelectedTime] = useState<string | null>(null);
-  const [selectedBay, setSelectedBay] = useState<string | null>(null);
+  const [selectedSlots, setSelectedSlots] = useState<
+    { time: string; bay: string }[]
+  >([]); // Store multiple selected time slots
   const [isLoading, setIsLoading] = useState(false);
   const [showItinerary, setShowItinerary] = useState(false);
   const [guestCount, setGuestCount] = useState(0);
 
-  const { addBooking } = useBookings();
+  const { addBooking, bookings } = useBookings();
 
   const form = useForm<z.infer<typeof teeTimeSchema>>({
     resolver: zodResolver(teeTimeSchema),
     defaultValues: {
       location: "",
       date: "",
-      startTime: "",
+      timeSlots: [],
       guests: [],
     },
   });
@@ -110,25 +117,7 @@ export default function BookTeeTime() {
     return { hour, minute };
   };
 
-  // const checkTimeSlotConflict = (startTime: string) => {
-  //   const { hour: startHour, minute: startMinute } = parseTimeSlot(startTime);
-  //   const startMinutes = startHour * 60 + startMinute;
-
-  //   const slotMinutes = startMinutes + 30;
-  //   const slotHour = Math.floor(slotMinutes / 60);
-  //   const slotMinute = slotMinutes % 60;
-  //   const period = slotHour >= 12 ? "PM" : "AM";
-  //   const displayHour =
-  //     slotHour > 12 ? slotHour - 12 : slotHour === 0 ? 12 : slotHour;
-  //   const slotTime = `${displayHour}:${
-  //     slotMinute === 0 ? "00" : "30"
-  //   } ${period}`;
-  //   return unavailableSlots.has(slotTime) ? slotTime : null;
-  // };
-
-  const { bookings } = useBookings();
-
-  const checkTimeSlotConflict = (startTime: string) => {
+  const checkTimeSlotConflict = (startTime: string, bay: string) => {
     const { hour: startHour, minute: startMinute } = parseTimeSlot(startTime);
     const startMinutes = startHour * 60 + startMinute;
 
@@ -148,7 +137,7 @@ export default function BookTeeTime() {
       (booking) =>
         booking.date === form.getValues("date") &&
         booking.location === form.getValues("location") &&
-        booking.bay === selectedBay &&
+        booking.bay === bay &&
         (booking.time === startTime || booking.time === slotTime)
     );
 
@@ -156,7 +145,9 @@ export default function BookTeeTime() {
       return conflictBooking.time;
     }
 
-    return unavailableSlots.has(slotTime) ? slotTime : null;
+    return unavailableSlots.has(startTime) || unavailableSlots.has(slotTime)
+      ? slotTime
+      : null;
   };
 
   const handleTimeSelect = (time: string, bay: string) => {
@@ -165,22 +156,38 @@ export default function BookTeeTime() {
       return;
     }
 
-    const conflictSlot = checkTimeSlotConflict(time);
+    const conflictSlot = checkTimeSlotConflict(time, bay);
     if (conflictSlot) {
       toast.error("Time slot conflict", {
-        description: `The slot at ${conflictSlot} is unavailable.`,
+        description: `The slot at ${time} or ${conflictSlot} in ${bay} is unavailable.`,
       });
-      setSelectedTime(null);
-      setSelectedBay(null);
-      form.setValue("startTime", "");
+      return;
+    }
+
+    // Check if the slot is already selected
+    const slotIndex = selectedSlots.findIndex(
+      (slot) => slot.time === time && slot.bay === bay
+    );
+
+    let updatedSlots;
+    if (slotIndex >= 0) {
+      // Deselect the slot
+      updatedSlots = selectedSlots.filter(
+        (slot) => !(slot.time === time && slot.bay === bay)
+      );
+      toast.info("Time slot deselected", {
+        description: `Removed ${time} at ${bay}.`,
+      });
     } else {
-      setSelectedTime(time);
-      setSelectedBay(bay);
-      form.setValue("startTime", time);
+      // Select the slot
+      updatedSlots = [...selectedSlots, { time, bay }];
       toast.info("Time slot chosen", {
-        description: `You have selected ${time} at ${bay}. Proceed to review.`,
+        description: `Added ${time} at ${bay}.`,
       });
     }
+
+    setSelectedSlots(updatedSlots);
+    form.setValue("timeSlots", updatedSlots);
   };
 
   const handleGuestCountChange = (count: number) => {
@@ -198,9 +205,8 @@ export default function BookTeeTime() {
   };
 
   const handleLocationChange = () => {
-    setSelectedTime(null);
-    setSelectedBay(null);
-    form.setValue("startTime", "");
+    setSelectedSlots([]);
+    form.setValue("timeSlots", []);
   };
 
   const onSubmit = async (data: z.infer<typeof teeTimeSchema>) => {
@@ -212,18 +218,20 @@ export default function BookTeeTime() {
       const extraGuests = Math.max(guests.length - freeGuestPassesPerMonth, 0);
       const extraCharge = extraGuests * guestPassCharge;
 
-      // Add the booking to the shared state
-      addBooking({
-        date: data.date,
-        time: data.startTime,
-        location: data.location,
-        bay: selectedBay!,
-        guests: guests,
-        guestPassUsage: {
-          free: Math.min(guests.length, freeGuestPassesPerMonth),
-          charged: extraGuests,
-        },
-      });
+      // Add each selected time slot as a separate booking
+      for (const slot of data.timeSlots) {
+        addBooking({
+          date: data.date,
+          time: slot.time,
+          location: data.location,
+          bay: slot.bay,
+          guests: guests,
+          guestPassUsage: {
+            free: Math.min(guests.length, freeGuestPassesPerMonth),
+            charged: extraGuests,
+          },
+        });
+      }
 
       if (guests.length > 0) {
         guests.forEach((guest) => {
@@ -233,10 +241,10 @@ export default function BookTeeTime() {
         });
       }
 
-      toast.success("Tee time booked!", {
-        description: `Booked at ${data.location} (${selectedBay}) on ${
-          data.date
-        } at ${data.startTime}${
+      toast.success("Tee times booked!", {
+        description: `Booked ${data.timeSlots.length} time slot(s) at ${
+          data.location
+        } on ${data.date}${
           guests.length ? ` with ${guests.length} guest(s)` : ""
         }${extraCharge > 0 ? ` (Extra charge: $${extraCharge})` : ""}`,
       });
@@ -245,16 +253,15 @@ export default function BookTeeTime() {
       form.reset({
         location: "",
         date: "",
-        startTime: "",
+        timeSlots: [],
         guests: [],
       });
-      setSelectedTime(null);
-      setSelectedBay(null);
+      setSelectedSlots([]);
       setGuestCount(0);
       setShowItinerary(false);
       form.clearErrors();
     } catch {
-      toast.error("Failed to book tee time", {
+      toast.error("Failed to book tee times", {
         description: "Please try again later.",
       });
     } finally {
@@ -265,7 +272,7 @@ export default function BookTeeTime() {
   const isFormValid = () => {
     const values = form.watch();
     const requiredFieldsValid =
-      values.location && values.date && values.startTime;
+      values.location && values.date && values.timeSlots.length > 0;
     const valid = requiredFieldsValid && (guestCount === 0 || isValid);
     return valid;
   };
@@ -413,7 +420,7 @@ export default function BookTeeTime() {
             {/* Available Times */}
             <FormField
               control={form.control}
-              name="startTime"
+              name="timeSlots"
               render={() => (
                 <FormItem>
                   <FormLabel className="text-sm sm:text-base">
@@ -442,42 +449,47 @@ export default function BookTeeTime() {
                             <TableCell className="font-medium text-xs">
                               {time}
                             </TableCell>
-                            {bays.map((bay) => (
-                              <TableCell
-                                key={`${bay}-${time}`}
-                                className="text-center"
-                              >
-                                <Button
-                                  type="button"
-                                  variant={
-                                    selectedTime === time && selectedBay === bay
-                                      ? "default"
-                                      : unavailableSlots.has(time)
-                                      ? "destructive"
-                                      : "outline"
-                                  }
-                                  onClick={() => handleTimeSelect(time, bay)}
-                                  className="w-full text-[10px] sm:text-xs py-0.5 sm:py-1 px-1 sm:px-2"
-                                  disabled={
-                                    unavailableSlots.has(time) ||
-                                    !form.watch("location")
-                                  }
-                                  aria-label={
-                                    selectedTime === time && selectedBay === bay
-                                      ? `Selected: ${time} at ${bay}`
-                                      : unavailableSlots.has(time)
-                                      ? `Unavailable: ${time} at ${bay}`
-                                      : `Choose ${time} at ${bay}`
-                                  }
+                            {bays.map((bay) => {
+                              const isSelected = selectedSlots.some(
+                                (slot) => slot.time === time && slot.bay === bay
+                              );
+                              const isUnavailable = unavailableSlots.has(time);
+                              return (
+                                <TableCell
+                                  key={`${bay}-${time}`}
+                                  className="text-center"
                                 >
-                                  {selectedTime === time && selectedBay === bay
-                                    ? "Chosen"
-                                    : unavailableSlots.has(time)
-                                    ? "N/A"
-                                    : "Choose"}
-                                </Button>
-                              </TableCell>
-                            ))}
+                                  <Button
+                                    type="button"
+                                    variant={
+                                      isSelected
+                                        ? "default"
+                                        : isUnavailable
+                                        ? "destructive"
+                                        : "outline"
+                                    }
+                                    onClick={() => handleTimeSelect(time, bay)}
+                                    className="w-full text-[10px] sm:text-xs py-0.5 sm:py-1 px-1 sm:px-2"
+                                    disabled={
+                                      isUnavailable || !form.watch("location")
+                                    }
+                                    aria-label={
+                                      isSelected
+                                        ? `Selected: ${time} at ${bay}`
+                                        : isUnavailable
+                                        ? `Unavailable: ${time} at ${bay}`
+                                        : `Choose ${time} at ${bay}`
+                                    }
+                                  >
+                                    {isSelected
+                                      ? "Selected"
+                                      : isUnavailable
+                                      ? "N/A"
+                                      : "Select"}
+                                  </Button>
+                                </TableCell>
+                              );
+                            })}
                           </TableRow>
                         ))}
                       </TableBody>
@@ -513,16 +525,23 @@ export default function BookTeeTime() {
                     {form.getValues("location") || "Not selected"}
                   </p>
                   <p>
-                    <strong>Bay:</strong> {selectedBay || "Not selected"}
-                  </p>
-                  <p>
                     <strong>Date:</strong>{" "}
                     {form.getValues("date") || "Not selected"}
                   </p>
-                  <p>
-                    <strong>Start Time:</strong>{" "}
-                    {form.getValues("startTime") || "Not selected"}
-                  </p>
+                  <div>
+                    <strong>Time Slots:</strong>
+                    {form.getValues("timeSlots").length > 0 ? (
+                      <ul className="list-disc pl-5">
+                        {form.getValues("timeSlots").map((slot, index) => (
+                          <li key={index} className="text-sm sm:text-base">
+                            {slot.time} at {slot.bay}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      "Not selected"
+                    )}
+                  </div>
                   {(form.getValues("guests") || []).length > 0 && (
                     <div>
                       <strong>Guests:</strong>
@@ -556,7 +575,7 @@ export default function BookTeeTime() {
                     </p>
                   )}
                 </div>
-                <DialogFooter className="flex flex-col sm:flex-row gap-2">
+                <div className="flex flex-col sm:flex-row gap-2">
                   <Button
                     type="button"
                     className="w-full sm:w-auto"
@@ -578,7 +597,7 @@ export default function BookTeeTime() {
                   >
                     Edit
                   </Button>
-                </DialogFooter>
+                </div>
               </DialogContent>
             </Dialog>
           </form>

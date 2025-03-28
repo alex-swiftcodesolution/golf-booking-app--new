@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
+import { useRouter } from "next/navigation"; // Add useRouter for redirection
 import { Button } from "@/components/ui/button";
 import {
   Select,
@@ -20,8 +21,8 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { toast } from "sonner";
-import { Loader2, Bluetooth } from "lucide-react"; // Add Bluetooth icon
-import { motion } from "framer-motion"; // For animations
+import { Loader2, Bluetooth } from "lucide-react";
+import { motion } from "framer-motion";
 
 const openDoorSchema = z.object({
   club: z.string().min(1, "Please select a club"),
@@ -29,7 +30,8 @@ const openDoorSchema = z.object({
 
 export default function OpenDoor() {
   const [isLoading, setIsLoading] = useState(false);
-  const [isConnecting, setIsConnecting] = useState(false); // Simulate Bluetooth connecting
+  const [isConnecting, setIsConnecting] = useState(false);
+  const router = useRouter(); // Initialize router for redirection
 
   const form = useForm<z.infer<typeof openDoorSchema>>({
     resolver: zodResolver(openDoorSchema),
@@ -37,17 +39,7 @@ export default function OpenDoor() {
   });
 
   const onSubmit = async (data: z.infer<typeof openDoorSchema>) => {
-    setIsConnecting(true); // Simulate Bluetooth connection
-    // await new Promise((resolve) => setTimeout(resolve, 1000)); // Simulate connection delay
-    // setIsConnecting(false);
-
-    // setIsLoading(true); // Simulate door opening
-    // await new Promise((resolve) => setTimeout(resolve, 1000)); // Simulate API delay
-    // toast.success("Door opened!", {
-    //   description: `Access granted to ${data.club}`,
-    //   icon: <Bluetooth className="h-4 w-4" />,
-    // });
-    // setIsLoading(false);
+    setIsConnecting(true);
     try {
       await new Promise((resolve) => setTimeout(resolve, 1000));
       setIsConnecting(false);
@@ -58,6 +50,7 @@ export default function OpenDoor() {
         description: `Access granted to ${data.club}`,
         icon: <Bluetooth className="h-4 w-4" />,
       });
+      router.push("/dashboard"); // Redirect to dashboard on success
     } catch {
       toast.error("Failed to open door", {
         description: "Please try again later.",

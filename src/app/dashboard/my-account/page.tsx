@@ -16,11 +16,12 @@ import {
 } from "@/components/ui/form";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
-import { motion } from "framer-motion"; // For animations
+import { motion } from "framer-motion";
 
 const profileSchema = z
   .object({
-    name: z.string().min(1, "Name is required"),
+    firstName: z.string().min(1, "First name is required"), // Split name into firstName
+    lastName: z.string().min(1, "Last name is required"), // and lastName
     email: z.string().email("Please enter a valid email"),
     cell: z
       .string()
@@ -60,12 +61,14 @@ export default function MyAccount() {
   const profileForm = useForm<z.infer<typeof profileSchema>>({
     resolver: zodResolver(profileSchema),
     defaultValues: {
-      name: "John Doe", // Mock data
-      email: "john@example.com",
-      cell: "123-456-7890",
+      firstName: "",
+      lastName: "",
+      email: "",
+      cell: "",
       password: "",
-      dob: "1990-01-01",
-      address: "123 Main St",
+      confirmPassword: "",
+      dob: "",
+      address: "",
     },
   });
 
@@ -82,15 +85,10 @@ export default function MyAccount() {
 
   const onProfileSubmit = async (data: z.infer<typeof profileSchema>) => {
     setProfileLoading(true);
-    // await new Promise((resolve) => setTimeout(resolve, 1000));
-    // toast.success("Profile updated!", {
-    //   description: `Changes saved for ${data.name}`,
-    // });
-    // setProfileLoading(false);
     try {
       await new Promise((resolve) => setTimeout(resolve, 1000));
       toast.success("Profile updated!", {
-        description: `Changes saved for ${data.name}`,
+        description: `Changes saved for ${data.firstName} ${data.lastName}`,
       });
     } catch {
       toast.error("Failed to update profile", {
@@ -103,11 +101,6 @@ export default function MyAccount() {
 
   const onPaymentSubmit = async (data: z.infer<typeof paymentSchema>) => {
     setPaymentLoading(true);
-    // await new Promise((resolve) => setTimeout(resolve, 1000));
-    // toast.success("Payment method updated!", {
-    //   description: `Card ending in ${data.cardNumber.slice(-4)} saved`,
-    // });
-    // setPaymentLoading(false);
     try {
       await new Promise((resolve) => setTimeout(resolve, 1000));
       toast.success("Payment method updated!", {
@@ -164,14 +157,29 @@ export default function MyAccount() {
               >
                 <FormField
                   control={profileForm.control}
-                  name="name"
+                  name="firstName"
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel className="text-sm sm:text-base">
-                        Name
+                        First Name
                       </FormLabel>
                       <FormControl>
-                        <Input placeholder="John Doe" {...field} />
+                        <Input placeholder="John" {...field} />
+                      </FormControl>
+                      <FormMessage className="text-xs sm:text-sm" />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={profileForm.control}
+                  name="lastName"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm sm:text-base">
+                        Last Name
+                      </FormLabel>
+                      <FormControl>
+                        <Input placeholder="Doe" {...field} />
                       </FormControl>
                       <FormMessage className="text-xs sm:text-sm" />
                     </FormItem>
