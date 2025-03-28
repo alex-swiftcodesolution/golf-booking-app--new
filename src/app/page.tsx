@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -26,6 +26,7 @@ import {
 import { toast } from "sonner";
 import { Loader2, Eye, EyeOff } from "lucide-react";
 import { motion } from "framer-motion";
+import SignatureCanvas from "react-signature-canvas";
 
 // Define the sign-up schema with new fields and validations
 const signUpSchema = z
@@ -65,9 +66,7 @@ const signUpSchema = z
     referringMemberName: z.string().min(1, "Referring member name is required"),
     location: z.string().min(1, "Please select a location"),
     membershipType: z.string().min(1, "Please select a membership type"),
-    waiverSignature: z
-      .string()
-      .min(1, "Please sign the waiver by typing your name"),
+    waiverSignature: z.string().min(1, "Please sign the waiver"),
     cardName: z.string().min(1, "Name on card is required"),
     cardNumber: z
       .string()
@@ -93,7 +92,11 @@ export default function Home() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [currentStep, setCurrentStep] = useState(1); // Multi-step form for sign-up
+  const [isOver18, setIsOver18] = useState<boolean | null>(null); // Track age eligibility
   const router = useRouter();
+
+  // Reference for the signature canvas
+  const sigCanvas = useRef<SignatureCanvas>(null);
 
   // Mock data (to be replaced with Gym Master API calls)
   const locations = [
@@ -180,14 +183,15 @@ export default function Home() {
       }
 
       // Mock waiver saving (to be replaced with Gym Master API)
-      console.log("Waiver signed:", data.waiverSignature);
+      console.log("Waiver signed (base64 image):", data.waiverSignature);
 
       await new Promise((resolve) => setTimeout(resolve, 1000));
       toast.success("Sign-up successful!", {
-        description: `Welcome, ${data.firstName}! Your membership is active.`,
+        description: `Welcome aboard, ${data.firstName}! Your membership is active.`,
       });
       signUpForm.reset();
       setCurrentStep(1); // Reset to first step
+      setIsOver18(null); // Reset age check
       router.push("/dashboard");
     } catch {
       toast.error("Sign-up failed", {
@@ -200,6 +204,32 @@ export default function Home() {
 
   const nextStep = () => setCurrentStep((prev) => prev + 1);
   const prevStep = () => setCurrentStep((prev) => prev - 1);
+
+  // Function to calculate age and update isOver18 state
+  const checkAge = (dob: string) => {
+    if (!dob) {
+      setIsOver18(null);
+      return;
+    }
+    const today = new Date();
+    const birthDate = new Date(dob);
+    const age = today.getFullYear() - birthDate.getFullYear();
+    const monthDiff = today.getMonth() - birthDate.getMonth();
+    if (
+      monthDiff < 0 ||
+      (monthDiff === 0 && today.getDate() < birthDate.getDate())
+    ) {
+      setIsOver18(age - 1 >= 18);
+    } else {
+      setIsOver18(age >= 18);
+    }
+  };
+
+  // Function to clear the signature
+  const clearSignature = () => {
+    sigCanvas.current?.clear();
+    signUpForm.setValue("waiverSignature", "");
+  };
 
   return (
     <div className="relative min-h-screen flex items-center justify-center">
@@ -387,9 +417,18 @@ export default function Home() {
                             <Input
                               type="date"
                               {...field}
+                              onChange={(e) => {
+                                field.onChange(e);
+                                checkAge(e.target.value);
+                              }}
                               className="text-sm sm:text-base"
                             />
                           </FormControl>
+                          {isOver18 === false && (
+                            <p className="text-xs sm:text-sm text-red-600">
+                              You must be at least 18 years old to proceed.
+                            </p>
+                          )}
                           <FormMessage className="text-xs sm:text-sm" />
                         </FormItem>
                       )}
@@ -505,6 +544,7 @@ export default function Home() {
                       type="button"
                       onClick={nextStep}
                       className="w-full py-2.5 sm:py-3 text-sm sm:text-base"
+                      disabled={isOver18 === false || isOver18 === null}
                     >
                       Next
                     </Button>
@@ -598,6 +638,51 @@ export default function Home() {
                               ))}
                             </SelectContent>
                           </Select>
+                          {/* Display membership details below the dropdown */}
+                          {field.value && (
+                            <div className="mt-2 p-3 bg-gray-100 rounded-md text-sm sm:text-base">
+                              <p>
+                                <strong>Selected Membership:</strong>{" "}
+                                {
+                                  membershipTypes.find(
+                                    (type) => type.id === field.value
+                                  )?.name
+                                }
+                              </p>
+                              <p>
+                                <strong>Description:</strong>{" "}
+                                {
+                                  membershipTypes.find(
+                                    (type) => type.id === field.value
+                                  )?.description
+                                }
+                              </p>
+                              <p>
+                                <strong>Price:</strong> $
+                                {
+                                  membershipTypes.find(
+                                    (type) => type.id === field.value
+                                  )?.price
+                                }
+                              </p>
+                              <p>
+                                <strong>Start Date:</strong>{" "}
+                                {
+                                  membershipTypes.find(
+                                    (type) => type.id === field.value
+                                  )?.startDate
+                                }
+                              </p>
+                              <p>
+                                <strong>Membership Length:</strong>{" "}
+                                {
+                                  membershipTypes.find(
+                                    (type) => type.id === field.value
+                                  )?.length
+                                }
+                              </p>
+                            </div>
+                          )}
                           <FormMessage className="text-xs sm:text-sm" />
                         </FormItem>
                       )}
@@ -640,12 +725,28 @@ export default function Home() {
                             {waiverText}
                           </p>
                           <FormControl>
-                            <Input
-                              placeholder="Type your full name to sign"
-                              {...field}
-                              className="text-sm sm:text-base"
-                            />
+                            <div className="border rounded-md">
+                              <SignatureCanvas
+                                ref={sigCanvas}
+                                canvasProps={{
+                                  className: "w-full h-32",
+                                }}
+                                onEnd={() =>
+                                  field.onChange(
+                                    sigCanvas.current?.toDataURL() || ""
+                                  )
+                                }
+                              />
+                            </div>
                           </FormControl>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={clearSignature}
+                            className="mt-2"
+                          >
+                            Clear Signature
+                          </Button>
                           <FormMessage className="text-xs sm:text-sm" />
                         </FormItem>
                       )}
@@ -747,7 +848,7 @@ export default function Home() {
                         </FormItem>
                       )}
                     />
-                    <div className="flex flex-col space-y-2 sm:flex-row sm:space-y-0 sm:space-x-2">
+                    <div className="flex flex-col space-y-2 sm:space-y-2 sm:space-x-2">
                       <Button
                         type="button"
                         onClick={prevStep}
