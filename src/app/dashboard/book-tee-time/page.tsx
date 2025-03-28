@@ -1,6 +1,6 @@
 "use client";
 import { useState } from "react";
-import { useForm, useFormState } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Button } from "@/components/ui/button";
@@ -98,7 +98,7 @@ export default function BookTeeTime() {
     },
   });
 
-  const { isValid } = useFormState({ control: form.control });
+  // const { isValid } = useFormState({ control: form.control });
 
   const timeSlots = Array.from({ length: 48 }, (_, i) => {
     const hour = Math.floor(i / 2);
@@ -212,6 +212,22 @@ export default function BookTeeTime() {
   const onSubmit = async (data: z.infer<typeof teeTimeSchema>) => {
     setIsLoading(true);
     try {
+      // Validate guest fields if there are guests
+      if (guestCount > 0) {
+        const guests = data.guests || [];
+        const hasInvalidGuest = guests.some(
+          (guest) => !guest.name || guest.cell.length < 10
+        );
+        if (hasInvalidGuest) {
+          toast.error("Invalid guest details", {
+            description:
+              "Please ensure all guest names and phone numbers are valid.",
+          });
+          setIsLoading(false);
+          return;
+        }
+      }
+
       await new Promise((resolve) => setTimeout(resolve, 1000));
 
       const guests = data.guests || [];
@@ -273,8 +289,7 @@ export default function BookTeeTime() {
     const values = form.watch();
     const requiredFieldsValid =
       values.location && values.date && values.timeSlots.length > 0;
-    const valid = requiredFieldsValid && (guestCount === 0 || isValid);
-    return valid;
+    return requiredFieldsValid;
   };
 
   return (
