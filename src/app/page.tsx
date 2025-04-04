@@ -156,14 +156,57 @@ export default function Home() {
   const onLoginSubmit = async (data: z.infer<typeof loginSchema>) => {
     setIsLoginLoading(true);
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      const formData = new URLSearchParams();
+      formData.append(
+        "api_key",
+        process.env.NEXT_PUBLIC_GYMMASTER_API_KEY ?? ""
+      );
+      formData.append("email", data.email);
+      formData.append("password", data.password);
+
+      console.log("Request Body:", formData.toString()); // Keep for debugging
+
+      const response = await fetch(`/api/gymmaster/v1/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: formData.toString(),
+      });
+
+      const result = await response.json();
+      console.log("API Response:", result);
+
+      if (result.error) {
+        throw new Error(result.error);
+      }
+
+      const token = result.result.token;
+      if (!token) throw new Error("No token received from server");
+
+      // Store token, member ID, and calculate expiry
+      localStorage.setItem("authToken", token);
+      localStorage.setItem("memberId", result.result.memberid.toString());
+      // Assuming expires is lifespan in seconds (docs say 1 hour = 3600)
+      const expiresInMs =
+        result.result.expires === 3600
+          ? 3600 * 1000
+          : result.result.expires * 1000;
+      localStorage.setItem(
+        "tokenExpires",
+        (Date.now() + expiresInMs).toString()
+      );
+
       toast.success("Logged in!", {
         description: `Welcome back, ${data.email}!`,
       });
       router.push("/dashboard");
-    } catch {
+    } catch (error) {
+      console.error("Login error:", error);
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to connect to server";
       toast.error("Login failed", {
-        description: "Please check your credentials and try again.",
+        description: errorMessage,
       });
     } finally {
       setIsLoginLoading(false);

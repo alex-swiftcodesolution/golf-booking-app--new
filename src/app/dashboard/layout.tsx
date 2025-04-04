@@ -8,12 +8,32 @@ import { Menu, X } from "lucide-react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { BookingProvider } from "@/context/BookingContext";
+import { useRouter } from "next/navigation";
 
 export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const router = useRouter();
+  const pathname = usePathname();
+
+  // Authentication check
+  useEffect(() => {
+    const token = localStorage.getItem("authToken");
+    const expires = localStorage.getItem("tokenExpires");
+
+    if (!token || (expires && Date.now() > parseInt(expires))) {
+      localStorage.clear();
+      router.push("/");
+    }
+  }, [router]);
+
+  const handleLogout = () => {
+    localStorage.clear();
+    router.push("/");
+  };
+
   // Initialize based on screen size
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(() => {
     if (typeof window !== "undefined") {
@@ -21,7 +41,6 @@ export default function DashboardLayout({
     }
     return false; // Default for SSR
   });
-  const pathname = usePathname();
 
   // Close sidebar on route change or click outside
   useEffect(() => {
@@ -184,8 +203,12 @@ export default function DashboardLayout({
             <h1 className="text-xs font-semibold sm:text-xs flex-1 text-center md:text-left text-blue-600">
               .
             </h1>
-            <Button asChild variant="outline" className="sm:text-sm">
-              <Link href="/">Logout</Link>
+            <Button
+              variant="outline"
+              className="sm:text-sm"
+              onClick={handleLogout}
+            >
+              Logout
             </Button>
           </header>
 
