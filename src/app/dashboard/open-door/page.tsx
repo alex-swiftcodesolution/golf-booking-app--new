@@ -39,7 +39,8 @@ export default function OpenDoor() {
   });
 
   const onSubmit = async (data: z.infer<typeof openDoorSchema>) => {
-    setIsConnecting(true);
+    setIsConnecting(true); // Simulate Bluetooth connection
+
     try {
       await new Promise((resolve) => setTimeout(resolve, 1000));
       setIsConnecting(false);
