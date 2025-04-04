@@ -5,7 +5,6 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import axios from "axios";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -35,47 +34,16 @@ import { toast } from "sonner";
 import { Loader2, Eye, EyeOff } from "lucide-react";
 import { motion } from "framer-motion";
 import SignatureCanvas from "react-signature-canvas";
-
-interface Club {
-  id: number;
-  name: string;
-}
-
-interface Membership {
-  id: number;
-  name: string;
-  description: string;
-  price: string;
-  startdate: string;
-  promotional_period: string | null;
-}
-
-interface Agreement {
-  body: string;
-}
-
-interface SignupResponse {
-  result: string;
-  token: string;
-  memberid: string;
-  membershipid: string;
-  expires: number;
-  error?: string;
-}
-
-interface LoginResponse {
-  result: {
-    token: string;
-    memberid: number;
-    expires: number;
-  };
-  error?: string;
-}
-
-interface SignatureResponse {
-  result: string;
-  error?: string;
-}
+import {
+  fetchCompanies,
+  fetchMemberships,
+  fetchWaiver,
+  saveWaiver,
+  login,
+  signup,
+  Club,
+  Membership,
+} from "@/api/gymmaster";
 
 const signUpSchema = z
   .object({
@@ -113,6 +81,7 @@ const signUpSchema = z
     membershipType: z.string().min(1, "Please select a membership type"),
     waiverSignature: z.string().min(1, "Please sign the waiver"),
     billingAddress: z.string().min(1, "Billing address is required"),
+    // cardNonce: z.string().min(1, "Payment information is required"),
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: "Passwords must match",
@@ -137,6 +106,7 @@ export default function Home() {
   const [locations, setLocations] = useState<Club[]>([]);
   const [membershipTypes, setMembershipTypes] = useState<Membership[]>([]);
   const [waiverContent, setWaiverContent] = useState("");
+  // const [paymentClient, setPaymentClient] = useState<any>(null);
   const router = useRouter();
   const sigCanvas = useRef<SignatureCanvas>(null);
 
@@ -161,96 +131,78 @@ export default function Home() {
       membershipType: "",
       waiverSignature: "",
       billingAddress: "",
+      // cardNonce: "",
     },
   });
 
   useEffect(() => {
+    // const loadSquareSdk = async () => {
+    //   if (!window.Square) {
+    //     const script = document.createElement("script");
+    //     script.src = "https://js.squarecdn.com/square.js";
+    //     script.async = true;
+    //     script.onload = () => {
+    //       const client = new window.Square.payments(
+    //         process.env.NEXT_PUBLIC_SQUARE_APP_ID,
+    //         process.env.NEXT_PUBLIC_SQUARE_LOCATION_ID
+    //       );
+    //       setPaymentClient(client);
+    //     };
+    //     document.body.appendChild(script);
+    //   }
+    // };
+
     const fetchData = async () => {
       try {
-        const locResponse = await axios.get<{ result: Club[] }>(
-          "/api/gymmaster/v1/companies",
-          { params: { api_key: process.env.NEXT_PUBLIC_GYMMASTER_API_KEY } }
-        );
-        setLocations(locResponse.data.result);
-
-        const memResponse = await axios.get<{ result: Membership[] }>(
-          "/api/gymmaster/v1/memberships",
-          { params: { api_key: process.env.NEXT_PUBLIC_GYMMASTER_API_KEY } }
-        );
-        setMembershipTypes(memResponse.data.result);
+        const companies = await fetchCompanies();
+        setLocations(companies);
+        const memberships = await fetchMemberships();
+        setMembershipTypes(memberships);
       } catch (error) {
         toast.error("Failed to load data", {
           description: error instanceof Error ? error.message : "Unknown error",
         });
       }
     };
+
+    // loadSquareSdk();
     fetchData();
   }, []);
 
-  const fetchWaiver = async (membershipTypeId: string, authToken?: string) => {
-    try {
-      const response = await axios.get<{ result: Agreement[] }>(
-        `/api/gymmaster/v2/membership/${membershipTypeId}/agreement`,
-        {
-          params: {
-            api_key: process.env.NEXT_PUBLIC_GYMMASTER_API_KEY,
-            token: authToken || undefined,
-          },
-        }
-      );
-      setWaiverContent(
-        response.data.result[0]?.body || "No waiver content available."
-      );
-    } catch (error) {
-      toast.error("Failed to load waiver", {
-        description: error instanceof Error ? error.message : "Unknown error",
-      });
-    }
-  };
-
-  const saveWaiver = async (
-    signature: string,
-    membershipId: string,
-    authToken: string
-  ) => {
-    const base64Data = signature.replace(/^data:image\/\w+;base64,/, "");
-    const response = await axios.post<SignatureResponse>(
-      "/api/gymmaster/v2/member/signature",
-      {
-        api_key: process.env.NEXT_PUBLIC_GYMMASTER_API_KEY,
-        token: authToken,
-        file: base64Data,
-        membershipid: membershipId,
-        source: "Signup Form",
-      },
-      {
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        transformRequest: [(data) => new URLSearchParams(data).toString()],
-      }
-    );
-    if (response.data.error) throw new Error(response.data.error);
-    console.log("Waiver saved:", response.data.result);
-  };
+  // useEffect(() => {
+  //   if (paymentClient && currentStep === 3) {
+  //     const initializeCard = async () => {
+  //       try {
+  //         const card = await paymentClient.card();
+  //         await card.attach("#card-container");
+  //         signUpForm.register("cardNonce");
+  //         card.addEventListener("submit", async () => {
+  //           const result = await card.tokenize();
+  //           if (result.status === "OK") {
+  //             signUpForm.setValue("cardNonce", result.token);
+  //           } else {
+  //             toast.error("Payment initialization failed", {
+  //               description: result.errors?.[0]?.message || "Unknown error",
+  //             });
+  //           }
+  //         });
+  //       } catch (error) {
+  //         toast.error("Failed to initialize payment", {
+  //           description: error instanceof Error ? error.message : "Unknown error",
+  //         });
+  //       }
+  //     };
+  //     initializeCard();
+  //   }
+  // }, [paymentClient, currentStep, signUpForm]);
 
   const onLoginSubmit = async (data: LoginFormData) => {
     setIsLoginLoading(true);
     try {
-      const response = await axios.post<LoginResponse>(
-        "/api/gymmaster/v1/login",
-        {
-          api_key: process.env.NEXT_PUBLIC_GYMMASTER_API_KEY,
-          email: data.email,
-          password: data.password,
-        },
-        {
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          transformRequest: [(data) => new URLSearchParams(data).toString()],
-        }
+      const { token, memberid, expires } = await login(
+        data.email,
+        data.password
       );
-      if (response.data.error) throw new Error(response.data.error);
-      const { token, memberid, expires } = response.data.result;
-      if (!token) throw new Error("No token received");
-
       localStorage.setItem("authToken", token);
       localStorage.setItem("memberId", memberid.toString());
       const expiresInMs = expires * 1000;
@@ -275,8 +227,7 @@ export default function Home() {
   const onSignUpSubmit = async (data: SignUpFormData) => {
     setIsSignUpLoading(true);
     try {
-      // Placeholder referral code check
-      const validReferralCode = "REF12345";
+      const validReferralCode = "REF12345"; // Only mocked part
       if (data.referralCode !== validReferralCode) {
         signUpForm.setError("referralCode", {
           message: "Invalid referral code",
@@ -286,35 +237,25 @@ export default function Home() {
         return;
       }
 
-      const signupResponse = await axios.post<SignupResponse>(
-        "/api/gymmaster/v1/signup",
-        {
-          api_key: process.env.NEXT_PUBLIC_GYMMASTER_API_KEY,
-          firstname: data.firstName,
-          surname: data.lastName,
-          dob: data.dob,
-          email: data.email,
-          password: data.password,
-          phonecell: data.cell,
-          membershiptypeid: data.membershipType,
-          companyid: data.location,
-          addressstreet: data.billingAddress,
-          startdate: new Date().toISOString().split("T")[0],
-          firstpaymentdate: new Date().toISOString().split("T")[0],
-        },
-        {
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          transformRequest: [(data) => new URLSearchParams(data).toString()],
-        }
-      );
-
-      if (signupResponse.data.error) throw new Error(signupResponse.data.error);
+      const signupData = {
+        firstname: data.firstName,
+        surname: data.lastName,
+        dob: data.dob,
+        email: data.email,
+        password: data.password,
+        phonecell: data.cell,
+        membershiptypeid: data.membershipType,
+        companyid: data.location,
+        addressstreet: data.billingAddress,
+        startdate: new Date().toISOString().split("T")[0],
+        firstpaymentdate: new Date().toISOString().split("T")[0],
+      };
       const {
         token: authToken,
         memberid,
         membershipid,
         expires,
-      } = signupResponse.data;
+      } = await signup(signupData);
 
       localStorage.setItem("authToken", authToken);
       localStorage.setItem("memberId", memberid);
@@ -326,9 +267,11 @@ export default function Home() {
 
       await saveWaiver(data.waiverSignature, membershipid, authToken);
 
-      // Mocked payment
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      toast.success("Payment processed (mocked)!");
+      // const owingAmount = await chargeMember(memberid, authToken);
+      // const squarePaymentId = await processPayment(owingAmount, data.cardNonce);
+      // toast.success("Payment processed via Square!", {
+      //   description: `Payment ID: ${squarePaymentId}`,
+      // });
 
       toast.success("Sign-up successful!", {
         description: `Welcome aboard, ${data.firstName}! Your membership is active.`,
@@ -370,7 +313,8 @@ export default function Home() {
     }
 
     if (currentStep === 2 && signUpForm.getValues("membershipType")) {
-      await fetchWaiver(signUpForm.getValues("membershipType"));
+      const waiver = await fetchWaiver(signUpForm.getValues("membershipType"));
+      setWaiverContent(waiver);
     }
     setCurrentStep((prev) => prev + 1);
   };
@@ -786,7 +730,7 @@ export default function Home() {
                           <Select
                             onValueChange={(value) => {
                               field.onChange(value);
-                              fetchWaiver(value);
+                              fetchWaiver(value).then(setWaiverContent);
                             }}
                             defaultValue={field.value}
                           >
@@ -877,7 +821,7 @@ export default function Home() {
                 {currentStep === 3 && (
                   <>
                     <h2 className="text-lg sm:text-xl font-semibold">
-                      Step 3: Waiver and Payment
+                      Step 3: Waiver and Billing
                     </h2>
                     <FormField
                       control={signUpForm.control}
@@ -952,6 +896,19 @@ export default function Home() {
                         </FormItem>
                       )}
                     />
+                    {/* <FormField
+                      control={signUpForm.control}
+                      name="cardNonce"
+                      render={() => (
+                        <FormItem>
+                          <FormLabel className="text-sm sm:text-base">Payment Information</FormLabel>
+                          <FormControl>
+                            <div id="card-container" className="border p-4 rounded-md"></div>
+                          </FormControl>
+                          <FormMessage className="text-xs sm:text-sm" />
+                        </FormItem>
+                      )}
+                    /> */}
                     <div className="flex flex-col space-y-2">
                       <Button
                         type="button"
