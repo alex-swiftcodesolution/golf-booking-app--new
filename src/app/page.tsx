@@ -137,7 +137,6 @@ export default function Home() {
   const [locations, setLocations] = useState<Club[]>([]);
   const [membershipTypes, setMembershipTypes] = useState<Membership[]>([]);
   const [waiverContent, setWaiverContent] = useState("");
-  const [token, setToken] = useState("");
   const router = useRouter();
   const sigCanvas = useRef<SignatureCanvas>(null);
 
@@ -317,7 +316,6 @@ export default function Home() {
         expires,
       } = signupResponse.data;
 
-      setToken(authToken);
       localStorage.setItem("authToken", authToken);
       localStorage.setItem("memberId", memberid);
       const expiresInMs = expires * 1000;
@@ -349,7 +347,7 @@ export default function Home() {
   };
 
   const nextStep = async () => {
-    const fieldsToValidate =
+    const fieldsToValidate: (keyof SignUpFormData)[] =
       currentStep === 1
         ? [
             "referralCode",
