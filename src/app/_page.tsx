@@ -1,11 +1,10 @@
 "use client";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import axios from "axios";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -24,59 +23,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { Loader2, Eye, EyeOff } from "lucide-react";
 import { motion } from "framer-motion";
 import SignatureCanvas from "react-signature-canvas";
 
-interface Club {
-  id: number;
-  name: string;
-}
-
-interface Membership {
-  id: number;
-  name: string;
-  description: string;
-  price: string;
-  startdate: string;
-  promotional_period: string | null;
-}
-
-interface Agreement {
-  body: string;
-}
-
-interface SignupResponse {
-  result: string;
-  token: string;
-  memberid: string;
-  membershipid: string;
-  expires: number;
-  error?: string;
-}
-
-interface LoginResponse {
-  result: {
-    token: string;
-    memberid: number;
-    expires: number;
-  };
-  error?: string;
-}
-
-interface SignatureResponse {
-  result: string;
-  error?: string;
-}
-
+// Define the sign-up schema with new fields and validations
 const signUpSchema = z
   .object({
     referralCode: z.string().min(1, "Referral code is required"),
@@ -91,10 +43,13 @@ const signUpSchema = z
           const birthDate = new Date(dob);
           const age = today.getFullYear() - birthDate.getFullYear();
           const monthDiff = today.getMonth() - birthDate.getMonth();
-          return monthDiff < 0 ||
+          if (
+            monthDiff < 0 ||
             (monthDiff === 0 && today.getDate() < birthDate.getDate())
-            ? age - 1 >= 18
-            : age >= 18;
+          ) {
+            return age - 1 >= 18;
+          }
+          return age >= 18;
         },
         { message: "You must be at least 18 years old" }
       ),
@@ -112,6 +67,13 @@ const signUpSchema = z
     location: z.string().min(1, "Please select a location"),
     membershipType: z.string().min(1, "Please select a membership type"),
     waiverSignature: z.string().min(1, "Please sign the waiver"),
+    cardName: z.string().min(1, "Name on card is required"),
+    cardNumber: z
+      .string()
+      .transform((val) => val.replace(/[\s-]/g, ""))
+      .refine((val) => val.length === 16, "Card number must be 16 digits"),
+    exp: z.string().regex(/^\d{2}\/\d{2}$/, "Use MM/YY format"),
+    cvv: z.string().min(3, "CVV must be 3 or 4 digits").max(4),
     billingAddress: z.string().min(1, "Billing address is required"),
   })
   .refine((data) => data.password === data.confirmPassword, {
@@ -124,29 +86,51 @@ const loginSchema = z.object({
   password: z.string().min(1, "Password is required"),
 });
 
-type SignUpFormData = z.infer<typeof signUpSchema>;
-type LoginFormData = z.infer<typeof loginSchema>;
-
 export default function Home() {
   const [isSignUpLoading, setIsSignUpLoading] = useState(false);
   const [isLoginLoading, setIsLoginLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [currentStep, setCurrentStep] = useState(1);
-  const [isOver18, setIsOver18] = useState<boolean | null>(null);
-  const [locations, setLocations] = useState<Club[]>([]);
-  const [membershipTypes, setMembershipTypes] = useState<Membership[]>([]);
-  const [waiverContent, setWaiverContent] = useState("");
-  const [token, setToken] = useState("");
+  const [currentStep, setCurrentStep] = useState(1); // Multi-step form for sign-up
+  const [isOver18, setIsOver18] = useState<boolean | null>(null); // Track age eligibility
   const router = useRouter();
+
+  // Reference for the signature canvas
   const sigCanvas = useRef<SignatureCanvas>(null);
 
-  const loginForm = useForm<LoginFormData>({
+  // Mock data (to be replaced with Gym Master API calls)
+  const locations = [
+    { id: "loc1", name: "Location 1" },
+    { id: "loc2", name: "Location 2" },
+  ];
+  const membershipTypes = [
+    {
+      id: "mem1",
+      name: "Basic Membership",
+      description: "Access to all facilities",
+      price: 50,
+      startDate: "2025-04-01",
+      length: "1 year",
+    },
+    {
+      id: "mem2",
+      name: "Premium Membership",
+      description: "Access to all facilities + guest passes",
+      price: 80,
+      startDate: "2025-04-01",
+      length: "1 year",
+    },
+  ];
+  const waiverText =
+    "I agree to the terms and conditions of Simcoquitos 24/7 Golf Club."; // Mock waiver
+  const validReferralCode = "REF12345"; // Mock referral code (from app/dashboard/invite/page.tsx)
+
+  const loginForm = useForm<z.infer<typeof loginSchema>>({
     resolver: zodResolver(loginSchema),
     defaultValues: { email: "", password: "" },
   });
 
-  const signUpForm = useForm<SignUpFormData>({
+  const signUpForm = useForm<z.infer<typeof signUpSchema>>({
     resolver: zodResolver(signUpSchema),
     defaultValues: {
       referralCode: "",
@@ -161,100 +145,53 @@ export default function Home() {
       location: "",
       membershipType: "",
       waiverSignature: "",
+      cardName: "",
+      cardNumber: "",
+      exp: "",
+      cvv: "",
       billingAddress: "",
     },
   });
 
-  useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const locResponse = await axios.get<{ result: Club[] }>(
-          "/api/gymmaster/v1/companies",
-          { params: { api_key: process.env.NEXT_PUBLIC_GYMMASTER_API_KEY } }
-        );
-        setLocations(locResponse.data.result);
-
-        const memResponse = await axios.get<{ result: Membership[] }>(
-          "/api/gymmaster/v1/memberships",
-          { params: { api_key: process.env.NEXT_PUBLIC_GYMMASTER_API_KEY } }
-        );
-        setMembershipTypes(memResponse.data.result);
-      } catch (error) {
-        toast.error("Failed to load data", {
-          description: error instanceof Error ? error.message : "Unknown error",
-        });
-      }
-    };
-    fetchData();
-  }, []);
-
-  const fetchWaiver = async (membershipTypeId: string, authToken?: string) => {
-    try {
-      const response = await axios.get<{ result: Agreement[] }>(
-        `/api/gymmaster/v2/membership/${membershipTypeId}/agreement`,
-        {
-          params: {
-            api_key: process.env.NEXT_PUBLIC_GYMMASTER_API_KEY,
-            token: authToken || undefined,
-          },
-        }
-      );
-      setWaiverContent(
-        response.data.result[0]?.body || "No waiver content available."
-      );
-    } catch (error) {
-      toast.error("Failed to load waiver", {
-        description: error instanceof Error ? error.message : "Unknown error",
-      });
-    }
-  };
-
-  const saveWaiver = async (
-    signature: string,
-    membershipId: string,
-    authToken: string
-  ) => {
-    const base64Data = signature.replace(/^data:image\/\w+;base64,/, "");
-    const response = await axios.post<SignatureResponse>(
-      "/api/gymmaster/v2/member/signature",
-      {
-        api_key: process.env.NEXT_PUBLIC_GYMMASTER_API_KEY,
-        token: authToken,
-        file: base64Data,
-        membershipid: membershipId,
-        source: "Signup Form",
-      },
-      {
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        transformRequest: [(data) => new URLSearchParams(data).toString()],
-      }
-    );
-    if (response.data.error) throw new Error(response.data.error);
-    console.log("Waiver saved:", response.data.result);
-  };
-
-  const onLoginSubmit = async (data: LoginFormData) => {
+  const onLoginSubmit = async (data: z.infer<typeof loginSchema>) => {
     setIsLoginLoading(true);
     try {
-      const response = await axios.post<LoginResponse>(
-        "/api/gymmaster/v1/login",
-        {
-          api_key: process.env.NEXT_PUBLIC_GYMMASTER_API_KEY,
-          email: data.email,
-          password: data.password,
-        },
-        {
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          transformRequest: [(data) => new URLSearchParams(data).toString()],
-        }
+      const formData = new URLSearchParams();
+      formData.append(
+        "api_key",
+        process.env.NEXT_PUBLIC_GYMMASTER_API_KEY ?? ""
       );
-      if (response.data.error) throw new Error(response.data.error);
-      const { token, memberid, expires } = response.data.result;
-      if (!token) throw new Error("No token received");
+      formData.append("email", data.email);
+      formData.append("password", data.password);
 
+      console.log("Request Body:", formData.toString()); // Keep for debugging
+
+      const response = await fetch(`/api/gymmaster/v1/login`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: formData.toString(),
+      });
+
+      const result = await response.json();
+      console.log("API Response:", result);
+
+      if (result.error) {
+        throw new Error(result.error);
+      }
+
+      const token = result.result.token;
+      if (!token) throw new Error("No token received from server");
+
+      // Store token, member ID, and calculate expiry
       localStorage.setItem("authToken", token);
-      localStorage.setItem("memberId", memberid.toString());
-      const expiresInMs = expires * 1000;
+      localStorage.setItem("memberId", result.result.memberid.toString());
+      // Assuming expires is lifespan in seconds (docs say 1 hour = 3600)
+      const expiresInMs =
+        result.result.expires === 3600
+          ? 3600 * 1000
+          : result.result.expires * 1000;
       localStorage.setItem(
         "tokenExpires",
         (Date.now() + expiresInMs).toString()
@@ -265,120 +202,53 @@ export default function Home() {
       });
       router.push("/dashboard");
     } catch (error) {
+      console.error("Login error:", error);
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to connect to server";
       toast.error("Login failed", {
-        description: error instanceof Error ? error.message : "Unknown error",
+        description: errorMessage,
       });
     } finally {
       setIsLoginLoading(false);
     }
   };
 
-  const onSignUpSubmit = async (data: SignUpFormData) => {
+  const onSignUpSubmit = async (data: z.infer<typeof signUpSchema>) => {
     setIsSignUpLoading(true);
     try {
-      // Placeholder referral code check
-      const validReferralCode = "REF12345";
+      // Mock referral code validation
       if (data.referralCode !== validReferralCode) {
         signUpForm.setError("referralCode", {
           message: "Invalid referral code",
         });
-        setCurrentStep(1);
         setIsSignUpLoading(false);
         return;
       }
 
-      const signupResponse = await axios.post<SignupResponse>(
-        "/api/gymmaster/v1/signup",
-        {
-          api_key: process.env.NEXT_PUBLIC_GYMMASTER_API_KEY,
-          firstname: data.firstName,
-          surname: data.lastName,
-          dob: data.dob,
-          email: data.email,
-          password: data.password,
-          phonecell: data.cell,
-          membershiptypeid: data.membershipType,
-          companyid: data.location,
-          addressstreet: data.billingAddress,
-          startdate: new Date().toISOString().split("T")[0],
-          firstpaymentdate: new Date().toISOString().split("T")[0],
-        },
-        {
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          transformRequest: [(data) => new URLSearchParams(data).toString()],
-        }
-      );
+      // Mock waiver saving (to be replaced with Gym Master API)
+      console.log("Waiver signed (base64 image):", data.waiverSignature);
 
-      if (signupResponse.data.error) throw new Error(signupResponse.data.error);
-      const {
-        token: authToken,
-        memberid,
-        membershipid,
-        expires,
-      } = signupResponse.data;
-
-      setToken(authToken);
-      localStorage.setItem("authToken", authToken);
-      localStorage.setItem("memberId", memberid);
-      const expiresInMs = expires * 1000;
-      localStorage.setItem(
-        "tokenExpires",
-        (Date.now() + expiresInMs).toString()
-      );
-
-      await saveWaiver(data.waiverSignature, membershipid, authToken);
-
-      // Mocked payment
       await new Promise((resolve) => setTimeout(resolve, 1000));
-      toast.success("Payment processed (mocked)!");
-
       toast.success("Sign-up successful!", {
         description: `Welcome aboard, ${data.firstName}! Your membership is active.`,
       });
       signUpForm.reset();
-      setCurrentStep(1);
-      setIsOver18(null);
+      setCurrentStep(1); // Reset to first step
+      setIsOver18(null); // Reset age check
       router.push("/dashboard");
-    } catch (error) {
+    } catch {
       toast.error("Sign-up failed", {
-        description: error instanceof Error ? error.message : "Unknown error",
+        description: "Please try again later.",
       });
     } finally {
       setIsSignUpLoading(false);
     }
   };
 
-  const nextStep = async () => {
-    const fieldsToValidate =
-      currentStep === 1
-        ? [
-            "referralCode",
-            "firstName",
-            "lastName",
-            "dob",
-            "email",
-            "password",
-            "confirmPassword",
-            "cell",
-          ]
-        : currentStep === 2
-        ? ["referringMemberName", "location", "membershipType"]
-        : [];
-
-    const isValid = await signUpForm.trigger(fieldsToValidate);
-    if (!isValid) {
-      toast.error("Please fix errors in this step before proceeding.");
-      return;
-    }
-
-    if (currentStep === 2 && signUpForm.getValues("membershipType")) {
-      await fetchWaiver(signUpForm.getValues("membershipType"));
-    }
-    setCurrentStep((prev) => prev + 1);
-  };
-
+  const nextStep = () => setCurrentStep((prev) => prev + 1);
   const prevStep = () => setCurrentStep((prev) => prev - 1);
 
+  // Function to calculate age and update isOver18 state
   const checkAge = (dob: string) => {
     if (!dob) {
       setIsOver18(null);
@@ -388,14 +258,17 @@ export default function Home() {
     const birthDate = new Date(dob);
     const age = today.getFullYear() - birthDate.getFullYear();
     const monthDiff = today.getMonth() - birthDate.getMonth();
-    setIsOver18(
+    if (
       monthDiff < 0 ||
-        (monthDiff === 0 && today.getDate() < birthDate.getDate())
-        ? age - 1 >= 18
-        : age >= 18
-    );
+      (monthDiff === 0 && today.getDate() < birthDate.getDate())
+    ) {
+      setIsOver18(age - 1 >= 18);
+    } else {
+      setIsOver18(age >= 18);
+    }
   };
 
+  // Function to clear the signature
   const clearSignature = () => {
     sigCanvas.current?.clear();
     signUpForm.setValue("waiverSignature", "");
@@ -512,6 +385,7 @@ export default function Home() {
                 onSubmit={signUpForm.handleSubmit(onSignUpSubmit)}
                 className="space-y-4 bg-white/90 p-4 sm:p-6 rounded-lg shadow-lg overflow-x-auto"
               >
+                {/* Step 1: Personal Information */}
                 {currentStep === 1 && (
                   <>
                     <h2 className="text-lg sm:text-xl font-semibold">
@@ -720,6 +594,7 @@ export default function Home() {
                   </>
                 )}
 
+                {/* Step 2: Membership Details */}
                 {currentStep === 2 && (
                   <>
                     <h2 className="text-lg sm:text-xl font-semibold">
@@ -765,7 +640,7 @@ export default function Home() {
                               {locations.map((loc) => (
                                 <SelectItem
                                   key={loc.id}
-                                  value={loc.id.toString()}
+                                  value={loc.id}
                                   className="text-sm sm:text-base"
                                 >
                                   {loc.name}
@@ -786,10 +661,7 @@ export default function Home() {
                             Membership Type
                           </FormLabel>
                           <Select
-                            onValueChange={(value) => {
-                              field.onChange(value);
-                              fetchWaiver(value);
-                            }}
+                            onValueChange={field.onChange}
                             defaultValue={field.value}
                           >
                             <FormControl>
@@ -801,22 +673,22 @@ export default function Home() {
                               {membershipTypes.map((type) => (
                                 <SelectItem
                                   key={type.id}
-                                  value={type.id.toString()}
+                                  value={type.id}
                                   className="text-sm sm:text-base whitespace-normal"
                                 >
-                                  {type.name} - {type.price} (
-                                  {type.promotional_period || "N/A"})
+                                  {type.name}
                                 </SelectItem>
                               ))}
                             </SelectContent>
                           </Select>
+                          {/* Display membership details below the dropdown */}
                           {field.value && (
                             <div className="mt-2 p-3 bg-gray-100 rounded-md text-sm sm:text-base">
                               <p>
-                                <strong>Name:</strong>{" "}
+                                <strong>Selected Membership:</strong>{" "}
                                 {
                                   membershipTypes.find(
-                                    (type) => type.id.toString() === field.value
+                                    (type) => type.id === field.value
                                   )?.name
                                 }
                               </p>
@@ -824,15 +696,15 @@ export default function Home() {
                                 <strong>Description:</strong>{" "}
                                 {
                                   membershipTypes.find(
-                                    (type) => type.id.toString() === field.value
+                                    (type) => type.id === field.value
                                   )?.description
                                 }
                               </p>
                               <p>
-                                <strong>Price:</strong>{" "}
+                                <strong>Price:</strong> $
                                 {
                                   membershipTypes.find(
-                                    (type) => type.id.toString() === field.value
+                                    (type) => type.id === field.value
                                   )?.price
                                 }
                               </p>
@@ -840,15 +712,17 @@ export default function Home() {
                                 <strong>Start Date:</strong>{" "}
                                 {
                                   membershipTypes.find(
-                                    (type) => type.id.toString() === field.value
-                                  )?.startdate
+                                    (type) => type.id === field.value
+                                  )?.startDate
                                 }
                               </p>
                               <p>
-                                <strong>Length:</strong>{" "}
-                                {membershipTypes.find(
-                                  (type) => type.id.toString() === field.value
-                                )?.promotional_period || "N/A"}
+                                <strong>Membership Length:</strong>{" "}
+                                {
+                                  membershipTypes.find(
+                                    (type) => type.id === field.value
+                                  )?.length
+                                }
                               </p>
                             </div>
                           )}
@@ -856,12 +730,12 @@ export default function Home() {
                         </FormItem>
                       )}
                     />
-                    <div className="flex flex-col space-y-2">
+                    <div className="w-full flex flex-col space-y-2 sm:space-y-2 sm:space-x-2">
                       <Button
                         type="button"
                         onClick={prevStep}
-                        variant="outline"
                         className="w-full py-2.5 sm:py-3 text-sm sm:text-base"
+                        variant="outline"
                       >
                         Back
                       </Button>
@@ -876,6 +750,7 @@ export default function Home() {
                   </>
                 )}
 
+                {/* Step 3: Waiver and Payment */}
                 {currentStep === 3 && (
                   <>
                     <h2 className="text-lg sm:text-xl font-semibold">
@@ -889,11 +764,16 @@ export default function Home() {
                           <FormLabel className="text-sm sm:text-base">
                             Sign the Waiver
                           </FormLabel>
+                          <p className="text-sm text-gray-600 mb-2">
+                            {waiverText}
+                          </p>
                           <FormControl>
                             <div className="border rounded-md">
                               <SignatureCanvas
                                 ref={sigCanvas}
-                                canvasProps={{ className: "w-full h-32" }}
+                                canvasProps={{
+                                  className: "w-full h-32",
+                                }}
                                 onEnd={() =>
                                   field.onChange(
                                     sigCanvas.current?.toDataURL() || ""
@@ -902,39 +782,96 @@ export default function Home() {
                               />
                             </div>
                           </FormControl>
-                          <div className="mt-2 flex space-x-2">
-                            <Button
-                              type="button"
-                              variant="outline"
-                              onClick={clearSignature}
-                            >
-                              Clear Signature
-                            </Button>
-                            <Dialog>
-                              <DialogTrigger asChild>
-                                <Button type="button" variant="outline">
-                                  Read Terms & Conditions
-                                </Button>
-                              </DialogTrigger>
-                              <DialogContent>
-                                <DialogHeader>
-                                  <DialogTitle>
-                                    Terms & Conditions and Waiver
-                                  </DialogTitle>
-                                </DialogHeader>
-                                <div className="max-h-[60vh] overflow-y-auto">
-                                  <p>
-                                    {waiverContent ||
-                                      "Loading waiver content..."}
-                                  </p>
-                                </div>
-                              </DialogContent>
-                            </Dialog>
-                          </div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={clearSignature}
+                            className="mt-2"
+                          >
+                            Clear Signature
+                          </Button>
                           <FormMessage className="text-xs sm:text-sm" />
                         </FormItem>
                       )}
                     />
+                    <FormField
+                      control={signUpForm.control}
+                      name="cardName"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-sm sm:text-base">
+                            Name on Card
+                          </FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder="John Doe"
+                              {...field}
+                              className="text-sm sm:text-base"
+                            />
+                          </FormControl>
+                          <FormMessage className="text-xs sm:text-sm" />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={signUpForm.control}
+                      name="cardNumber"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel className="text-sm sm:text-base">
+                            Card Number
+                          </FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder="1234 5678 9012 3456"
+                              {...field}
+                              className="text-sm sm:text-base"
+                            />
+                          </FormControl>
+                          <FormMessage className="text-xs sm:text-sm" />
+                        </FormItem>
+                      )}
+                    />
+                    <div className="grid grid-cols-2 gap-4">
+                      <FormField
+                        control={signUpForm.control}
+                        name="exp"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-sm sm:text-base">
+                              Expiration
+                            </FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="MM/YY"
+                                {...field}
+                                className="text-sm sm:text-base"
+                              />
+                            </FormControl>
+                            <FormMessage className="text-xs sm:text-sm" />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={signUpForm.control}
+                        name="cvv"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-sm sm:text-base">
+                              CVV
+                            </FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="123"
+                                {...field}
+                                className="text-sm sm:text-base"
+                              />
+                            </FormControl>
+                            <FormMessage className="text-xs sm:text-sm" />
+                          </FormItem>
+                        )}
+                      />
+                    </div>
                     <FormField
                       control={signUpForm.control}
                       name="billingAddress"
@@ -954,12 +891,12 @@ export default function Home() {
                         </FormItem>
                       )}
                     />
-                    <div className="flex flex-col space-y-2">
+                    <div className="flex flex-col space-y-2 sm:space-y-2 sm:space-x-2">
                       <Button
                         type="button"
                         onClick={prevStep}
-                        variant="outline"
                         className="w-full py-2.5 sm:py-3 text-sm sm:text-base"
+                        variant="outline"
                       >
                         Back
                       </Button>
