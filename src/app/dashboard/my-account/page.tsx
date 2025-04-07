@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -15,28 +15,32 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { motion } from "framer-motion";
+import { fetchMemberDetails, updateMemberProfile } from "@/api/gymmaster"; // Import both
+import { useRouter } from "next/navigation";
 
 const profileSchema = z
   .object({
-    firstName: z.string().min(1, "First name is required"), // Split name into firstName
-    lastName: z.string().min(1, "Last name is required"), // and lastName
+    firstname: z.string().min(1, "First name is required"),
+    surname: z.string().min(1, "Last name is required"),
     email: z.string().email("Please enter a valid email"),
-    cell: z
+    phonecell: z
       .string()
       .min(10, "Please enter a valid phone number")
       .regex(
         /^\+?\d{1,3}[-.\s]?\d{3}[-.\s]?\d{3}[-.\s]?\d{4}$/,
         "Please enter a valid phone number (e.g., +1-123-456-7890)"
-      ),
+      )
+      .optional()
+      .or(z.literal("")),
     password: z
       .string()
       .min(6, "Password must be at least 6 characters")
       .optional(),
     confirmPassword: z.string().optional(),
     dob: z.string().optional(),
-    address: z.string().optional(),
+    addressstreet: z.string().optional(),
   })
   .refine((data) => !data.password || data.password === data.confirmPassword, {
     message: "Passwords must match",
@@ -57,18 +61,21 @@ const paymentSchema = z.object({
 export default function MyAccount() {
   const [profileLoading, setProfileLoading] = useState(false);
   const [paymentLoading, setPaymentLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const router = useRouter();
 
   const profileForm = useForm<z.infer<typeof profileSchema>>({
     resolver: zodResolver(profileSchema),
     defaultValues: {
-      firstName: "",
-      lastName: "",
+      firstname: "",
+      surname: "",
       email: "",
-      cell: "",
+      phonecell: "",
       password: "",
       confirmPassword: "",
       dob: "",
-      address: "",
+      addressstreet: "",
     },
   });
 
@@ -83,14 +90,50 @@ export default function MyAccount() {
     },
   });
 
+  useEffect(() => {
+    const token = localStorage.getItem("authToken");
+    if (!token) {
+      router.push("/");
+      return;
+    }
+
+    const loadProfile = async () => {
+      try {
+        const memberData = await fetchMemberDetails(token);
+        profileForm.reset({
+          firstname: memberData.firstname || "",
+          surname: memberData.surname || "",
+          email: memberData.email || "",
+          phonecell: memberData.phonecell || "",
+          dob: memberData.dob || "",
+          addressstreet: memberData.addressstreet || "",
+        });
+      } catch (error) {
+        console.error("Failed to fetch profile:", error);
+        toast.error("Failed to load profile", {
+          description: "Please try again later.",
+        });
+      }
+    };
+
+    loadProfile();
+  }, [profileForm, router]);
+
   const onProfileSubmit = async (data: z.infer<typeof profileSchema>) => {
     setProfileLoading(true);
+    const token = localStorage.getItem("authToken");
+    if (!token) {
+      router.push("/");
+      return;
+    }
+
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await updateMemberProfile(token, data);
       toast.success("Profile updated!", {
-        description: `Changes saved for ${data.firstName} ${data.lastName}`,
+        description: `Changes saved for ${data.firstname} ${data.surname}`,
       });
-    } catch {
+    } catch (error) {
+      console.error("Failed to update profile:", error);
       toast.error("Failed to update profile", {
         description: "Please try again later.",
       });
@@ -157,7 +200,7 @@ export default function MyAccount() {
               >
                 <FormField
                   control={profileForm.control}
-                  name="firstName"
+                  name="firstname"
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel className="text-sm sm:text-base">
@@ -172,7 +215,7 @@ export default function MyAccount() {
                 />
                 <FormField
                   control={profileForm.control}
-                  name="lastName"
+                  name="surname"
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel className="text-sm sm:text-base">
@@ -206,7 +249,7 @@ export default function MyAccount() {
                 />
                 <FormField
                   control={profileForm.control}
-                  name="cell"
+                  name="phonecell"
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel className="text-sm sm:text-base">
@@ -219,43 +262,77 @@ export default function MyAccount() {
                     </FormItem>
                   )}
                 />
+                {/* Password Field with Eye Icon */}
                 <FormField
                   control={profileForm.control}
                   name="password"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-sm sm:text-base">
-                        Password
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="New password"
-                          type="password"
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage className="text-xs sm:text-sm" />
-                    </FormItem>
-                  )}
+                  render={({ field }) => {
+                    return (
+                      <FormItem>
+                        <FormLabel className="text-sm sm:text-base">
+                          Password
+                        </FormLabel>
+                        <FormControl>
+                          <div className="relative">
+                            <Input
+                              placeholder="New password"
+                              type={showPassword ? "text" : "password"}
+                              {...field}
+                            />
+                            <button
+                              type="button"
+                              className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                              onClick={() => setShowPassword(!showPassword)}
+                            >
+                              {showPassword ? (
+                                <EyeOff className="h-5 w-5 text-gray-500" />
+                              ) : (
+                                <Eye className="h-5 w-5 text-gray-500" />
+                              )}
+                            </button>
+                          </div>
+                        </FormControl>
+                        <FormMessage className="text-xs sm:text-sm" />
+                      </FormItem>
+                    );
+                  }}
                 />
+                {/* Confirm Password Field with Eye Icon */}
                 <FormField
                   control={profileForm.control}
                   name="confirmPassword"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-sm sm:text-base">
-                        Confirm Password
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="Confirm new password"
-                          type="password"
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage className="text-xs sm:text-sm" />
-                    </FormItem>
-                  )}
+                  render={({ field }) => {
+                    return (
+                      <FormItem>
+                        <FormLabel className="text-sm sm:text-base">
+                          Confirm Password
+                        </FormLabel>
+                        <FormControl>
+                          <div className="relative">
+                            <Input
+                              placeholder="Confirm new password"
+                              type={showConfirmPassword ? "text" : "password"}
+                              {...field}
+                            />
+                            <button
+                              type="button"
+                              className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                              onClick={() =>
+                                setShowConfirmPassword(!showConfirmPassword)
+                              }
+                            >
+                              {showConfirmPassword ? (
+                                <EyeOff className="h-5 w-5 text-gray-500" />
+                              ) : (
+                                <Eye className="h-5 w-5 text-gray-500" />
+                              )}
+                            </button>
+                          </div>
+                        </FormControl>
+                        <FormMessage className="text-xs sm:text-sm" />
+                      </FormItem>
+                    );
+                  }}
                 />
                 <FormField
                   control={profileForm.control}
@@ -274,7 +351,7 @@ export default function MyAccount() {
                 />
                 <FormField
                   control={profileForm.control}
-                  name="address"
+                  name="addressstreet"
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel className="text-sm sm:text-base">

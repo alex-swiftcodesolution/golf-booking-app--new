@@ -22,7 +22,7 @@ interface BookingContextType {
 
 const BookingContext = createContext<BookingContextType | undefined>(undefined);
 
-// Mock initial bookings (optional, can be empty)
+// Mock initial bookings
 const initialBookings: Booking[] = [
   {
     id: 1,
@@ -55,7 +55,7 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
       ...prev,
       {
         ...booking,
-        id: prev.length ? Math.max(...prev.map((b) => b.id)) + 1 : 1,
+        id: Date.now(), // More unique than incremental IDs
       },
     ]);
   };
