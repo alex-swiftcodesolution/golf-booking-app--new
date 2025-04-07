@@ -16,10 +16,6 @@ export interface Membership {
   promotional_period: string | null;
 }
 
-export interface Agreement {
-  body: string;
-}
-
 export interface SignupResponse {
   result: string;
   token: string;
@@ -43,18 +39,10 @@ export interface SignatureResponse {
   error?: string;
 }
 
-// export interface MemberChargeResponse {
-//   result: string;
-//   owingamount: string;
-//   error?: string;
-// }
-
 export const fetchCompanies = async (): Promise<Club[]> => {
   const response = await axios.get<{ result: Club[] }>(
     "/api/gymmaster/v1/companies",
-    {
-      params: { api_key: GYMMASTER_API_KEY },
-    }
+    { params: { api_key: GYMMASTER_API_KEY } }
   );
   return response.data.result;
 };
@@ -62,9 +50,7 @@ export const fetchCompanies = async (): Promise<Club[]> => {
 export const fetchMemberships = async (): Promise<Membership[]> => {
   const response = await axios.get<{ result: Membership[] }>(
     "/api/gymmaster/v1/memberships",
-    {
-      params: { api_key: GYMMASTER_API_KEY },
-    }
+    { params: { api_key: GYMMASTER_API_KEY } }
   );
   return response.data.result;
 };
@@ -73,7 +59,7 @@ export const fetchWaiver = async (
   membershipTypeId: string,
   token?: string
 ): Promise<string> => {
-  const response = await axios.get<{ result: Agreement[] }>(
+  const response = await axios.get<{ result: { body: string }[] }>(
     `/api/gymmaster/v2/membership/${membershipTypeId}/agreement`,
     { params: { api_key: GYMMASTER_API_KEY, token } }
   );
@@ -144,22 +130,3 @@ export const signup = async (data: {
   if (response.data.error) throw new Error(response.data.error);
   return response.data;
 };
-
-// export const chargeMember = async (
-//   memberId: string,
-//   token: string,
-//   postingIds: number[] = []
-// ): Promise<string> => {
-//   const response = await axios.post<MemberChargeResponse>(
-//     "/api/gymmaster/v1/member/charge",
-//     {
-//       api_key: GYMMASTER_API_KEY,
-//       token,
-//       postingids: postingIds,
-//       make_payment: 1,
-//     },
-//     { headers: { "Content-Type": "application/json" } }
-//   );
-//   if (response.data.error) throw new Error(response.data.error);
-//   return response.data.owingamount;
-// };
