@@ -1,8 +1,9 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
+import axios from "axios";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -33,10 +34,22 @@ import {
 } from "@/components/ui/dialog";
 import { motion } from "framer-motion";
 import { useBookings } from "@/context/BookingContext";
+import {
+  Club,
+  Resource,
+  Session,
+  Service,
+  fetchClubs,
+  fetchResourcesAndSessions,
+  fetchServices,
+} from "@/api/gymmaster";
+import { useRouter } from "next/navigation";
 
-// Schema for booking tee time
+const GYMMASTER_API_KEY = process.env.NEXT_PUBLIC_GYMMASTER_API_KEY;
+
 const teeTimeSchema = z.object({
   location: z.string().min(1, "Please select a location"),
+  service: z.string().min(1, "Please select a service"),
   date: z.string().min(1, "Please select a date"),
   timeSlots: z
     .array(
@@ -58,55 +71,141 @@ const teeTimeSchema = z.object({
     .optional(),
 });
 
-// Mock locations and bays
-const locations = ["Location 1", "Location 2"];
-const bays = ["Bay 1", "Bay 2", "Bay 3"];
-
-// Mock unavailable slots
-const unavailableSlots = new Set([
-  "1:00 AM",
-  "1:30 AM",
-  "9:30 AM",
-  "10:00 AM",
-  "2:00 PM",
-  "2:30 PM",
-  "11:00 PM",
-  "11:30 PM",
-]);
-
-// Mock guest passes (to be handled by backend later)
 const freeGuestPassesPerMonth = 2;
-const guestPassCharge = 10; // $10 per extra guest pass
+const guestPassCharge = 10;
 
 export default function BookTeeTime() {
   const [selectedSlots, setSelectedSlots] = useState<
     { time: string; bay: string }[]
-  >([]); // Store multiple selected time slots
+  >([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showItinerary, setShowItinerary] = useState(false);
   const [guestCount, setGuestCount] = useState(0);
-
+  const [clubs, setClubs] = useState<Club[]>([]);
+  const [services, setServices] = useState<Service[]>([]);
+  const [resources, setResources] = useState<Resource[]>([]);
+  const [sessions, setSessions] = useState<Session[]>([]);
+  const [selectedServiceId, setSelectedServiceId] = useState<number | null>(
+    null
+  );
+  const [isFetchingClubs, setIsFetchingClubs] = useState(false);
+  const [isFetchingServices, setIsFetchingServices] = useState(false);
+  const [isFetchingSlots, setIsFetchingSlots] = useState(false);
   const { addBooking, bookings } = useBookings();
+  const router = useRouter();
 
   const form = useForm<z.infer<typeof teeTimeSchema>>({
     resolver: zodResolver(teeTimeSchema),
     defaultValues: {
       location: "",
+      service: "",
       date: "",
       timeSlots: [],
       guests: [],
     },
   });
 
-  // const { isValid } = useFormState({ control: form.control });
+  const location = form.watch("location");
+  const service = form.watch("service");
+  const date = form.watch("date");
 
-  const timeSlots = Array.from({ length: 48 }, (_, i) => {
-    const hour = Math.floor(i / 2);
-    const minute = i % 2 === 0 ? "00" : "30";
-    const period = hour >= 12 ? "PM" : "AM";
-    const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
-    return `${displayHour}:${minute} ${period}`;
-  });
+  useEffect(() => {
+    const initialize = async () => {
+      const token = localStorage.getItem("authToken");
+      const tokenExpires = localStorage.getItem("tokenExpires");
+
+      if (!token || !tokenExpires || Date.now() > Number(tokenExpires)) {
+        toast.error("Please log in");
+        router.push("/");
+        return;
+      }
+
+      try {
+        setIsFetchingClubs(true);
+        const fetchedClubs = await fetchClubs();
+        setClubs(fetchedClubs);
+        setIsFetchingClubs(false);
+
+        if (location) {
+          const club = fetchedClubs.find((c) => c.name === location);
+          if (!club) throw new Error("Selected club not found");
+
+          setIsFetchingServices(true);
+          const fetchedServices = await fetchServices(
+            token,
+            undefined,
+            club.id
+          );
+          console.log("All Services:", fetchedServices);
+          const memberServices = fetchedServices.filter((s) =>
+            s.servicename.includes("Member Golf Bay")
+          );
+          console.log(
+            "Available Services:",
+            memberServices.map((s) => ({
+              id: s.serviceid,
+              name: s.servicename,
+            }))
+          );
+          setServices(memberServices);
+          setIsFetchingServices(false);
+
+          if (service && date) {
+            const selectedService = memberServices.find(
+              (s) => s.servicename === service
+            );
+            if (!selectedService) throw new Error("Selected service not found");
+            setSelectedServiceId(selectedService.serviceid);
+
+            setIsFetchingSlots(true);
+            const { dates, resources } = await fetchResourcesAndSessions(
+              token,
+              selectedService.serviceid,
+              date,
+              club.id
+            );
+            console.log(
+              "Fetched Resources for Service",
+              selectedService.serviceid,
+              ":",
+              resources.map((r) => ({ id: r.id, name: r.name }))
+            );
+            setResources(resources);
+            setSessions(dates);
+            setIsFetchingSlots(false);
+          }
+        }
+      } catch (err) {
+        console.error("Initialization Error:", err);
+        toast.error("Failed to load data", {
+          description: (err as Error).message,
+        });
+        setIsFetchingClubs(false);
+        setIsFetchingServices(false);
+        setIsFetchingSlots(false);
+      }
+    };
+
+    initialize();
+  }, [location, service, date, router]);
+
+  const getSlotDuration = () => {
+    if (service.includes("1/2 hr")) return 30;
+    if (service.includes("1 hr")) return 60;
+    return 30;
+  };
+
+  const timeSlots = Array.from(
+    { length: getSlotDuration() === 30 ? 48 : 24 },
+    (_, i) => {
+      const hour = Math.floor(i / (getSlotDuration() === 30 ? 2 : 1));
+      const minute =
+        getSlotDuration() === 30 ? (i % 2 === 0 ? "00" : "30") : "00";
+      const period = hour >= 12 ? "PM" : "AM";
+      const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
+      return `${displayHour}:${minute} ${period}`;
+    }
+  );
 
   const parseTimeSlot = (time: string) => {
     const [hourMinute, period] = time.split(" ");
@@ -117,12 +216,22 @@ export default function BookTeeTime() {
     return { hour, minute };
   };
 
-  const checkTimeSlotConflict = (startTime: string, bay: string) => {
-    const { hour: startHour, minute: startMinute } = parseTimeSlot(startTime);
-    const startMinutes = startHour * 60 + startMinute;
+  const isSlotAvailable = (time: string, bay: string) => {
+    const { hour, minute } = parseTimeSlot(time);
+    const slotStart = `${hour.toString().padStart(2, "0")}:${minute
+      .toString()
+      .padStart(2, "0")}:00`;
+    const resource = resources.find((r) => r.name === bay);
+    return !sessions.some(
+      (s) => s.rid === resource?.id && s.bookingstart === slotStart
+    );
+  };
 
-    // Check the next 30-minute slot for unavailability
-    const slotMinutes = startMinutes + 30;
+  const checkTimeSlotConflict = (time: string, bay: string) => {
+    const { hour: startHour, minute: startMinute } = parseTimeSlot(time);
+    const startMinutes = startHour * 60 + startMinute;
+    const slotDuration = getSlotDuration();
+    const slotMinutes = startMinutes + slotDuration;
     const slotHour = Math.floor(slotMinutes / 60);
     const slotMinute = slotMinutes % 60;
     const period = slotHour >= 12 ? "PM" : "AM";
@@ -132,62 +241,43 @@ export default function BookTeeTime() {
       slotMinute === 0 ? "00" : "30"
     } ${period}`;
 
-    // Check against existing bookings in BookingContext
-    const conflictBooking = bookings.find(
+    return bookings.some(
       (booking) =>
-        booking.date === form.getValues("date") &&
-        booking.location === form.getValues("location") &&
+        booking.date === date &&
+        booking.location === location &&
         booking.bay === bay &&
-        (booking.time === startTime || booking.time === slotTime)
+        (booking.time === time || booking.time === slotTime)
     );
-
-    if (conflictBooking) {
-      return conflictBooking.time;
-    }
-
-    return unavailableSlots.has(startTime) || unavailableSlots.has(slotTime)
-      ? slotTime
-      : null;
   };
 
   const handleTimeSelect = (time: string, bay: string) => {
-    if (!form.getValues("location")) {
-      toast.error("Please select a location first");
+    if (!location || !service || !date) {
+      toast.error("Select location, service, and date first");
       return;
     }
-
-    const conflictSlot = checkTimeSlotConflict(time, bay);
-    if (conflictSlot) {
-      toast.error("Time slot conflict", {
-        description: `The slot at ${time} or ${conflictSlot} in ${bay} is unavailable.`,
-      });
+    if (!isSlotAvailable(time, bay)) {
+      toast.error("Slot unavailable");
       return;
     }
-
-    // Check if the slot is already selected
+    if (checkTimeSlotConflict(time, bay)) {
+      toast.error("Time slot conflict");
+      return;
+    }
     const slotIndex = selectedSlots.findIndex(
       (slot) => slot.time === time && slot.bay === bay
     );
-
-    let updatedSlots;
-    if (slotIndex >= 0) {
-      // Deselect the slot
-      updatedSlots = selectedSlots.filter(
-        (slot) => !(slot.time === time && slot.bay === bay)
-      );
-      toast.info("Time slot deselected", {
-        description: `Removed ${time} at ${bay}.`,
-      });
-    } else {
-      // Select the slot
-      updatedSlots = [...selectedSlots, { time, bay }];
-      toast.info("Time slot chosen", {
-        description: `Added ${time} at ${bay}.`,
-      });
-    }
-
+    const updatedSlots =
+      slotIndex >= 0
+        ? selectedSlots.filter((s) => s.time !== time || s.bay !== bay)
+        : [...selectedSlots, { time, bay }];
     setSelectedSlots(updatedSlots);
     form.setValue("timeSlots", updatedSlots);
+    toast.info(slotIndex >= 0 ? "Time slot deselected" : "Time slot chosen", {
+      description:
+        slotIndex >= 0
+          ? `Removed ${time} at ${bay}.`
+          : `Added ${time} at ${bay}.`,
+    });
   };
 
   const handleGuestCountChange = (count: number) => {
@@ -199,12 +289,17 @@ export default function BookTeeTime() {
         .fill(null)
         .map((_, i) => currentGuests[i] || { name: "", cell: "" })
     );
-    if (count === 0) {
-      form.clearErrors("guests");
-    }
+    if (count === 0) form.clearErrors("guests");
   };
 
   const handleLocationChange = () => {
+    setSelectedSlots([]);
+    form.setValue("timeSlots", []);
+    form.setValue("service", "");
+    setServices([]);
+  };
+
+  const handleServiceChange = () => {
     setSelectedSlots([]);
     form.setValue("timeSlots", []);
   };
@@ -212,62 +307,128 @@ export default function BookTeeTime() {
   const onSubmit = async (data: z.infer<typeof teeTimeSchema>) => {
     setIsLoading(true);
     try {
-      // Validate guest fields if there are guests
-      if (guestCount > 0) {
-        const guests = data.guests || [];
-        const hasInvalidGuest = guests.some(
-          (guest) => !guest.name || guest.cell.length < 10
-        );
-        if (hasInvalidGuest) {
-          toast.error("Invalid guest details", {
-            description:
-              "Please ensure all guest names and phone numbers are valid.",
-          });
-          setIsLoading(false);
-          return;
-        }
-      }
+      const token = localStorage.getItem("authToken");
+      if (!token) throw new Error("Not authenticated - no token");
 
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      if (!selectedServiceId) throw new Error("Service ID not loaded");
 
-      const guests = data.guests || [];
-      const extraGuests = Math.max(guests.length - freeGuestPassesPerMonth, 0);
-      const extraCharge = extraGuests * guestPassCharge;
+      if (!GYMMASTER_API_KEY) throw new Error("API key missing in environment");
 
-      // Add each selected time slot as a separate booking
+      const resourceMap = Object.fromEntries(
+        resources.map((r) => [r.name, r.id])
+      );
+      const club = clubs.find((c) => c.name === data.location);
+      if (!club) throw new Error("Selected club not found");
+
       for (const slot of data.timeSlots) {
-        addBooking({
+        const { hour, minute } = parseTimeSlot(slot.time);
+        const bookingstart = `${hour.toString().padStart(2, "0")}:${minute
+          .toString()
+          .padStart(2, "0")}:00`;
+        const duration = getSlotDuration();
+        const endHour = Math.floor((hour * 60 + minute + duration) / 60);
+        const endMinute = (minute + duration) % 60;
+        const bookingend = `${endHour.toString().padStart(2, "0")}:${endMinute
+          .toString()
+          .padStart(2, "0")}:00`;
+
+        const bookingParams: Record<string, string> = {
+          api_key: GYMMASTER_API_KEY,
+          token,
+          resourceid: resourceMap[slot.bay].toString(),
+          serviceid: selectedServiceId.toString(),
+          benefitid: "329120",
+          membershipid: "136558440",
+          day: data.date,
+          bookingstart,
+          bookingend,
+          roomid: "",
+          equipmentid: "",
+        };
+        console.log("Booking Request:", {
+          ...bookingParams,
+          serviceName: data.service,
+          bayName: slot.bay,
+        });
+
+        const response = await axios.post(
+          "/api/gymmaster/v1/booking/servicebookings",
+          new URLSearchParams(bookingParams),
+          {
+            headers: {
+              "Content-Type": "application/x-www-form-urlencoded",
+            },
+          }
+        );
+        console.log(
+          "API Response Status:",
+          response.status,
+          "Data:",
+          JSON.stringify(response.data, null, 2)
+        );
+
+        if (response.data.error || !response.data.result) {
+          throw new Error(
+            response.data.error || "Booking failed: No result returned"
+          );
+        }
+        if (response.status !== 200) {
+          throw new Error(
+            response.data.error || "Booking failed, expected 200 OK"
+          );
+        }
+
+        await addBooking({
           date: data.date,
           time: slot.time,
           location: data.location,
           bay: slot.bay,
-          guests: guests,
+          guests: data.guests || [],
           guestPassUsage: {
-            free: Math.min(guests.length, freeGuestPassesPerMonth),
-            charged: extraGuests,
+            free: Math.min((data.guests || []).length, freeGuestPassesPerMonth),
+            charged: Math.max(
+              (data.guests || []).length - freeGuestPassesPerMonth,
+              0
+            ),
           },
         });
       }
 
-      if (guests.length > 0) {
-        guests.forEach((guest) => {
-          toast.info("SMS sent to guest", {
-            description: `A link to sign the waiver was sent to ${guest.name} (${guest.cell})`,
+      if (data.guests?.length) {
+        const referralCode = `GUEST_${
+          localStorage.getItem("memberId") || "123"
+        }`;
+        for (const guest of data.guests) {
+          const res = await fetch("/api/send-sms", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              phoneNumber: guest.cell,
+              referralCode,
+              signupLink: "https://your-app.com/signup",
+            }),
           });
-        });
+          if (!res.ok) throw new Error("SMS failed");
+          toast.info("SMS sent to guest", {
+            description: `A signup link with referral code ${referralCode} was sent to ${guest.name} (${guest.cell})`,
+          });
+        }
       }
 
+      const extraCharge =
+        Math.max((data.guests || []).length - freeGuestPassesPerMonth, 0) *
+        guestPassCharge;
       toast.success("Tee times booked!", {
         description: `Booked ${data.timeSlots.length} time slot(s) at ${
           data.location
-        } on ${data.date}${
-          guests.length ? ` with ${guests.length} guest(s)` : ""
+        } on ${data.date} with ${data.service}${
+          data.guests?.length ? ` with ${data.guests.length} guest(s)` : ""
         }${extraCharge > 0 ? ` (Extra charge: $${extraCharge})` : ""}`,
       });
 
-      // Reset the form and all states
       form.reset({
         location: "",
+        service: "",
         date: "",
         timeSlots: [],
         guests: [],
@@ -275,10 +436,10 @@ export default function BookTeeTime() {
       setSelectedSlots([]);
       setGuestCount(0);
       setShowItinerary(false);
-      form.clearErrors();
-    } catch {
+    } catch (err) {
+      console.error("Booking Error:", err);
       toast.error("Failed to book tee times", {
-        description: "Please try again later.",
+        description: (err as Error).message,
       });
     } finally {
       setIsLoading(false);
@@ -287,9 +448,12 @@ export default function BookTeeTime() {
 
   const isFormValid = () => {
     const values = form.watch();
-    const requiredFieldsValid =
-      values.location && values.date && values.timeSlots.length > 0;
-    return requiredFieldsValid;
+    return (
+      values.location &&
+      values.service &&
+      values.date &&
+      values.timeSlots.length > 0
+    );
   };
 
   return (
@@ -311,7 +475,6 @@ export default function BookTeeTime() {
       >
         <Form {...form}>
           <form className="space-y-6">
-            {/* Choose Date */}
             <FormField
               control={form.control}
               name="date"
@@ -333,7 +496,83 @@ export default function BookTeeTime() {
               )}
             />
 
-            {/* Bring Guests */}
+            <FormField
+              control={form.control}
+              name="location"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-sm sm:text-base flex items-center gap-2">
+                    <MapPin className="h-5 w-5" aria-hidden="true" /> Choose
+                    Location
+                  </FormLabel>
+                  <FormControl>
+                    {isFetchingClubs ? (
+                      <div className="flex items-center gap-2 w-full sm:w-64 p-2 border rounded-md">
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                        <span>Loading locations...</span>
+                      </div>
+                    ) : (
+                      <select
+                        value={field.value}
+                        onChange={(e) => {
+                          field.onChange(e.target.value);
+                          handleLocationChange();
+                        }}
+                        className="w-full sm:w-64 p-2 border rounded-md"
+                      >
+                        <option value="">Select a location</option>
+                        {clubs.map((club) => (
+                          <option key={club.id} value={club.name}>
+                            {club.name}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </FormControl>
+                  <FormMessage className="text-xs sm:text-sm" />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="service"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-sm sm:text-base flex items-center gap-2">
+                    <MapPin className="h-5 w-5" aria-hidden="true" /> Choose
+                    Service
+                  </FormLabel>
+                  <FormControl>
+                    {isFetchingServices ? (
+                      <div className="flex items-center gap-2 w-full sm:w-64 p-2 border rounded-md">
+                        <Loader2 className="h-5 w-5 animate-spin" />
+                        <span>Loading services...</span>
+                      </div>
+                    ) : (
+                      <select
+                        value={field.value}
+                        onChange={(e) => {
+                          field.onChange(e.target.value);
+                          handleServiceChange();
+                        }}
+                        className="w-full sm:w-64 p-2 border rounded-md"
+                        disabled={!location}
+                      >
+                        <option value="">Select a service</option>
+                        {services.map((svc) => (
+                          <option key={svc.serviceid} value={svc.servicename}>
+                            {svc.servicename}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </FormControl>
+                  <FormMessage className="text-xs sm:text-sm" />
+                </FormItem>
+              )}
+            />
+
             <div className="space-y-4">
               <FormLabel className="text-sm sm:text-base flex items-center gap-2">
                 <Users className="h-5 w-5" aria-hidden="true" /> Bring a Guest
@@ -400,39 +639,6 @@ export default function BookTeeTime() {
               )}
             </div>
 
-            {/* Choose Location */}
-            <FormField
-              control={form.control}
-              name="location"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-sm sm:text-base flex items-center gap-2">
-                    <MapPin className="h-5 w-5" aria-hidden="true" /> Choose
-                    Location
-                  </FormLabel>
-                  <FormControl>
-                    <select
-                      value={field.value}
-                      onChange={(e) => {
-                        field.onChange(e.target.value);
-                        handleLocationChange();
-                      }}
-                      className="w-full sm:w-64 p-2 border rounded-md"
-                    >
-                      <option value="">Select a location</option>
-                      {locations.map((loc) => (
-                        <option key={loc} value={loc}>
-                          {loc}
-                        </option>
-                      ))}
-                    </select>
-                  </FormControl>
-                  <FormMessage className="text-xs sm:text-sm" />
-                </FormItem>
-              )}
-            />
-
-            {/* Available Times */}
             <FormField
               control={form.control}
               name="timeSlots"
@@ -442,80 +648,96 @@ export default function BookTeeTime() {
                     Available Times
                   </FormLabel>
                   <div className="mt-2 max-h-96 overflow-y-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead className="text-xs w-[80px] sm:w-[100px] sticky top-0 bg-white">
-                            Time
-                          </TableHead>
-                          {bays.map((bay) => (
-                            <TableHead
-                              key={bay}
-                              className="text-center text-xs w-[60px] sm:w-[80px] sticky top-0 bg-white"
-                            >
-                              {bay}
+                    {isFetchingSlots ? (
+                      <div className="flex items-center justify-center p-4">
+                        <Loader2 className="h-8 w-8 animate-spin" />
+                        <span className="ml-2">Loading time slots...</span>
+                      </div>
+                    ) : resources.length === 0 ? (
+                      <div className="text-center p-4 text-gray-500">
+                        Select a location, service, and date to see available
+                        times
+                      </div>
+                    ) : (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="text-xs w-[80px] sm:w-[100px] sticky top-0 bg-white">
+                              Time
                             </TableHead>
-                          ))}
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {timeSlots.map((time) => (
-                          <TableRow key={time}>
-                            <TableCell className="font-medium text-xs">
-                              {time}
-                            </TableCell>
-                            {bays.map((bay) => {
-                              const isSelected = selectedSlots.some(
-                                (slot) => slot.time === time && slot.bay === bay
-                              );
-                              const isUnavailable = unavailableSlots.has(time);
-                              return (
-                                <TableCell
-                                  key={`${bay}-${time}`}
-                                  className="text-center"
-                                >
-                                  <Button
-                                    type="button"
-                                    variant={
-                                      isSelected
-                                        ? "default"
-                                        : isUnavailable
-                                        ? "destructive"
-                                        : "outline"
-                                    }
-                                    onClick={() => handleTimeSelect(time, bay)}
-                                    className="w-full text-[10px] sm:text-xs py-0.5 sm:py-1 px-1 sm:px-2"
-                                    disabled={
-                                      isUnavailable || !form.watch("location")
-                                    }
-                                    aria-label={
-                                      isSelected
-                                        ? `Selected: ${time} at ${bay}`
-                                        : isUnavailable
-                                        ? `Unavailable: ${time} at ${bay}`
-                                        : `Choose ${time} at ${bay}`
-                                    }
-                                  >
-                                    {isSelected
-                                      ? "Selected"
-                                      : isUnavailable
-                                      ? "N/A"
-                                      : "Select"}
-                                  </Button>
-                                </TableCell>
-                              );
-                            })}
+                            {resources.map((r) => (
+                              <TableHead
+                                key={r.id}
+                                className="text-center text-xs w-[60px] sm:w-[80px] sticky top-0 bg-white"
+                              >
+                                {r.name}
+                              </TableHead>
+                            ))}
                           </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
+                        </TableHeader>
+                        <TableBody>
+                          {timeSlots.map((time) => (
+                            <TableRow key={time}>
+                              <TableCell className="font-medium text-xs">
+                                {time}
+                              </TableCell>
+                              {resources.map((r) => {
+                                const isSelected = selectedSlots.some(
+                                  (s) => s.time === time && s.bay === r.name
+                                );
+                                const isUnavailable = !isSlotAvailable(
+                                  time,
+                                  r.name
+                                );
+                                return (
+                                  <TableCell
+                                    key={`${r.id}-${time}`}
+                                    className="text-center"
+                                  >
+                                    <Button
+                                      type="button"
+                                      variant={
+                                        isSelected
+                                          ? "default"
+                                          : isUnavailable
+                                          ? "destructive"
+                                          : "outline"
+                                      }
+                                      onClick={() =>
+                                        handleTimeSelect(time, r.name)
+                                      }
+                                      className="w-full text-[10px] sm:text-xs py-0.5 sm:py-1 px-1 sm:px-2"
+                                      disabled={
+                                        isUnavailable || !location || !service
+                                      }
+                                      aria-label={
+                                        isSelected
+                                          ? `Selected: ${time} at ${r.name}`
+                                          : isUnavailable
+                                          ? `Unavailable: ${time} at ${r.name}`
+                                          : `Choose ${time} at ${r.name}`
+                                      }
+                                    >
+                                      {isSelected
+                                        ? "Selected"
+                                        : isUnavailable
+                                        ? "N/A"
+                                        : "Select"}
+                                    </Button>
+                                  </TableCell>
+                                );
+                              })}
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    )}
                   </div>
                   <FormMessage className="text-xs sm:text-sm" />
                 </FormItem>
               )}
             />
 
-            {/* Review Itinerary Button */}
             <Dialog open={showItinerary} onOpenChange={setShowItinerary}>
               <DialogTrigger asChild>
                 <Button
@@ -538,6 +760,10 @@ export default function BookTeeTime() {
                   <p>
                     <strong>Location:</strong>{" "}
                     {form.getValues("location") || "Not selected"}
+                  </p>
+                  <p>
+                    <strong>Service:</strong>{" "}
+                    {form.getValues("service") || "Not selected"}
                   </p>
                   <p>
                     <strong>Date:</strong>{" "}

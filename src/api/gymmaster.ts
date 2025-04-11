@@ -107,6 +107,36 @@ interface Member {
   linked_members?: object[];
 }
 
+export interface Resource {
+  id: number;
+  name: string;
+  companyid: number;
+}
+
+export interface Session {
+  day: string; // YYYY-MM-DD
+  rid: number;
+  bookingstart: string; // HH:MM:SS
+  bookingend: string; // HH:MM:SS
+}
+
+export interface Service {
+  serviceid: number;
+  servicename: string;
+  membershipid?: number;
+  benefitid?: number;
+}
+
+export interface MemberServiceBooking {
+  id: number;
+  day: string; // YYYY-MM-DD
+  starttime: string; // HH:MM:SS
+  start_str: string; // HH:MM:SS
+  endtime: string; // HH:MM:SS
+  name: string; // Resource name (bay)
+  type: string;
+}
+
 // Member Portal API Functions
 export const fetchCompanies = async (): Promise<Club[]> => {
   const response = await axios.get<{ result: Club[] }>(
@@ -289,9 +319,66 @@ export const updateMemberProfile = async (
 
 export const fetchClubs = async (): Promise<Club[]> => {
   const response = await axios.get<{ result: Club[]; error: string | null }>(
-    "/portal/api/v1/companies",
-    { params: { api_key: GYMMASTER_API_KEY } }
+    "/api/gymmaster/v1/companies",
+    { params: { api_key: GYMMASTER_API_KEY }, withCredentials: true }
   );
   if (response.data.error) throw new Error(response.data.error);
   return response.data.result;
+};
+
+export const fetchServices = async (
+  token: string, // Keep for now, but we'll phase it out
+  resourceid?: number,
+  companyid?: number
+): Promise<Service[]> => {
+  const response = await axios.get<{ result: Service[]; error: string | null }>(
+    "/api/gymmaster/v1/booking/services",
+    {
+      params: {
+        api_key: GYMMASTER_API_KEY,
+        token,
+        resourceid,
+        companyid,
+      },
+      withCredentials: true, // Allow cookies to be sent
+    }
+  );
+  if (response.data.error) throw new Error(response.data.error);
+  return response.data.result;
+};
+
+export const fetchResourcesAndSessions = async (
+  token: string,
+  serviceid: number,
+  day: string,
+  companyid: number
+): Promise<{ dates: Session[]; resources: Resource[] }> => {
+  const response = await axios.get<{
+    result: { dates: Session[]; resources: Resource[] };
+    error: string | null;
+  }>("/api/gymmaster/v1/booking/resources_and_sessions", {
+    params: {
+      api_key: GYMMASTER_API_KEY,
+      token,
+      serviceid,
+      day,
+      companyid,
+    },
+    withCredentials: true,
+  });
+  if (response.data.error) throw new Error(response.data.error);
+  return response.data.result;
+};
+
+export const fetchMemberBookings = async (
+  token: string
+): Promise<MemberServiceBooking[]> => {
+  const response = await axios.get<{
+    servicebookings: MemberServiceBooking[];
+    error: string | null;
+  }>("/api/gymmaster/v2/member/bookings", {
+    params: { api_key: GYMMASTER_API_KEY, token },
+  });
+  if (response.data.error) throw new Error(response.data.error);
+  return response.data.servicebookings;
 };

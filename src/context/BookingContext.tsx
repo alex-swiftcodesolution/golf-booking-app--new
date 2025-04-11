@@ -1,7 +1,13 @@
 "use client";
-import { createContext, useContext, useState, ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  ReactNode,
+} from "react";
+import { fetchMemberBookings } from "@/api/gymmaster";
 
-// Define the Booking type
 interface Booking {
   id: number;
   date: string;
@@ -12,52 +18,50 @@ interface Booking {
   guestPassUsage: { free: number; charged: number };
 }
 
-// Define the context type
 interface BookingContextType {
   bookings: Booking[];
-  addBooking: (booking: Omit<Booking, "id">) => void;
+  addBooking: (booking: Omit<Booking, "id">) => Promise<number>;
   deleteBooking: (id: number) => void;
   updateBooking: (id: number, updatedBooking: Partial<Booking>) => void;
 }
 
 const BookingContext = createContext<BookingContextType | undefined>(undefined);
 
-// Mock initial bookings
-const initialBookings: Booking[] = [
-  {
-    id: 1,
-    date: "2025-03-22",
-    time: "9:00 AM",
-    location: "Location 1",
-    bay: "Bay 1",
-    guests: [
-      { name: "Jane Doe", cell: "+1-123-456-7890" },
-      { name: "John Smith", cell: "+1-234-567-8901" },
-    ],
-    guestPassUsage: { free: 2, charged: 0 },
-  },
-  {
-    id: 2,
-    date: "2025-03-23",
-    time: "2:00 PM",
-    location: "Location 2",
-    bay: "Bay 2",
-    guests: [],
-    guestPassUsage: { free: 0, charged: 0 },
-  },
-];
-
 export const BookingProvider = ({ children }: { children: ReactNode }) => {
-  const [bookings, setBookings] = useState<Booking[]>(initialBookings);
+  const [bookings, setBookings] = useState<Booking[]>([]);
 
-  const addBooking = (booking: Omit<Booking, "id">) => {
-    setBookings((prev) => [
-      ...prev,
-      {
-        ...booking,
-        id: Date.now(), // More unique than incremental IDs
-      },
-    ]);
+  useEffect(() => {
+    const token = localStorage.getItem("authToken");
+    if (token) {
+      fetchMemberBookings(token)
+        .then((fetchedBookings) => {
+          // Ensure fetchedBookings is an array; default to empty array if undefined/null
+          const validBookings = Array.isArray(fetchedBookings)
+            ? fetchedBookings
+            : [];
+          setBookings(
+            validBookings.map((b) => ({
+              id: b.id,
+              date: b.day,
+              time: b.start_str || b.starttime, // Use start_str (HH:MMAM) if available, fallback to starttime
+              location: "Simcognito's Golf 2/47 Club", // Adjust if multi-club
+              bay: b.name,
+              guests: [], // API doesn’t return guests—local only
+              guestPassUsage: { free: 0, charged: 0 }, // Placeholder
+            }))
+          );
+        })
+        .catch((err) => {
+          console.error("Failed to fetch bookings:", err);
+          setBookings([]); // Set empty array on error to avoid breaking the app
+        });
+    }
+  }, []);
+
+  const addBooking = async (booking: Omit<Booking, "id">): Promise<number> => {
+    const newId = Date.now(); // Temp until POST returns real ID
+    setBookings((prev) => [...prev, { ...booking, id: newId }]);
+    return newId; // Replace with real ID from POST response later
   };
 
   const deleteBooking = (id: number) => {
