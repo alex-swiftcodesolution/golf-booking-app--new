@@ -1,20 +1,23 @@
 import axios from "axios";
 
+// Server-side env vars (no NEXT_PUBLIC_ unless client-side)
 const GYMMASTER_API_KEY = process.env.NEXT_PUBLIC_GYMMASTER_API_KEY;
+const GYMMASTER_STAFF_API_KEY = process.env.NEXT_PUBLIC_GYMMASTER_STAFF_API_KEY;
 const GATEKEEPER_USERNAME = process.env.NEXT_PUBLIC_GATEKEEPER_USERNAME;
 const GATEKEEPER_API_KEY = process.env.NEXT_PUBLIC_GATEKEEPER_API_KEY;
 
 export interface Club {
   id: number;
   name: string;
+  billingprovider: string;
 }
 
 export interface Door {
-  id: number; // doorid
+  id: number;
   name: string;
-  companyid: number; // Links to club
+  companyid: number;
   siteid: number;
-  status: number; // 1 = active
+  status: number;
 }
 
 export interface Membership {
@@ -31,7 +34,7 @@ export interface MemberMembership {
   name: string;
   price: string;
   startdate: string;
-  enddate: string; // "Open Ended" or ISO date (YYYY-MM-DD)
+  enddate: string;
   visitsused: number;
   visitlimit: number;
   companyid?: number;
@@ -47,11 +50,7 @@ export interface SignupResponse {
 }
 
 export interface LoginResponse {
-  result: {
-    token: string;
-    memberid: number;
-    expires: number;
-  };
+  result: { token: string; memberid: number; expires: number };
   error?: string;
 }
 
@@ -82,7 +81,7 @@ export interface KioskCheckinResponse {
   error?: string;
 }
 
-interface Member {
+export interface Member {
   firstname: string;
   surname: string;
   email?: string;
@@ -105,6 +104,9 @@ interface Member {
   totalpts?: number;
   totalclasses?: number;
   linked_members?: object[];
+  memberid: string;
+  "Referral Code"?: string;
+  "Referral Code Generated"?: string; // Added to fix type errors
 }
 
 export interface Resource {
@@ -114,10 +116,10 @@ export interface Resource {
 }
 
 export interface Session {
-  day: string; // YYYY-MM-DD
+  day: string;
   rid: number;
-  bookingstart: string; // HH:MM:SS
-  bookingend: string; // HH:MM:SS
+  bookingstart: string;
+  bookingend: string;
 }
 
 export interface Service {
@@ -129,41 +131,51 @@ export interface Service {
 
 export interface MemberServiceBooking {
   id: number;
-  day: string; // YYYY-MM-DD
-  starttime: string; // HH:MM:SS
-  start_str: string; // HH:MM:SS
-  endtime: string; // HH:MM:SS
-  name: string; // Resource name (bay)
+  day: string;
+  starttime: string;
+  start_str: string;
+  endtime: string;
+  name: string;
   type: string;
 }
 
-// Member Portal API Functions
-export const fetchCompanies = async (): Promise<Club[]> => {
-  const response = await axios.get<{ result: Club[] }>(
-    "/api/gymmaster/v1/companies",
-    { params: { api_key: GYMMASTER_API_KEY } }
-  );
-  return response.data.result;
+// API Helpers
+const getConfig = (params?: object) => ({
+  params: { api_key: GYMMASTER_API_KEY, ...params },
+});
+const postConfig = {
+  headers: { "Content-Type": "application/x-www-form-urlencoded" },
+  transformRequest: [
+    (data: Record<string, string>) => new URLSearchParams(data).toString(),
+  ],
 };
 
-export const fetchMemberships = async (): Promise<Membership[]> => {
-  const response = await axios.get<{ result: Membership[] }>(
-    "/api/gymmaster/v1/memberships",
-    { params: { api_key: GYMMASTER_API_KEY } }
-  );
-  return response.data.result;
-};
+export const fetchCompanies = async (): Promise<Club[]> =>
+  (
+    await axios.get<{ result: Club[] }>(
+      "/api/gymmaster/v1/companies",
+      getConfig()
+    )
+  ).data.result;
+
+export const fetchMemberships = async (): Promise<Membership[]> =>
+  (
+    await axios.get<{ result: Membership[] }>(
+      "/api/gymmaster/v1/memberships",
+      getConfig()
+    )
+  ).data.result;
 
 export const fetchWaiver = async (
   membershipTypeId: string,
   token?: string
-): Promise<string> => {
-  const response = await axios.get<{ result: { body: string }[] }>(
-    `/api/gymmaster/v2/membership/${membershipTypeId}/agreement`,
-    { params: { api_key: GYMMASTER_API_KEY, token } }
-  );
-  return response.data.result[0]?.body || "No waiver content available.";
-};
+): Promise<string> =>
+  (
+    await axios.get<{ result: { body: string }[] }>(
+      `/api/gymmaster/v2/membership/${membershipTypeId}/agreement`,
+      getConfig({ token })
+    )
+  ).data.result[0]?.body || "No waiver content";
 
 export const saveWaiver = async (
   signature: string,
@@ -171,7 +183,7 @@ export const saveWaiver = async (
   token: string
 ): Promise<string> => {
   const base64Data = signature.replace(/^data:image\/\w+;base64,/, "");
-  const response = await axios.post<SignatureResponse>(
+  const res = await axios.post<SignatureResponse>(
     "/api/gymmaster/v2/member/signature",
     {
       api_key: GYMMASTER_API_KEY,
@@ -180,29 +192,45 @@ export const saveWaiver = async (
       membershipid: membershipId,
       source: "Signup Form",
     },
-    {
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      transformRequest: [(data) => new URLSearchParams(data).toString()],
-    }
+    postConfig
   );
-  if (response.data.error) throw new Error(response.data.error);
-  return response.data.result;
+  if (res.data.error) throw new Error(res.data.error);
+  return res.data.result;
 };
 
 export const login = async (
   email: string,
   password: string
 ): Promise<LoginResponse["result"]> => {
-  const response = await axios.post<LoginResponse>(
+  console.log("Member login attempt:", {
+    email,
+    api_key: GYMMASTER_API_KEY,
+  });
+  const res = await axios.post<LoginResponse>(
     "/api/gymmaster/v1/login",
     { api_key: GYMMASTER_API_KEY, email, password },
-    {
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      transformRequest: [(data) => new URLSearchParams(data).toString()],
-    }
+    postConfig
   );
-  if (response.data.error) throw new Error(response.data.error);
-  return response.data.result;
+  console.log("Member login response:", res.data);
+  if (res.data.error) throw new Error(res.data.error);
+  return res.data.result;
+};
+
+export const adminLogin = async (
+  memberid: string
+): Promise<LoginResponse["result"]> => {
+  console.log("Admin login attempt:", {
+    memberid,
+    api_key: GYMMASTER_STAFF_API_KEY,
+  });
+  const res = await axios.post<LoginResponse>(
+    "/api/gymmaster/v1/login",
+    { api_key: GYMMASTER_STAFF_API_KEY, memberid },
+    postConfig
+  );
+  console.log("Admin login response:", res.data);
+  if (res.data.error) throw new Error(res.data.error);
+  return res.data.result;
 };
 
 export const signup = async (data: {
@@ -217,61 +245,57 @@ export const signup = async (data: {
   addressstreet: string;
   startdate: string;
   firstpaymentdate: string;
+  "Referral Code"?: string;
 }): Promise<SignupResponse> => {
-  const response = await axios.post<SignupResponse>(
+  const res = await axios.post<SignupResponse>(
     "/api/gymmaster/v1/signup",
     { api_key: GYMMASTER_API_KEY, ...data },
-    {
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      transformRequest: [(data) => new URLSearchParams(data).toString()],
-    }
+    postConfig
   );
-  if (response.data.error) throw new Error(response.data.error);
-  return response.data;
+  if (res.data.error) throw new Error(res.data.error);
+  return res.data;
 };
 
 export const fetchOutstandingBalance = async (
   token: string
 ): Promise<MemberChargeResponse> => {
-  const response = await axios.get<MemberChargeResponse>(
+  const res = await axios.get<MemberChargeResponse>(
     "/api/gymmaster/v1/member/outstandingbalance",
-    { params: { api_key: GYMMASTER_API_KEY, token } }
+    getConfig({ token })
   );
-  if (response.data.error) throw new Error(response.data.error);
-  return response.data;
+  if (res.data.error) throw new Error(res.data.error);
+  return res.data;
 };
 
 export const kioskCheckin = async (
   token: string,
   doorid: number
 ): Promise<KioskCheckinResponse["result"]> => {
-  const response = await axios.post<KioskCheckinResponse>(
+  const res = await axios.post<KioskCheckinResponse>(
     "/api/gymmaster/v2/member/kiosk/checkin",
     { api_key: GYMMASTER_API_KEY, token, doorid },
     { headers: { "Content-Type": "application/json" } }
   );
-  if (response.data.error) throw new Error(response.data.error);
-  return response.data.result;
+  if (res.data.error) throw new Error(res.data.error);
+  return res.data.result;
 };
 
 export const fetchMemberMemberships = async (
   token: string
 ): Promise<MemberMembership[]> => {
-  const response = await axios.get<{
+  const res = await axios.get<{
     result: MemberMembership[];
     error: string | null;
-  }>("/api/gymmaster/v1/member/memberships", {
-    params: { api_key: GYMMASTER_API_KEY, token },
-  });
-  if (response.data.error) throw new Error(response.data.error);
-  return response.data.result;
+  }>("/api/gymmaster/v1/member/memberships", getConfig({ token }));
+  if (res.data.error) throw new Error(res.data.error);
+  return res.data.result;
 };
 
 export const fetchDoors = async (): Promise<Door[]> => {
   const auth = Buffer.from(
     `${GATEKEEPER_USERNAME}:${GATEKEEPER_API_KEY}`
   ).toString("base64");
-  const response = await axios.get<{ doors: Door[]; error: string | null }>(
+  const res = await axios.get<{ doors: Door[]; error: string | null }>(
     "/api/gatekeeper/doors",
     {
       headers: {
@@ -280,71 +304,59 @@ export const fetchDoors = async (): Promise<Door[]> => {
       },
     }
   );
-  if (response.data.error) throw new Error(response.data.error);
-  return response.data.doors;
+  if (res.data.error) throw new Error(res.data.error);
+  return res.data.doors;
 };
 
 export const fetchMemberDetails = async (token: string): Promise<Member> => {
-  const response = await axios.get<{ result: Member; error: string | null }>(
+  const res = await axios.get<{ result: Member; error: string | null }>(
     "/api/gymmaster/v1/member/profile",
-    { params: { api_key: GYMMASTER_API_KEY, token } }
+    getConfig({ token })
   );
-  if (response.data.error) throw new Error(response.data.error);
-  return response.data.result;
+  if (res.data.error) throw new Error(res.data.error);
+  return res.data.result;
 };
 
 export const updateMemberProfile = async (
   token: string,
   data: Partial<Member>
 ): Promise<string> => {
+  if (!GYMMASTER_API_KEY) {
+    throw new Error("GYMMASTER_API_KEY is missing in environment");
+  }
+
   const formData = new FormData();
-  formData.append("api_key", GYMMASTER_API_KEY || "");
-  formData.append("token", token);
-  // Only append fields that are provided
+  formData.append("api_key", GYMMASTER_API_KEY); // Now guaranteed to be string
+  formData.append("token", token); // Token is already string from param
   Object.entries(data).forEach(([key, value]) => {
-    if (value !== undefined && value !== null) {
-      formData.append(key, String(value));
+    if (value != null) {
+      formData.append(key, String(value)); // String() ensures no undefined
     }
   });
 
-  const response = await axios.post<{ result: string; error: string | null }>(
+  const res = await axios.post<{ result: string; error: string | null }>(
     "/api/gymmaster/v1/member/profile",
     formData,
     { headers: { "Content-Type": "multipart/form-data" } }
   );
 
-  if (response.data.error) throw new Error(response.data.error);
-  return response.data.result;
+  if (res.data.error) throw new Error(res.data.error);
+  return res.data.result;
 };
 
-export const fetchClubs = async (): Promise<Club[]> => {
-  const response = await axios.get<{ result: Club[]; error: string | null }>(
-    "/api/gymmaster/v1/companies",
-    { params: { api_key: GYMMASTER_API_KEY }, withCredentials: true }
-  );
-  if (response.data.error) throw new Error(response.data.error);
-  return response.data.result;
-};
+export const fetchClubs = fetchCompanies; // Alias
 
 export const fetchServices = async (
-  token: string, // Keep for now, but we'll phase it out
+  token: string,
   resourceid?: number,
   companyid?: number
 ): Promise<Service[]> => {
-  const response = await axios.get<{ result: Service[]; error: string | null }>(
+  const res = await axios.get<{ result: Service[]; error: string | null }>(
     "/api/gymmaster/v1/booking/services",
-    {
-      params: {
-        api_key: GYMMASTER_API_KEY,
-        token,
-        resourceid,
-        companyid,
-      },
-      withCredentials: true, // Allow cookies to be sent
-    }
+    getConfig({ token, resourceid, companyid })
   );
-  if (response.data.error) throw new Error(response.data.error);
-  return response.data.result;
+  if (res.data.error) throw new Error(res.data.error);
+  return res.data.result;
 };
 
 export const fetchResourcesAndSessions = async (
@@ -353,32 +365,57 @@ export const fetchResourcesAndSessions = async (
   day: string,
   companyid: number
 ): Promise<{ dates: Session[]; resources: Resource[] }> => {
-  const response = await axios.get<{
+  const res = await axios.get<{
     result: { dates: Session[]; resources: Resource[] };
     error: string | null;
-  }>("/api/gymmaster/v1/booking/resources_and_sessions", {
-    params: {
-      api_key: GYMMASTER_API_KEY,
-      token,
-      serviceid,
-      day,
-      companyid,
-    },
-    withCredentials: true,
-  });
-  if (response.data.error) throw new Error(response.data.error);
-  return response.data.result;
+  }>(
+    "/api/gymmaster/v1/booking/resources_and_sessions",
+    getConfig({ token, serviceid, day, companyid })
+  );
+  if (res.data.error) throw new Error(res.data.error);
+  return res.data.result;
 };
 
 export const fetchMemberBookings = async (
   token: string
 ): Promise<MemberServiceBooking[]> => {
-  const response = await axios.get<{
+  const res = await axios.get<{
     servicebookings: MemberServiceBooking[];
     error: string | null;
-  }>("/api/gymmaster/v2/member/bookings", {
-    params: { api_key: GYMMASTER_API_KEY, token },
+  }>("/api/gymmaster/v2/member/bookings", getConfig({ token }));
+  if (res.data.error) throw new Error(res.data.error);
+  return res.data.servicebookings;
+};
+
+export const storeReferralCode = async (
+  code: string,
+  memberId: string,
+  token: string
+): Promise<void> => {
+  const profile = await fetchMemberDetails(token);
+  const currentCodes = profile["Referral Code Generated"] || "";
+  await updateMemberProfile(token, {
+    memberid: memberId,
+    "Referral Code Generated": currentCodes ? `${currentCodes}\n${code}` : code,
   });
-  if (response.data.error) throw new Error(response.data.error);
-  return response.data.servicebookings;
+};
+
+export const validateReferral = async (
+  referralCode: string,
+  token: string
+): Promise<boolean> => {
+  try {
+    const res = await axios.get<{ result: Member[] }>(
+      "/api/gymmaster/v1/members",
+      getConfig({ token })
+    );
+    const isValid = res.data.result.some(
+      (member) => member["Referral Code"] === referralCode
+    );
+    console.log("Referral validation:", { referralCode, isValid });
+    return isValid;
+  } catch (error) {
+    console.error("Referral validation failed:", error);
+    return false;
+  }
 };

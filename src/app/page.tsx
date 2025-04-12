@@ -1,5 +1,5 @@
 "use client";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -37,13 +37,35 @@ import SignatureCanvas from "react-signature-canvas";
 import {
   fetchCompanies,
   fetchMemberships,
-  fetchWaiver,
+  signup,
   saveWaiver,
   login,
-  signup,
-  Club,
-  Membership,
+  fetchWaiver,
+  validateReferral,
+  type Club,
+  type Membership,
 } from "@/api/gymmaster";
+
+interface SquarePayments {
+  card(): Promise<SquareCard>;
+}
+
+interface SquareCard {
+  attach(element: string): Promise<void>;
+  tokenize(): Promise<{
+    status: string;
+    token?: string;
+    errors?: { message: string }[];
+  }>;
+}
+
+declare global {
+  interface Window {
+    Square: {
+      payments(appId: string, locationId: string): SquarePayments;
+    };
+  }
+}
 
 const signUpSchema = z
   .object({
@@ -53,60 +75,75 @@ const signUpSchema = z
     dob: z
       .string()
       .min(1, "Date of birth is required")
-      .refine(
-        (dob) => {
-          const today = new Date();
-          const birthDate = new Date(dob);
-          const age = today.getFullYear() - birthDate.getFullYear();
-          const monthDiff = today.getMonth() - birthDate.getMonth();
-          return monthDiff < 0 ||
-            (monthDiff === 0 && today.getDate() < birthDate.getDate())
-            ? age - 1 >= 18
-            : age >= 18;
-        },
-        { message: "You must be at least 18 years old" }
-      ),
-    email: z.string().email("Please enter a valid email"),
+      .refine((dob) => {
+        const birthDate = new Date(dob);
+        const age = new Date().getFullYear() - birthDate.getFullYear();
+        const monthDiff = new Date().getMonth() - birthDate.getMonth();
+        return monthDiff < 0 ||
+          (monthDiff === 0 && new Date().getDate() < birthDate.getDate())
+          ? age - 1 >= 18
+          : age >= 18;
+      }, "You must be at least 18 years old"),
+    email: z.string().email("Invalid email"),
     password: z.string().min(6, "Password must be at least 6 characters"),
-    confirmPassword: z.string().min(6, "Please confirm your password"),
+    confirmPassword: z.string().min(6, "Confirm your password"),
     cell: z
       .string()
-      .min(10, "Please enter a valid phone number")
       .regex(
         /^\+?\d{1,3}[-.\s]?\d{3}[-.\s]?\d{3}[-.\s]?\d{4}$/,
-        "Please enter a valid phone number (e.g., +1-123-456-7890)"
+        "Invalid phone number"
       ),
     referringMemberName: z.string().min(1, "Referring member name is required"),
-    location: z.string().min(1, "Please select a location"),
-    membershipType: z.string().min(1, "Please select a membership type"),
-    waiverSignature: z.string().min(1, "Please sign the waiver"),
+    location: z.string().min(1, "Select a location"),
+    membershipType: z.string().min(1, "Select a membership type"),
+    waiverSignature: z.string().min(1, "Sign the waiver"),
     billingAddress: z.string().min(1, "Billing address is required"),
-    // cardNonce: z.string().min(1, "Payment information is required"),
+    cardNonce: z.string().optional(),
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: "Passwords must match",
     path: ["confirmPassword"],
+  })
+  .superRefine((data, ctx) => {
+    const price = parseFloat(
+      membershipTypes
+        .find((m) => m.id.toString() === data.membershipType)
+        ?.price.replace("$", "") || "0"
+    );
+    if (price > 0 && !data.cardNonce) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Payment info required",
+        path: ["cardNonce"],
+      });
+    }
   });
 
 const loginSchema = z.object({
-  email: z.string().email("Please enter a valid email"),
+  email: z.string().email("Invalid email"),
   password: z.string().min(1, "Password is required"),
 });
 
 type SignUpFormData = z.infer<typeof signUpSchema>;
 type LoginFormData = z.infer<typeof loginSchema>;
 
+export const membershipTypes: Membership[] = [];
+
 export default function Home() {
-  const [isSignUpLoading, setIsSignUpLoading] = useState(false);
-  const [isLoginLoading, setIsLoginLoading] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [currentStep, setCurrentStep] = useState(1);
+  const [adminToken, setAdminToken] = useState<string | null>(null);
+  const [loading, setLoading] = useState({ signup: false, login: false });
+  const [showPasswords, setShowPasswords] = useState({
+    password: false,
+    confirm: false,
+  });
+  const [step, setStep] = useState(1);
   const [isOver18, setIsOver18] = useState<boolean | null>(null);
   const [locations, setLocations] = useState<Club[]>([]);
   const [membershipTypes, setMembershipTypes] = useState<Membership[]>([]);
   const [waiverContent, setWaiverContent] = useState("");
-  // const [paymentClient, setPaymentClient] = useState<any>(null);
+  const [squarePayments, setSquarePayments] = useState<SquarePayments | null>(
+    null
+  );
   const router = useRouter();
   const sigCanvas = useRef<SignatureCanvas>(null);
 
@@ -131,73 +168,97 @@ export default function Home() {
       membershipType: "",
       waiverSignature: "",
       billingAddress: "",
-      // cardNonce: "",
+      cardNonce: "",
     },
   });
 
-  useEffect(() => {
-    // const loadSquareSdk = async () => {
-    //   if (!window.Square) {
-    //     const script = document.createElement("script");
-    //     script.src = "https://js.squarecdn.com/square.js";
-    //     script.async = true;
-    //     script.onload = () => {
-    //       const client = new window.Square.payments(
-    //         process.env.NEXT_PUBLIC_SQUARE_APP_ID,
-    //         process.env.NEXT_PUBLIC_SQUARE_LOCATION_ID
-    //       );
-    //       setPaymentClient(client);
-    //     };
-    //     document.body.appendChild(script);
-    //   }
-    // };
+  const isPaymentRequired = useCallback(() => {
+    return (
+      parseFloat(
+        membershipTypes
+          .find(
+            (m) => m.id.toString() === signUpForm.getValues("membershipType")
+          )
+          ?.price.replace("$", "") || "0"
+      ) > 0
+    );
+  }, [membershipTypes, signUpForm]);
 
-    const fetchData = async () => {
+  useEffect(() => {
+    const fetchAdminToken = async () => {
       try {
-        const companies = await fetchCompanies();
-        setLocations(companies);
-        const memberships = await fetchMemberships();
-        setMembershipTypes(memberships);
+        const res = await fetch("/api/get-admin-token");
+        const data = await res.json();
+        console.log("Admin token:", data);
+        if (!res.ok) throw new Error(data.error || "Admin token fetch failed");
+        setAdminToken(data.token);
       } catch (error) {
-        toast.error("Failed to load data", {
-          description: error instanceof Error ? error.message : "Unknown error",
-        });
+        console.error("Admin token error:", error);
+        toast.error("Admin login failed - referral validation unavailable");
       }
     };
 
-    // loadSquareSdk();
+    const loadSquareSdk = async () => {
+      if (!window.Square) {
+        const script = document.createElement("script");
+        script.src = "https://sandbox.web.squarecdn.com/v1/square.js";
+        script.async = true;
+        script.onload = () =>
+          setSquarePayments(
+            window.Square.payments(
+              process.env.NEXT_PUBLIC_SQUARE_APP_ID!,
+              process.env.NEXT_PUBLIC_SQUARE_LOCATION_ID!
+            )
+          );
+        script.onerror = () => toast.error("Failed to load Square SDK");
+        document.body.appendChild(script);
+      }
+    };
+
+    const fetchData = async () => {
+      try {
+        setLocations((await fetchCompanies()) || []);
+        setMembershipTypes((await fetchMemberships()) || []);
+      } catch (error) {
+        toast.error("Failed to load data", { description: String(error) });
+        setLocations([]);
+        setMembershipTypes([]);
+      }
+    };
+
+    fetchAdminToken();
+    loadSquareSdk();
     fetchData();
   }, []);
 
-  // useEffect(() => {
-  //   if (paymentClient && currentStep === 3) {
-  //     const initializeCard = async () => {
-  //       try {
-  //         const card = await paymentClient.card();
-  //         await card.attach("#card-container");
-  //         signUpForm.register("cardNonce");
-  //         card.addEventListener("submit", async () => {
-  //           const result = await card.tokenize();
-  //           if (result.status === "OK") {
-  //             signUpForm.setValue("cardNonce", result.token);
-  //           } else {
-  //             toast.error("Payment initialization failed", {
-  //               description: result.errors?.[0]?.message || "Unknown error",
-  //             });
-  //           }
-  //         });
-  //       } catch (error) {
-  //         toast.error("Failed to initialize payment", {
-  //           description: error instanceof Error ? error.message : "Unknown error",
-  //         });
-  //       }
-  //     };
-  //     initializeCard();
-  //   }
-  // }, [paymentClient, currentStep, signUpForm]);
+  useEffect(() => {
+    if (squarePayments && step === 4 && isPaymentRequired()) {
+      const initCard = async () => {
+        try {
+          const card = await squarePayments.card();
+          await card.attach("#card-container");
+          const tokenize = async () => {
+            const result = await card.tokenize();
+            if (result.status === "OK" && result.token)
+              signUpForm.setValue("cardNonce", result.token);
+            else
+              toast.error("Payment failed", {
+                description: result.errors?.[0]?.message,
+              });
+          };
+          const submitBtn = document.getElementById("card-submit");
+          submitBtn?.addEventListener("click", tokenize);
+          return () => submitBtn?.removeEventListener("click", tokenize);
+        } catch (error) {
+          toast.error("Payment init failed", { description: String(error) });
+        }
+      };
+      initCard();
+    }
+  }, [squarePayments, step, signUpForm, isPaymentRequired]);
 
   const onLoginSubmit = async (data: LoginFormData) => {
-    setIsLoginLoading(true);
+    setLoading((prev) => ({ ...prev, login: true }));
     try {
       const { token, memberid, expires } = await login(
         data.email,
@@ -205,36 +266,45 @@ export default function Home() {
       );
       localStorage.setItem("authToken", token);
       localStorage.setItem("memberId", memberid.toString());
-      const expiresInMs = expires * 1000;
       localStorage.setItem(
         "tokenExpires",
-        (Date.now() + expiresInMs).toString()
+        (Date.now() + expires * 1000).toString()
       );
-
-      toast.success("Logged in!", {
-        description: `Welcome back, ${data.email}!`,
-      });
+      toast.success(`Welcome back, ${data.email}!`);
       router.push("/dashboard");
     } catch (error) {
-      toast.error("Login failed", {
-        description: error instanceof Error ? error.message : "Unknown error",
-      });
+      toast.error("Login failed", { description: String(error) });
     } finally {
-      setIsLoginLoading(false);
+      setLoading((prev) => ({ ...prev, login: false }));
     }
   };
 
   const onSignUpSubmit = async (data: SignUpFormData) => {
-    setIsSignUpLoading(true);
+    setLoading((prev) => ({ ...prev, signup: true }));
     try {
-      const validReferralCode = "REF12345"; // Only mocked part
-      if (data.referralCode !== validReferralCode) {
-        signUpForm.setError("referralCode", {
-          message: "Invalid referral code",
+      if (!adminToken) throw new Error("Admin token missing");
+      const isReferralValid = await validateReferral(
+        data.referralCode,
+        adminToken
+      );
+      if (!isReferralValid) throw new Error("Invalid referral code");
+
+      const price = parseFloat(
+        membershipTypes
+          .find((m) => m.id.toString() === data.membershipType)
+          ?.price.replace("$", "") || "0"
+      );
+      if (price > 0) {
+        const paymentRes = await fetch("/api/process-payment", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            nonce: data.cardNonce,
+            amount: price.toString(),
+          }),
         });
-        setCurrentStep(1);
-        setIsSignUpLoading(false);
-        return;
+        if (!paymentRes.ok)
+          throw new Error((await paymentRes.json()).error || "Payment failed");
       }
 
       const signupData = {
@@ -244,95 +314,77 @@ export default function Home() {
         email: data.email,
         password: data.password,
         phonecell: data.cell,
+        addressstreet: data.billingAddress,
         membershiptypeid: data.membershipType,
         companyid: data.location,
-        addressstreet: data.billingAddress,
         startdate: new Date().toISOString().split("T")[0],
         firstpaymentdate: new Date().toISOString().split("T")[0],
+        "Referral Code": data.referralCode,
       };
-      const {
-        token: authToken,
-        memberid,
-        membershipid,
-        expires,
-      } = await signup(signupData);
-
-      localStorage.setItem("authToken", authToken);
+      const { token, memberid, membershipid, expires } = await signup(
+        signupData
+      );
+      localStorage.setItem("authToken", token);
       localStorage.setItem("memberId", memberid);
-      const expiresInMs = expires * 1000;
       localStorage.setItem(
         "tokenExpires",
-        (Date.now() + expiresInMs).toString()
+        (Date.now() + expires * 1000).toString()
       );
 
-      await saveWaiver(data.waiverSignature, membershipid, authToken);
-
-      // const owingAmount = await chargeMember(memberid, authToken);
-      // const squarePaymentId = await processPayment(owingAmount, data.cardNonce);
-      // toast.success("Payment processed via Square!", {
-      //   description: `Payment ID: ${squarePaymentId}`,
-      // });
-
-      toast.success("Sign-up successful!", {
-        description: `Welcome aboard, ${data.firstName}! Your membership is active.`,
-      });
-      signUpForm.reset();
-      setCurrentStep(1);
-      setIsOver18(null);
-      router.push("/dashboard");
+      await saveWaiver(data.waiverSignature, membershipid, token);
+      toast.success(
+        `Welcome, ${data.firstName}! Your ${
+          price > 0 ? "payment and " : ""
+        }membership is set.`
+      );
+      setStep(5);
     } catch (error) {
-      toast.error("Sign-up failed", {
-        description: error instanceof Error ? error.message : "Unknown error",
-      });
+      toast.error("Sign-up failed", { description: String(error) });
+      setStep(1);
     } finally {
-      setIsSignUpLoading(false);
+      setLoading((prev) => ({ ...prev, signup: false }));
     }
   };
 
   const nextStep = async () => {
-    const fieldsToValidate: (keyof SignUpFormData)[] =
-      currentStep === 1
-        ? [
-            "referralCode",
-            "firstName",
-            "lastName",
-            "dob",
-            "email",
-            "password",
-            "confirmPassword",
-            "cell",
-          ]
-        : currentStep === 2
-        ? ["referringMemberName", "location", "membershipType"]
-        : [];
-
-    const isValid = await signUpForm.trigger(fieldsToValidate);
-    if (!isValid) {
-      toast.error("Please fix errors in this step before proceeding.");
+    const fields = [
+      [
+        "referralCode",
+        "firstName",
+        "lastName",
+        "dob",
+        "email",
+        "password",
+        "confirmPassword",
+        "cell",
+      ],
+      ["referringMemberName", "location", "membershipType"],
+      ["waiverSignature"],
+      ["billingAddress", ...(isPaymentRequired() ? ["cardNonce"] : [])],
+    ][step - 1] as (keyof SignUpFormData)[];
+    if (!(await signUpForm.trigger(fields))) {
+      toast.error("Fix errors before proceeding");
       return;
     }
-
-    if (currentStep === 2 && signUpForm.getValues("membershipType")) {
-      const waiver = await fetchWaiver(signUpForm.getValues("membershipType"));
-      setWaiverContent(waiver);
-    }
-    setCurrentStep((prev) => prev + 1);
+    if (step === 2)
+      setWaiverContent(
+        (await fetchWaiver(signUpForm.getValues("membershipType"))) ||
+          "No waiver"
+      );
+    if (step === 4) return onSignUpSubmit(signUpForm.getValues());
+    setStep((prev) => prev + 1);
   };
 
-  const prevStep = () => setCurrentStep((prev) => prev - 1);
+  const prevStep = () => setStep((prev) => prev - 1);
 
   const checkAge = (dob: string) => {
-    if (!dob) {
-      setIsOver18(null);
-      return;
-    }
-    const today = new Date();
+    if (!dob) return setIsOver18(null);
     const birthDate = new Date(dob);
-    const age = today.getFullYear() - birthDate.getFullYear();
-    const monthDiff = today.getMonth() - birthDate.getMonth();
+    const age = new Date().getFullYear() - birthDate.getFullYear();
+    const monthDiff = new Date().getMonth() - birthDate.getMonth();
     setIsOver18(
       monthDiff < 0 ||
-        (monthDiff === 0 && today.getDate() < birthDate.getDate())
+        (monthDiff === 0 && new Date().getDate() < birthDate.getDate())
         ? age - 1 >= 18
         : age >= 18
     );
@@ -354,7 +406,7 @@ export default function Home() {
         <source src="/bg-video.mp4" type="video/mp4" />
       </video>
       <div className="absolute inset-0 bg-black/50 z-10" />
-      <div className="relative z-20 w-full max-w-md p-4 sm:p-6 space-y-6 sm:space-y-8">
+      <div className="relative z-20 w-full max-w-md p-4 sm:p-6 space-y-6">
         <motion.div
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -366,7 +418,7 @@ export default function Home() {
             alt="Simcoquitos 24/7 Golf Club Logo"
             width={150}
             height={150}
-            className="w-24 sm:w-32 md:w-40"
+            className="w-32 md:w-40"
           />
         </motion.div>
 
@@ -375,29 +427,27 @@ export default function Home() {
             <TabsTrigger value="login">Login</TabsTrigger>
             <TabsTrigger value="signup">Sign Up</TabsTrigger>
           </TabsList>
+
           <TabsContent value="login">
             <Form {...loginForm}>
               <form
                 onSubmit={loginForm.handleSubmit(onLoginSubmit)}
-                className="space-y-4 bg-white/90 p-4 sm:p-6 rounded-lg shadow-lg"
+                className="space-y-4 bg-white/90 p-6 rounded-lg shadow-lg"
               >
                 <FormField
                   control={loginForm.control}
                   name="email"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-sm sm:text-base">
-                        Email
-                      </FormLabel>
+                      <FormLabel>Email</FormLabel>
                       <FormControl>
                         <Input
                           placeholder="john@example.com"
                           type="email"
                           {...field}
-                          className="text-sm sm:text-base"
                         />
                       </FormControl>
-                      <FormMessage className="text-xs sm:text-sm" />
+                      <FormMessage />
                     </FormItem>
                   )}
                 />
@@ -406,23 +456,26 @@ export default function Home() {
                   name="password"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="text-sm sm:text-base">
-                        Password
-                      </FormLabel>
+                      <FormLabel>Password</FormLabel>
                       <FormControl>
                         <div className="relative">
                           <Input
                             placeholder="Password"
-                            type={showPassword ? "text" : "password"}
+                            type={showPasswords.password ? "text" : "password"}
                             {...field}
-                            className="text-sm sm:text-base pr-10"
+                            className="pr-10"
                           />
                           <button
                             type="button"
-                            onClick={() => setShowPassword(!showPassword)}
-                            className="absolute inset-y-0 right-0 flex items-center pr-3"
+                            onClick={() =>
+                              setShowPasswords((p) => ({
+                                ...p,
+                                password: !p.password,
+                              }))
+                            }
+                            className="absolute inset-y-0 right-0 pr-3 flex items-center"
                           >
-                            {showPassword ? (
+                            {showPasswords.password ? (
                               <EyeOff className="h-4 w-4 text-gray-500" />
                             ) : (
                               <Eye className="h-4 w-4 text-gray-500" />
@@ -430,16 +483,16 @@ export default function Home() {
                           </button>
                         </div>
                       </FormControl>
-                      <FormMessage className="text-xs sm:text-sm" />
+                      <FormMessage />
                     </FormItem>
                   )}
                 />
                 <Button
                   type="submit"
-                  className="w-full py-2.5 sm:py-3 text-sm sm:text-base"
-                  disabled={isLoginLoading}
+                  className="w-full"
+                  disabled={loading.login}
                 >
-                  {isLoginLoading ? (
+                  {loading.login ? (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   ) : (
                     "Login"
@@ -448,213 +501,127 @@ export default function Home() {
               </form>
             </Form>
           </TabsContent>
+
           <TabsContent value="signup">
             <Form {...signUpForm}>
               <form
                 onSubmit={signUpForm.handleSubmit(onSignUpSubmit)}
-                className="space-y-4 bg-white/90 p-4 sm:p-6 rounded-lg shadow-lg overflow-x-auto"
+                className="space-y-4 bg-white/90 p-6 rounded-lg shadow-lg"
               >
-                {currentStep === 1 && (
+                {step === 1 && (
                   <>
-                    <h2 className="text-lg sm:text-xl font-semibold">
-                      Step 1: Personal Information
+                    <h2 className="text-xl font-semibold">
+                      Step 1: Personal Info
                     </h2>
-                    <FormField
-                      control={signUpForm.control}
-                      name="referralCode"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="text-sm sm:text-base">
-                            Referral Code
-                          </FormLabel>
-                          <FormControl>
-                            <Input
-                              placeholder="Enter referral code"
-                              {...field}
-                              className="text-sm sm:text-base"
-                            />
-                          </FormControl>
-                          <FormMessage className="text-xs sm:text-sm" />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={signUpForm.control}
-                      name="firstName"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="text-sm sm:text-base">
-                            First Name
-                          </FormLabel>
-                          <FormControl>
-                            <Input
-                              placeholder="John"
-                              {...field}
-                              className="text-sm sm:text-base"
-                            />
-                          </FormControl>
-                          <FormMessage className="text-xs sm:text-sm" />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={signUpForm.control}
-                      name="lastName"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="text-sm sm:text-base">
-                            Last Name
-                          </FormLabel>
-                          <FormControl>
-                            <Input
-                              placeholder="Doe"
-                              {...field}
-                              className="text-sm sm:text-base"
-                            />
-                          </FormControl>
-                          <FormMessage className="text-xs sm:text-sm" />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={signUpForm.control}
-                      name="dob"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="text-sm sm:text-base">
-                            Date of Birth
-                          </FormLabel>
-                          <FormControl>
-                            <Input
-                              type="date"
-                              {...field}
-                              onChange={(e) => {
-                                field.onChange(e);
-                                checkAge(e.target.value);
-                              }}
-                              className="text-sm sm:text-base"
-                            />
-                          </FormControl>
-                          {isOver18 === false && (
-                            <p className="text-xs sm:text-sm text-red-600">
-                              You must be at least 18 years old to proceed.
-                            </p>
-                          )}
-                          <FormMessage className="text-xs sm:text-sm" />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={signUpForm.control}
-                      name="email"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="text-sm sm:text-base">
-                            Email
-                          </FormLabel>
-                          <FormControl>
-                            <Input
-                              placeholder="john@example.com"
-                              type="email"
-                              {...field}
-                              className="text-sm sm:text-base"
-                            />
-                          </FormControl>
-                          <FormMessage className="text-xs sm:text-sm" />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={signUpForm.control}
-                      name="password"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="text-sm sm:text-base">
-                            Password
-                          </FormLabel>
-                          <FormControl>
-                            <div className="relative">
-                              <Input
-                                placeholder="Password"
-                                type={showPassword ? "text" : "password"}
-                                {...field}
-                                className="text-sm sm:text-base pr-10"
-                              />
-                              <button
-                                type="button"
-                                onClick={() => setShowPassword(!showPassword)}
-                                className="absolute inset-y-0 right-0 flex items-center pr-3"
-                              >
-                                {showPassword ? (
-                                  <EyeOff className="h-4 w-4 text-gray-500" />
-                                ) : (
-                                  <Eye className="h-4 w-4 text-gray-500" />
-                                )}
-                              </button>
-                            </div>
-                          </FormControl>
-                          <FormMessage className="text-xs sm:text-sm" />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={signUpForm.control}
-                      name="confirmPassword"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="text-sm sm:text-base">
-                            Confirm Password
-                          </FormLabel>
-                          <FormControl>
-                            <div className="relative">
-                              <Input
-                                placeholder="Confirm Password"
-                                type={showConfirmPassword ? "text" : "password"}
-                                {...field}
-                                className="text-sm sm:text-base pr-10"
-                              />
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setShowConfirmPassword(!showConfirmPassword)
-                                }
-                                className="absolute inset-y-0 right-0 flex items-center pr-3"
-                              >
-                                {showConfirmPassword ? (
-                                  <EyeOff className="h-4 w-4 text-gray-500" />
-                                ) : (
-                                  <Eye className="h-4 w-4 text-gray-500" />
-                                )}
-                              </button>
-                            </div>
-                          </FormControl>
-                          <FormMessage className="text-xs sm:text-sm" />
-                        </FormItem>
-                      )}
-                    />
-                    <FormField
-                      control={signUpForm.control}
-                      name="cell"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel className="text-sm sm:text-base">
-                            Cell Phone
-                          </FormLabel>
-                          <FormControl>
-                            <Input
-                              placeholder="+1-123-456-7890"
-                              {...field}
-                              className="text-sm sm:text-base"
-                            />
-                          </FormControl>
-                          <FormMessage className="text-xs sm:text-sm" />
-                        </FormItem>
-                      )}
-                    />
+                    {[
+                      "referralCode",
+                      "firstName",
+                      "lastName",
+                      "dob",
+                      "email",
+                      "password",
+                      "confirmPassword",
+                      "cell",
+                    ].map((name) => (
+                      <FormField
+                        key={name}
+                        control={signUpForm.control}
+                        name={name as keyof SignUpFormData}
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>
+                              {name === "dob"
+                                ? "Date of Birth"
+                                : name === "cell"
+                                ? "Cell Phone"
+                                : name.replace(/([A-Z])/g, " $1").trim()}
+                            </FormLabel>
+                            <FormControl>
+                              {name === "dob" ? (
+                                <Input
+                                  type="date"
+                                  {...field}
+                                  onChange={(e) => {
+                                    field.onChange(e);
+                                    checkAge(e.target.value);
+                                  }}
+                                />
+                              ) : name === "password" ||
+                                name === "confirmPassword" ? (
+                                <div className="relative">
+                                  <Input
+                                    placeholder={name.replace(
+                                      "confirm",
+                                      "Confirm "
+                                    )}
+                                    type={
+                                      showPasswords[
+                                        name === "password"
+                                          ? "password"
+                                          : "confirm"
+                                      ]
+                                        ? "text"
+                                        : "password"
+                                    }
+                                    {...field}
+                                    className="pr-10"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setShowPasswords((p) => ({
+                                        ...p,
+                                        [name === "password"
+                                          ? "password"
+                                          : "confirm"]:
+                                          !p[
+                                            name === "password"
+                                              ? "password"
+                                              : "confirm"
+                                          ],
+                                      }))
+                                    }
+                                    className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                                  >
+                                    {showPasswords[
+                                      name === "password"
+                                        ? "password"
+                                        : "confirm"
+                                    ] ? (
+                                      <EyeOff className="h-4 w-4 text-gray-500" />
+                                    ) : (
+                                      <Eye className="h-4 w-4 text-gray-500" />
+                                    )}
+                                  </button>
+                                </div>
+                              ) : (
+                                <Input
+                                  placeholder={
+                                    name === "email"
+                                      ? "john@example.com"
+                                      : name === "cell"
+                                      ? "+1-123-456-7890"
+                                      : name
+                                  }
+                                  type={name === "email" ? "email" : "text"}
+                                  {...field}
+                                />
+                              )}
+                            </FormControl>
+                            {name === "dob" && isOver18 === false && (
+                              <p className="text-red-600 text-sm">
+                                Must be 18+
+                              </p>
+                            )}
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    ))}
                     <Button
                       type="button"
                       onClick={nextStep}
-                      className="w-full py-2.5 sm:py-3 text-sm sm:text-base"
+                      className="w-full"
                       disabled={isOver18 === false || isOver18 === null}
                     >
                       Next
@@ -662,9 +629,9 @@ export default function Home() {
                   </>
                 )}
 
-                {currentStep === 2 && (
+                {step === 2 && (
                   <>
-                    <h2 className="text-lg sm:text-xl font-semibold">
+                    <h2 className="text-xl font-semibold">
                       Step 2: Membership Details
                     </h2>
                     <FormField
@@ -672,17 +639,11 @@ export default function Home() {
                       name="referringMemberName"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel className="text-sm sm:text-base">
-                            Referring Member Name
-                          </FormLabel>
+                          <FormLabel>Referring Member Name</FormLabel>
                           <FormControl>
-                            <Input
-                              placeholder="Jane Smith"
-                              {...field}
-                              className="text-sm sm:text-base"
-                            />
+                            <Input placeholder="Jane Smith" {...field} />
                           </FormControl>
-                          <FormMessage className="text-xs sm:text-sm" />
+                          <FormMessage />
                         </FormItem>
                       )}
                     />
@@ -691,31 +652,28 @@ export default function Home() {
                       name="location"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel className="text-sm sm:text-base">
-                            Location
-                          </FormLabel>
+                          <FormLabel>Location</FormLabel>
                           <Select
                             onValueChange={field.onChange}
-                            defaultValue={field.value}
+                            value={field.value}
                           >
                             <FormControl>
-                              <SelectTrigger className="w-full text-sm sm:text-base">
+                              <SelectTrigger>
                                 <SelectValue placeholder="Choose a location" />
                               </SelectTrigger>
                             </FormControl>
-                            <SelectContent className="w-full max-w-[calc(100vw-2rem)] sm:max-w-md">
+                            <SelectContent>
                               {locations.map((loc) => (
                                 <SelectItem
                                   key={loc.id}
                                   value={loc.id.toString()}
-                                  className="text-sm sm:text-base"
                                 >
                                   {loc.name}
                                 </SelectItem>
                               ))}
                             </SelectContent>
                           </Select>
-                          <FormMessage className="text-xs sm:text-sm" />
+                          <FormMessage />
                         </FormItem>
                       )}
                     />
@@ -724,27 +682,21 @@ export default function Home() {
                       name="membershipType"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel className="text-sm sm:text-base">
-                            Membership Type
-                          </FormLabel>
+                          <FormLabel>Membership Type</FormLabel>
                           <Select
-                            onValueChange={(value) => {
-                              field.onChange(value);
-                              fetchWaiver(value).then(setWaiverContent);
-                            }}
-                            defaultValue={field.value}
+                            onValueChange={field.onChange}
+                            value={field.value}
                           >
                             <FormControl>
-                              <SelectTrigger className="w-full text-sm sm:text-base">
-                                <SelectValue placeholder="Choose a membership type" />
+                              <SelectTrigger>
+                                <SelectValue placeholder="Choose a membership" />
                               </SelectTrigger>
                             </FormControl>
-                            <SelectContent className="w-full max-w-[calc(100vw-2rem)] sm:max-w-md">
+                            <SelectContent>
                               {membershipTypes.map((type) => (
                                 <SelectItem
                                   key={type.id}
                                   value={type.id.toString()}
-                                  className="text-sm sm:text-base whitespace-normal"
                                 >
                                   {type.name} - {type.price} (
                                   {type.promotional_period || "N/A"})
@@ -753,64 +705,42 @@ export default function Home() {
                             </SelectContent>
                           </Select>
                           {field.value && (
-                            <div className="mt-2 p-3 bg-gray-100 rounded-md text-sm sm:text-base">
-                              <p>
-                                <strong>Name:</strong>{" "}
-                                {
-                                  membershipTypes.find(
-                                    (type) => type.id.toString() === field.value
-                                  )?.name
-                                }
-                              </p>
-                              <p>
-                                <strong>Description:</strong>{" "}
-                                {
-                                  membershipTypes.find(
-                                    (type) => type.id.toString() === field.value
-                                  )?.description
-                                }
-                              </p>
-                              <p>
-                                <strong>Price:</strong>{" "}
-                                {
-                                  membershipTypes.find(
-                                    (type) => type.id.toString() === field.value
-                                  )?.price
-                                }
-                              </p>
-                              <p>
-                                <strong>Start Date:</strong>{" "}
-                                {
-                                  membershipTypes.find(
-                                    (type) => type.id.toString() === field.value
-                                  )?.startdate
-                                }
-                              </p>
-                              <p>
-                                <strong>Length:</strong>{" "}
-                                {membershipTypes.find(
-                                  (type) => type.id.toString() === field.value
-                                )?.promotional_period || "N/A"}
-                              </p>
+                            <div className="mt-2 p-3 bg-gray-100 rounded-md text-sm">
+                              {[
+                                "name",
+                                "description",
+                                "price",
+                                "startdate",
+                                "promotional_period",
+                              ].map((key) => (
+                                <p key={key}>
+                                  <strong>
+                                    {key.replace(/([A-Z])/g, " $1").trim()}:
+                                  </strong>{" "}
+                                  {membershipTypes.find(
+                                    (t) => t.id.toString() === field.value
+                                  )?.[key as keyof Membership] || "N/A"}
+                                </p>
+                              ))}
                             </div>
                           )}
-                          <FormMessage className="text-xs sm:text-sm" />
+                          <FormMessage />
                         </FormItem>
                       )}
                     />
-                    <div className="flex flex-col space-y-2">
+                    <div className="flex space-x-2">
                       <Button
                         type="button"
                         onClick={prevStep}
                         variant="outline"
-                        className="w-full py-2.5 sm:py-3 text-sm sm:text-base"
+                        className="w-full"
                       >
                         Back
                       </Button>
                       <Button
                         type="button"
                         onClick={nextStep}
-                        className="w-full py-2.5 sm:py-3 text-sm sm:text-base"
+                        className="w-full"
                       >
                         Next
                       </Button>
@@ -818,19 +748,17 @@ export default function Home() {
                   </>
                 )}
 
-                {currentStep === 3 && (
+                {step === 3 && (
                   <>
-                    <h2 className="text-lg sm:text-xl font-semibold">
-                      Step 3: Waiver and Billing
+                    <h2 className="text-xl font-semibold">
+                      Step 3: Sign Waiver
                     </h2>
                     <FormField
                       control={signUpForm.control}
                       name="waiverSignature"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel className="text-sm sm:text-base">
-                            Sign the Waiver
-                          </FormLabel>
+                          <FormLabel>Sign the Waiver</FormLabel>
                           <FormControl>
                             <div className="border rounded-md">
                               <SignatureCanvas
@@ -850,87 +778,158 @@ export default function Home() {
                               variant="outline"
                               onClick={clearSignature}
                             >
-                              Clear Signature
+                              Clear
                             </Button>
                             <Dialog>
                               <DialogTrigger asChild>
                                 <Button type="button" variant="outline">
-                                  Read Terms & Conditions
+                                  Read Terms
                                 </Button>
                               </DialogTrigger>
                               <DialogContent>
                                 <DialogHeader>
-                                  <DialogTitle>
-                                    Terms & Conditions and Waiver
-                                  </DialogTitle>
+                                  <DialogTitle>Waiver</DialogTitle>
                                 </DialogHeader>
                                 <div className="max-h-[60vh] overflow-y-auto">
-                                  <p>
-                                    {waiverContent ||
-                                      "Loading waiver content..."}
-                                  </p>
+                                  <p>{waiverContent || "Loading..."}</p>
                                 </div>
                               </DialogContent>
                             </Dialog>
                           </div>
-                          <FormMessage className="text-xs sm:text-sm" />
+                          <FormMessage />
                         </FormItem>
                       )}
                     />
+                    <div className="flex space-x-2">
+                      <Button
+                        type="button"
+                        onClick={prevStep}
+                        variant="outline"
+                        className="w-full"
+                      >
+                        Back
+                      </Button>
+                      <Button
+                        type="button"
+                        onClick={nextStep}
+                        className="w-full"
+                      >
+                        Next
+                      </Button>
+                    </div>
+                  </>
+                )}
+
+                {step === 4 && (
+                  <>
+                    <h2 className="text-xl font-semibold">
+                      Step 4: {isPaymentRequired() ? "Payment" : "Billing Info"}
+                    </h2>
                     <FormField
                       control={signUpForm.control}
                       name="billingAddress"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel className="text-sm sm:text-base">
-                            Billing Address
-                          </FormLabel>
+                          <FormLabel>Billing Address</FormLabel>
                           <FormControl>
-                            <Input
-                              placeholder="123 Main St"
-                              {...field}
-                              className="text-sm sm:text-base"
-                            />
+                            <Input placeholder="123 Main St" {...field} />
                           </FormControl>
-                          <FormMessage className="text-xs sm:text-sm" />
+                          <FormMessage />
                         </FormItem>
                       )}
                     />
-                    {/* <FormField
-                      control={signUpForm.control}
-                      name="cardNonce"
-                      render={() => (
-                        <FormItem>
-                          <FormLabel className="text-sm sm:text-base">Payment Information</FormLabel>
-                          <FormControl>
-                            <div id="card-container" className="border p-4 rounded-md"></div>
-                          </FormControl>
-                          <FormMessage className="text-xs sm:text-sm" />
-                        </FormItem>
-                      )}
-                    /> */}
-                    <div className="flex flex-col space-y-2">
+                    {isPaymentRequired() && (
+                      <FormField
+                        control={signUpForm.control}
+                        name="cardNonce"
+                        render={() => (
+                          <FormItem>
+                            <FormLabel>Card Info</FormLabel>
+                            <FormControl>
+                              <div
+                                id="card-container"
+                                className="border p-4 rounded-md"
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                    )}
+                    <div className="flex space-x-2">
                       <Button
                         type="button"
                         onClick={prevStep}
                         variant="outline"
-                        className="w-full py-2.5 sm:py-3 text-sm sm:text-base"
+                        className="w-full"
                       >
                         Back
                       </Button>
                       <Button
-                        type="submit"
-                        className="w-full py-2.5 sm:py-3 text-sm sm:text-base"
-                        disabled={isSignUpLoading}
+                        id="card-submit"
+                        type="button"
+                        onClick={nextStep}
+                        className="w-full"
+                        disabled={loading.signup}
                       >
-                        {isSignUpLoading ? (
+                        {loading.signup ? (
                           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : isPaymentRequired() ? (
+                          "Submit Payment"
                         ) : (
-                          "Sign Up"
+                          "Submit"
                         )}
                       </Button>
                     </div>
                   </>
+                )}
+
+                {step === 5 && (
+                  <Dialog
+                    open={step === 5}
+                    onOpenChange={() => router.push("/dashboard")}
+                  >
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Confirmation</DialogTitle>
+                      </DialogHeader>
+                      <div className="space-y-4">
+                        <p>
+                          <strong>
+                            Welcome, {signUpForm.getValues("firstName")}!
+                          </strong>
+                        </p>
+                        <p>
+                          Membership:{" "}
+                          {
+                            membershipTypes.find(
+                              (t) =>
+                                t.id.toString() ===
+                                signUpForm.getValues("membershipType")
+                            )?.name
+                          }
+                        </p>
+                        <p>
+                          Location:{" "}
+                          {
+                            locations.find(
+                              (l) =>
+                                l.id.toString() ===
+                                signUpForm.getValues("location")
+                            )?.name
+                          }
+                        </p>
+                        <p>
+                          {isPaymentRequired()
+                            ? "Payment: Processed"
+                            : "No payment required"}
+                        </p>
+                        <Button onClick={() => router.push("/dashboard")}>
+                          Go to Dashboard
+                        </Button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
                 )}
               </form>
             </Form>
