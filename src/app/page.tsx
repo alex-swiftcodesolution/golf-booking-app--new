@@ -1,9 +1,14 @@
 "use client";
-import { useState, useRef, useEffect, useCallback } from "react";
+import {
+  useState,
+  useRef,
+  useEffect,
+  // useCallback
+} from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,31 +50,13 @@ import {
   type Club,
   type Membership,
 } from "@/api/gymmaster";
+// import axios from "axios";
 
-interface SquarePayments {
-  card(): Promise<SquareCard>;
-}
-
-interface SquareCard {
-  attach(element: string): Promise<void>;
-  tokenize(): Promise<{
-    status: string;
-    token?: string;
-    errors?: { message: string }[];
-  }>;
-}
-
-declare global {
-  interface Window {
-    Square: {
-      payments(appId: string, locationId: string): SquarePayments;
-    };
-  }
-}
+// const GYMMASTER_API_KEY = process.env.NEXT_PUBLIC_GYMMASTER_API_KEY;
 
 const signUpSchema = z
   .object({
-    referralCode: z.string().min(1, "Referral code is required"),
+    referralCode: z.string().optional(),
     firstName: z.string().min(1, "First name is required"),
     lastName: z.string().min(1, "Last name is required"),
     dob: z
@@ -77,12 +64,16 @@ const signUpSchema = z
       .min(1, "Date of birth is required")
       .refine((dob) => {
         const birthDate = new Date(dob);
-        const age = new Date().getFullYear() - birthDate.getFullYear();
-        const monthDiff = new Date().getMonth() - birthDate.getMonth();
-        return monthDiff < 0 ||
-          (monthDiff === 0 && new Date().getDate() < birthDate.getDate())
-          ? age - 1 >= 18
-          : age >= 18;
+        const today = new Date();
+        let age = today.getFullYear() - birthDate.getFullYear();
+        const monthDiff = today.getMonth() - birthDate.getMonth();
+        if (
+          monthDiff < 0 ||
+          (monthDiff === 0 && today.getDate() < birthDate.getDate())
+        ) {
+          age--;
+        }
+        return age >= 18;
       }, "You must be at least 18 years old"),
     email: z.string().email("Invalid email"),
     password: z.string().min(6, "Password must be at least 6 characters"),
@@ -91,7 +82,7 @@ const signUpSchema = z
       .string()
       .regex(
         /^\+?\d{1,3}[-.\s]?\d{3}[-.\s]?\d{3}[-.\s]?\d{4}$/,
-        "Invalid phone number"
+        "Use format: +1-123-456-7890"
       ),
     referringMemberName: z.string().min(1, "Referring member name is required"),
     location: z.string().min(1, "Select a location"),
@@ -103,20 +94,6 @@ const signUpSchema = z
   .refine((data) => data.password === data.confirmPassword, {
     message: "Passwords must match",
     path: ["confirmPassword"],
-  })
-  .superRefine((data, ctx) => {
-    const price = parseFloat(
-      membershipTypes
-        .find((m) => m.id.toString() === data.membershipType)
-        ?.price.replace("$", "") || "0"
-    );
-    if (price > 0 && !data.cardNonce) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "Payment info required",
-        path: ["cardNonce"],
-      });
-    }
   });
 
 const loginSchema = z.object({
@@ -126,8 +103,6 @@ const loginSchema = z.object({
 
 type SignUpFormData = z.infer<typeof signUpSchema>;
 type LoginFormData = z.infer<typeof loginSchema>;
-
-export const membershipTypes: Membership[] = [];
 
 export default function Home() {
   const [adminToken, setAdminToken] = useState<string | null>(null);
@@ -141,10 +116,9 @@ export default function Home() {
   const [locations, setLocations] = useState<Club[]>([]);
   const [membershipTypes, setMembershipTypes] = useState<Membership[]>([]);
   const [waiverContent, setWaiverContent] = useState("");
-  const [squarePayments, setSquarePayments] = useState<SquarePayments | null>(
-    null
-  );
+  const [defaultTab, setDefaultTab] = useState("login");
   const router = useRouter();
+  const searchParams = useSearchParams();
   const sigCanvas = useRef<SignatureCanvas>(null);
 
   const loginForm = useForm<LoginFormData>({
@@ -172,90 +146,55 @@ export default function Home() {
     },
   });
 
-  const isPaymentRequired = useCallback(() => {
-    return (
-      parseFloat(
-        membershipTypes
-          .find(
-            (m) => m.id.toString() === signUpForm.getValues("membershipType")
-          )
-          ?.price.replace("$", "") || "0"
-      ) > 0
-    );
-  }, [membershipTypes, signUpForm]);
+  // Prefill referral code from URL
+  useEffect(() => {
+    const referral = searchParams.get("referral");
+    if (referral) {
+      signUpForm.setValue("referralCode", referral);
+      setDefaultTab("signup");
+    }
+  }, [searchParams, signUpForm]);
+
+  // const isPaymentRequired = useCallback(() => {
+  //   const membershipId = signUpForm.getValues("membershipType");
+  //   const membership = membershipTypes.find(
+  //     (m) => m.id.toString() === membershipId
+  //   );
+  //   return membership
+  //     ? parseFloat(membership.price.replace("$", "")) > 0
+  //     : false;
+  // }, [membershipTypes, signUpForm]);
 
   useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [companies, memberships] = await Promise.all([
+          fetchCompanies(),
+          fetchMemberships(),
+        ]);
+        setLocations(companies || []);
+        setMembershipTypes(memberships || []);
+      } catch (error) {
+        console.error("Fetch data error:", error);
+        toast.error("Failed to load data", { description: String(error) });
+      }
+    };
+
     const fetchAdminToken = async () => {
       try {
         const res = await fetch("/api/get-admin-token");
         const data = await res.json();
-        console.log("Admin token:", data);
         if (!res.ok) throw new Error(data.error || "Admin token fetch failed");
         setAdminToken(data.token);
       } catch (error) {
         console.error("Admin token error:", error);
-        toast.error("Admin login failed - referral validation unavailable");
+        toast.error("Referral validation may be unavailable");
       }
     };
 
-    const loadSquareSdk = async () => {
-      if (!window.Square) {
-        const script = document.createElement("script");
-        script.src = "https://sandbox.web.squarecdn.com/v1/square.js";
-        script.async = true;
-        script.onload = () =>
-          setSquarePayments(
-            window.Square.payments(
-              process.env.NEXT_PUBLIC_SQUARE_APP_ID!,
-              process.env.NEXT_PUBLIC_SQUARE_LOCATION_ID!
-            )
-          );
-        script.onerror = () => toast.error("Failed to load Square SDK");
-        document.body.appendChild(script);
-      }
-    };
-
-    const fetchData = async () => {
-      try {
-        setLocations((await fetchCompanies()) || []);
-        setMembershipTypes((await fetchMemberships()) || []);
-      } catch (error) {
-        toast.error("Failed to load data", { description: String(error) });
-        setLocations([]);
-        setMembershipTypes([]);
-      }
-    };
-
-    fetchAdminToken();
-    loadSquareSdk();
     fetchData();
+    fetchAdminToken();
   }, []);
-
-  useEffect(() => {
-    if (squarePayments && step === 4 && isPaymentRequired()) {
-      const initCard = async () => {
-        try {
-          const card = await squarePayments.card();
-          await card.attach("#card-container");
-          const tokenize = async () => {
-            const result = await card.tokenize();
-            if (result.status === "OK" && result.token)
-              signUpForm.setValue("cardNonce", result.token);
-            else
-              toast.error("Payment failed", {
-                description: result.errors?.[0]?.message,
-              });
-          };
-          const submitBtn = document.getElementById("card-submit");
-          submitBtn?.addEventListener("click", tokenize);
-          return () => submitBtn?.removeEventListener("click", tokenize);
-        } catch (error) {
-          toast.error("Payment init failed", { description: String(error) });
-        }
-      };
-      initCard();
-    }
-  }, [squarePayments, step, signUpForm, isPaymentRequired]);
 
   const onLoginSubmit = async (data: LoginFormData) => {
     setLoading((prev) => ({ ...prev, login: true }));
@@ -273,6 +212,7 @@ export default function Home() {
       toast.success(`Welcome back, ${data.email}!`);
       router.push("/dashboard");
     } catch (error) {
+      console.error("Login error:", error);
       toast.error("Login failed", { description: String(error) });
     } finally {
       setLoading((prev) => ({ ...prev, login: false }));
@@ -282,29 +222,15 @@ export default function Home() {
   const onSignUpSubmit = async (data: SignUpFormData) => {
     setLoading((prev) => ({ ...prev, signup: true }));
     try {
-      if (!adminToken) throw new Error("Admin token missing");
-      const isReferralValid = await validateReferral(
-        data.referralCode,
-        adminToken
-      );
-      if (!isReferralValid) throw new Error("Invalid referral code");
-
-      const price = parseFloat(
-        membershipTypes
-          .find((m) => m.id.toString() === data.membershipType)
-          ?.price.replace("$", "") || "0"
-      );
-      if (price > 0) {
-        const paymentRes = await fetch("/api/process-payment", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            nonce: data.cardNonce,
-            amount: price.toString(),
-          }),
-        });
-        if (!paymentRes.ok)
-          throw new Error((await paymentRes.json()).error || "Payment failed");
+      if (data.referralCode && !adminToken) {
+        throw new Error("Admin token missing for referral validation");
+      }
+      if (data.referralCode) {
+        const isReferralValid = await validateReferral(
+          data.referralCode,
+          adminToken!
+        );
+        if (!isReferralValid) throw new Error("Invalid referral code");
       }
 
       const signupData = {
@@ -319,8 +245,9 @@ export default function Home() {
         companyid: data.location,
         startdate: new Date().toISOString().split("T")[0],
         firstpaymentdate: new Date().toISOString().split("T")[0],
-        "Referral Code": data.referralCode,
+        ...(data.referralCode && { "Referral Code": data.referralCode }),
       };
+
       const { token, memberid, membershipid, expires } = await signup(
         signupData
       );
@@ -332,13 +259,11 @@ export default function Home() {
       );
 
       await saveWaiver(data.waiverSignature, membershipid, token);
-      toast.success(
-        `Welcome, ${data.firstName}! Your ${
-          price > 0 ? "payment and " : ""
-        }membership is set.`
-      );
+
+      toast.success(`Welcome, ${data.firstName}! Your membership is set.`);
       setStep(5);
     } catch (error) {
+      console.error("Signup error:", error);
       toast.error("Sign-up failed", { description: String(error) });
       setStep(1);
     } finally {
@@ -347,9 +272,8 @@ export default function Home() {
   };
 
   const nextStep = async () => {
-    const fields = [
+    const fields: (keyof SignUpFormData)[][] = [
       [
-        "referralCode",
         "firstName",
         "lastName",
         "dob",
@@ -360,34 +284,67 @@ export default function Home() {
       ],
       ["referringMemberName", "location", "membershipType"],
       ["waiverSignature"],
-      ["billingAddress", ...(isPaymentRequired() ? ["cardNonce"] : [])],
-    ][step - 1] as (keyof SignUpFormData)[];
-    if (!(await signUpForm.trigger(fields))) {
-      toast.error("Fix errors before proceeding");
+      ["billingAddress"],
+    ];
+    if (!(await signUpForm.trigger(fields[step - 1]))) {
+      toast.error("Please fix errors before proceeding");
       return;
     }
-    if (step === 2)
-      setWaiverContent(
-        (await fetchWaiver(signUpForm.getValues("membershipType"))) ||
-          "No waiver"
-      );
-    if (step === 4) return onSignUpSubmit(signUpForm.getValues());
+    if (step === 1 && signUpForm.getValues("referralCode")) {
+      if (!adminToken) {
+        toast.error("Unable to validate referral code");
+        return;
+      }
+      try {
+        const isReferralValid = await validateReferral(
+          signUpForm.getValues("referralCode") ?? "",
+          adminToken
+        );
+        if (!isReferralValid) {
+          toast.error("Invalid referral code");
+          return;
+        }
+      } catch (error) {
+        console.error("Referral validation error:", error);
+        toast.error("Failed to validate referral code");
+        return;
+      }
+    }
+    if (step === 2) {
+      try {
+        const waiver = await fetchWaiver(
+          signUpForm.getValues("membershipType")
+        );
+        setWaiverContent(waiver || "No waiver content");
+      } catch (error) {
+        console.error("Waiver fetch error:", error);
+        setWaiverContent("No waiver content");
+      }
+    }
+    if (step === 4) {
+      return onSignUpSubmit(signUpForm.getValues());
+    }
     setStep((prev) => prev + 1);
   };
 
   const prevStep = () => setStep((prev) => prev - 1);
 
   const checkAge = (dob: string) => {
-    if (!dob) return setIsOver18(null);
+    if (!dob) {
+      setIsOver18(null);
+      return;
+    }
     const birthDate = new Date(dob);
-    const age = new Date().getFullYear() - birthDate.getFullYear();
-    const monthDiff = new Date().getMonth() - birthDate.getMonth();
-    setIsOver18(
+    const today = new Date();
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const monthDiff = today.getMonth() - birthDate.getMonth();
+    if (
       monthDiff < 0 ||
-        (monthDiff === 0 && new Date().getDate() < birthDate.getDate())
-        ? age - 1 >= 18
-        : age >= 18
-    );
+      (monthDiff === 0 && today.getDate() < birthDate.getDate())
+    ) {
+      age--;
+    }
+    setIsOver18(age >= 18);
   };
 
   const clearSignature = () => {
@@ -422,7 +379,7 @@ export default function Home() {
           />
         </motion.div>
 
-        <Tabs defaultValue="login" className="w-full">
+        <Tabs defaultValue={defaultTab} className="w-full">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="login">Login</TabsTrigger>
             <TabsTrigger value="signup">Sign Up</TabsTrigger>
@@ -468,9 +425,9 @@ export default function Home() {
                           <button
                             type="button"
                             onClick={() =>
-                              setShowPasswords((p) => ({
-                                ...p,
-                                password: !p.password,
+                              setShowPasswords((prev) => ({
+                                ...prev,
+                                password: !prev.password,
                               }))
                             }
                             className="absolute inset-y-0 right-0 pr-3 flex items-center"
@@ -534,6 +491,8 @@ export default function Home() {
                                 ? "Date of Birth"
                                 : name === "cell"
                                 ? "Cell Phone"
+                                : name === "referralCode"
+                                ? "Referral Code"
                                 : name.replace(/([A-Z])/g, " $1").trim()}
                             </FormLabel>
                             <FormControl>
@@ -550,10 +509,11 @@ export default function Home() {
                                 name === "confirmPassword" ? (
                                 <div className="relative">
                                   <Input
-                                    placeholder={name.replace(
-                                      "confirm",
-                                      "Confirm "
-                                    )}
+                                    placeholder={
+                                      name === "password"
+                                        ? "Password"
+                                        : "Confirm Password"
+                                    }
                                     type={
                                       showPasswords[
                                         name === "password"
@@ -569,12 +529,12 @@ export default function Home() {
                                   <button
                                     type="button"
                                     onClick={() =>
-                                      setShowPasswords((p) => ({
-                                        ...p,
+                                      setShowPasswords((prev) => ({
+                                        ...prev,
                                         [name === "password"
                                           ? "password"
                                           : "confirm"]:
-                                          !p[
+                                          !prev[
                                             name === "password"
                                               ? "password"
                                               : "confirm"
@@ -601,7 +561,9 @@ export default function Home() {
                                       ? "john@example.com"
                                       : name === "cell"
                                       ? "+1-123-456-7890"
-                                      : name
+                                      : name === "referralCode"
+                                      ? "Referral code (optional)"
+                                      : name.replace(/([A-Z])/g, " $1").trim()
                                   }
                                   type={name === "email" ? "email" : "text"}
                                   {...field}
@@ -610,7 +572,7 @@ export default function Home() {
                             </FormControl>
                             {name === "dob" && isOver18 === false && (
                               <p className="text-red-600 text-sm">
-                                Must be 18+
+                                You must be 18 or older
                               </p>
                             )}
                             <FormMessage />
@@ -658,7 +620,7 @@ export default function Home() {
                             value={field.value}
                           >
                             <FormControl>
-                              <SelectTrigger>
+                              <SelectTrigger className="w-full">
                                 <SelectValue placeholder="Choose a location" />
                               </SelectTrigger>
                             </FormControl>
@@ -688,7 +650,7 @@ export default function Home() {
                             value={field.value}
                           >
                             <FormControl>
-                              <SelectTrigger>
+                              <SelectTrigger className="w-full">
                                 <SelectValue placeholder="Choose a membership" />
                               </SelectTrigger>
                             </FormControl>
@@ -728,7 +690,7 @@ export default function Home() {
                         </FormItem>
                       )}
                     />
-                    <div className="flex space-x-2">
+                    <div className="flex space-x-2 flex-col-reverse md:flex-col gap-2 space-y-2">
                       <Button
                         type="button"
                         onClick={prevStep}
@@ -800,7 +762,7 @@ export default function Home() {
                         </FormItem>
                       )}
                     />
-                    <div className="flex space-x-2">
+                    <div className="flex space-x-2 flex-col-reverse md:flex-col gap-2 space-y-2">
                       <Button
                         type="button"
                         onClick={prevStep}
@@ -823,7 +785,7 @@ export default function Home() {
                 {step === 4 && (
                   <>
                     <h2 className="text-xl font-semibold">
-                      Step 4: {isPaymentRequired() ? "Payment" : "Billing Info"}
+                      Step 4: Billing Info
                     </h2>
                     <FormField
                       control={signUpForm.control}
@@ -838,25 +800,7 @@ export default function Home() {
                         </FormItem>
                       )}
                     />
-                    {isPaymentRequired() && (
-                      <FormField
-                        control={signUpForm.control}
-                        name="cardNonce"
-                        render={() => (
-                          <FormItem>
-                            <FormLabel>Card Info</FormLabel>
-                            <FormControl>
-                              <div
-                                id="card-container"
-                                className="border p-4 rounded-md"
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    )}
-                    <div className="flex space-x-2">
+                    <div className="flex space-x-2 flex-col-reverse md:flex-col gap-2 space-y-2">
                       <Button
                         type="button"
                         onClick={prevStep}
@@ -866,7 +810,6 @@ export default function Home() {
                         Back
                       </Button>
                       <Button
-                        id="card-submit"
                         type="button"
                         onClick={nextStep}
                         className="w-full"
@@ -874,8 +817,6 @@ export default function Home() {
                       >
                         {loading.signup ? (
                           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        ) : isPaymentRequired() ? (
-                          "Submit Payment"
                         ) : (
                           "Submit"
                         )}
@@ -919,11 +860,7 @@ export default function Home() {
                             )?.name
                           }
                         </p>
-                        <p>
-                          {isPaymentRequired()
-                            ? "Payment: Processed"
-                            : "No payment required"}
-                        </p>
+                        <p>No payment required</p>
                         <Button onClick={() => router.push("/dashboard")}>
                           Go to Dashboard
                         </Button>
