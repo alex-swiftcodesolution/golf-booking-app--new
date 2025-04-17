@@ -8,7 +8,10 @@ import {
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { useRouter, useSearchParams } from "next/navigation";
+import {
+  useRouter,
+  // useSearchParams
+} from "next/navigation";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -114,9 +117,9 @@ export default function Home() {
   const [locations, setLocations] = useState<Club[]>([]);
   const [membershipTypes, setMembershipTypes] = useState<Membership[]>([]);
   const [waiverContent, setWaiverContent] = useState("");
-  const [defaultTab, setDefaultTab] = useState("login");
+  // const [defaultTab, setDefaultTab] = useState("login");
   const router = useRouter();
-  const searchParams = useSearchParams();
+  // const searchParams = useSearchParams();
   const sigCanvas = useRef<SignatureCanvas>(null);
 
   const loginForm = useForm<LoginFormData>({
@@ -145,13 +148,13 @@ export default function Home() {
   });
 
   // Prefill referral code from URL
-  useEffect(() => {
-    const referral = searchParams.get("referral");
-    if (referral) {
-      signUpForm.setValue("referralCode", referral);
-      setDefaultTab("signup");
-    }
-  }, [searchParams, signUpForm]);
+  // useEffect(() => {
+  //   const referral = searchParams.get("referral");
+  //   if (referral) {
+  //     signUpForm.setValue("referralCode", referral);
+  //     setDefaultTab("signup");
+  //   }
+  // }, [searchParams, signUpForm]);
 
   // const isPaymentRequired = useCallback(() => {
   //   const membershipId = signUpForm.getValues("membershipType");
@@ -335,7 +338,7 @@ export default function Home() {
           />
         </motion.div>
 
-        <Tabs defaultValue={defaultTab} className="w-full">
+        <Tabs defaultValue="login" className="w-full">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="login">Login</TabsTrigger>
             <TabsTrigger value="signup">Sign Up</TabsTrigger>
