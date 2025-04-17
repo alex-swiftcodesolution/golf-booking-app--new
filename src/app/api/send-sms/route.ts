@@ -1,32 +1,42 @@
-import type { NextApiRequest, NextApiResponse } from "next";
+import { NextApiRequest, NextApiResponse } from "next";
 import twilio from "twilio";
 
-const client = twilio(
+const twilioClient = twilio(
   process.env.TWILIO_ACCOUNT_SID,
   process.env.TWILIO_AUTH_TOKEN
 );
 
-export default async function handler(
-  req: NextApiRequest,
-  res: NextApiResponse
-) {
-  if (req.method !== "POST")
+export default async function POST(req: NextApiRequest, res: NextApiResponse) {
+  if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
+  }
 
-  const { phoneNumber, referralCode } = req.body;
-  if (!phoneNumber || !referralCode)
-    return res.status(400).json({ error: "Missing data" });
+  const { name, phone, referrerId } = req.body;
 
   try {
-    const message = await client.messages.create({
-      body: `Welcome! Sign up and sign your waiver here: ${process.env.NEXT_PUBLIC_APP_URL}/?ref=${referralCode}`,
+    // 1. Generate a unique referral code (e.g., REF + random string)
+    const referralCode = `REF${Math.random()
+      .toString(36)
+      .slice(2, 8)
+      .toUpperCase()}`;
+
+    // 2. Store the referral in your database (e.g., Firebase/Postgres)
+    // Example: await db.storeReferral(referralCode, referrerId, phone);
+    console.log(referralCode, referrerId, phone);
+
+    // 3. Send SMS with referral link
+    const signupLink = `http://localhost:3000?ref=${referralCode}&phone=${encodeURIComponent(
+      phone
+    )}&name=${encodeURIComponent(name)}`;
+    await twilioClient.messages.create({
+      body: `Hi ${name}, you've been invited to join Our Gym! Sign up here: ${signupLink}`,
+      to: phone,
       from: process.env.TWILIO_PHONE_NUMBER,
-      to: phoneNumber,
     });
-    res.status(200).json({ success: true, sid: message.sid });
+
+    res.status(200).json({ success: true });
   } catch (error) {
-    res
-      .status(500)
-      .json({ error: error instanceof Error ? error.message : String(error) });
+    console.error(error);
+    res.status(500).json({ error: "Failed to send invite" });
   }
 }

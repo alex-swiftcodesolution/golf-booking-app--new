@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -17,8 +17,9 @@ import {
 import { toast } from "sonner";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { motion } from "framer-motion";
-import { fetchMemberDetails, updateMemberProfile } from "@/api/gymmaster"; // Import both
+import { fetchMemberDetails, updateMemberProfile } from "@/api/gymmaster";
 import { useRouter } from "next/navigation";
+import axios from "axios";
 
 const profileSchema = z
   .object({
@@ -27,10 +28,10 @@ const profileSchema = z
     email: z.string().email("Please enter a valid email"),
     phonecell: z
       .string()
-      .min(10, "Please enter a valid phone number")
+      .min(10, "Please enter a valid cell number")
       .regex(
         /^\+?\d{1,3}[-.\s]?\d{3}[-.\s]?\d{3}[-.\s]?\d{4}$/,
-        "Please enter a valid phone number (e.g., +1-123-456-7890)"
+        "Please enter a valid cell number (e.g., +1-123-456-7890)"
       )
       .optional()
       .or(z.literal("")),
@@ -49,14 +50,17 @@ const profileSchema = z
 
 const paymentSchema = z.object({
   cardName: z.string().min(1, "Name on card is required"),
-  cardNumber: z
-    .string()
-    .transform((val) => val.replace(/[\s-]/g, ""))
-    .refine((val) => val.length === 16, "Card number must be 16 digits"),
-  exp: z.string().regex(/^\d{2}\/\d{2}$/, "Use MM/YY format"),
-  cvv: z.string().min(3, "CVV must be 3 or 4 digits").max(4),
   billingAddress: z.string().min(1, "Billing address is required"),
 });
+
+interface PaymentMethodResponse {
+  result?: string;
+  error?: string | null;
+}
+interface PaymentLogResponse {
+  result?: string;
+  error?: string | null;
+}
 
 export default function MyAccount() {
   const [profileLoading, setProfileLoading] = useState(false);
@@ -83,60 +87,66 @@ export default function MyAccount() {
     resolver: zodResolver(paymentSchema),
     defaultValues: {
       cardName: "",
-      cardNumber: "",
-      exp: "",
-      cvv: "",
       billingAddress: "",
     },
   });
 
-  useEffect(() => {
-    const token = localStorage.getItem("authToken");
-    if (!token) {
-      router.push("/");
-      return;
-    }
-
-    const loadProfile = async () => {
-      try {
-        const memberData = await fetchMemberDetails(token);
-        profileForm.reset({
-          firstname: memberData.firstname || "",
-          surname: memberData.surname || "",
-          email: memberData.email || "",
-          phonecell: memberData.phonecell || "",
-          dob: memberData.dob || "",
-          addressstreet: memberData.addressstreet || "",
-        });
-      } catch (error) {
-        console.error("Failed to fetch profile:", error);
-        toast.error("Failed to load profile", {
-          description: "Please try again later.",
-        });
+  const loadProfile = useCallback(async () => {
+    try {
+      const token = localStorage.getItem("authToken");
+      if (!token) {
+        router.push("/");
+        return;
       }
-    };
-
-    loadProfile();
+      const memberData = await fetchMemberDetails(token);
+      profileForm.reset({
+        firstname: memberData.firstname ?? "",
+        surname: memberData.surname ?? "",
+        email: memberData.email ?? "",
+        phonecell: memberData.phonecell ?? "",
+        dob: memberData.dob ?? "",
+        addressstreet: memberData.addressstreet ?? "",
+      });
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      console.error("Failed to fetch profile:", errorMessage);
+      toast.error("Failed to load profile", { description: errorMessage });
+    }
   }, [profileForm, router]);
+
+  useEffect(() => {
+    loadProfile();
+  }, [loadProfile]);
 
   const onProfileSubmit = async (data: z.infer<typeof profileSchema>) => {
     setProfileLoading(true);
-    const token = localStorage.getItem("authToken");
-    if (!token) {
-      router.push("/");
-      return;
-    }
-
     try {
-      await updateMemberProfile(token, data);
+      const token = localStorage.getItem("authToken");
+      if (!token) {
+        router.push("/");
+        return;
+      }
+
+      const updateData = {
+        firstname: data.firstname,
+        surname: data.surname,
+        email: data.email,
+        phonecell: data.phonecell,
+        dob: data.dob,
+        addressstreet: data.addressstreet,
+        ...(data.password && { password: data.password }),
+      };
+
+      await updateMemberProfile(token, updateData);
       toast.success("Profile updated!", {
         description: `Changes saved for ${data.firstname} ${data.surname}`,
       });
-    } catch (error) {
-      console.error("Failed to update profile:", error);
-      toast.error("Failed to update profile", {
-        description: "Please try again later.",
-      });
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      console.error("Failed to update profile:", errorMessage);
+      toast.error("Failed to update profile", { description: errorMessage });
     } finally {
       setProfileLoading(false);
     }
@@ -145,13 +155,74 @@ export default function MyAccount() {
   const onPaymentSubmit = async (data: z.infer<typeof paymentSchema>) => {
     setPaymentLoading(true);
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      const token = localStorage.getItem("authToken");
+      if (!token) {
+        router.push("/");
+        return;
+      }
+
+      const GYMMASTER_API_KEY = process.env.NEXT_PUBLIC_GYMMASTER_API_KEY as
+        | string
+        | undefined;
+      if (!GYMMASTER_API_KEY) throw new Error("GYMMASTER_API_KEY is missing");
+
+      // Placeholder: Mock Square iframe nonce
+      const mockNonce = `mock_square_nonce_${Math.random()
+        .toString(36)
+        .slice(2)}`;
+      const mockLast4 = "1111"; // Test card last4 (e.g., 4111 1111 1111 1111)
+
+      // Attempt to store card via GymMaster
+      try {
+        const response = await axios.post<PaymentMethodResponse>(
+          "/api/gymmaster/v1/member/paymentmethod",
+          new URLSearchParams({
+            api_key: GYMMASTER_API_KEY,
+            token,
+            card_nonce: mockNonce,
+            card_name: data.cardName,
+            billing_address: data.billingAddress,
+          }),
+          { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
+        );
+        if (response.data.error) throw new Error(response.data.error);
+      } catch (cardError: unknown) {
+        const cardErrorMessage =
+          cardError instanceof Error ? cardError.message : "Unknown card error";
+        console.warn(
+          "GymMaster payment endpoint failed, logging:",
+          cardErrorMessage
+        );
+        // Fallback: Store last4 in customtext1
+        await updateMemberProfile(token, {
+          customtext1: `card_last4_${mockLast4}`,
+        });
+      }
+
+      // Log to GymMaster
+      const logResponse = await axios.post<PaymentLogResponse>(
+        "/api/gymmaster/v2/payment/log",
+        new URLSearchParams({
+          api_key: GYMMASTER_API_KEY,
+          token,
+          amount: "0.00",
+          paymentmethod_name: `Card ending ${mockLast4}`,
+          note: `Updated payment method for ${data.cardName}`,
+        }),
+        { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
+      );
+      if (logResponse.data.error) throw new Error(logResponse.data.error);
+
       toast.success("Payment method updated!", {
-        description: `Card ending in ${data.cardNumber.slice(-4)} saved`,
+        description: `Card ending in ${mockLast4} saved`,
       });
-    } catch {
+      paymentForm.reset();
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Unknown error";
+      console.error("Failed to update payment method:", errorMessage);
       toast.error("Failed to update payment method", {
-        description: "Please check your details and try again.",
+        description: "Awaiting GymMaster API details. Please try again later.",
       });
     } finally {
       setPaymentLoading(false);
@@ -234,7 +305,7 @@ export default function MyAccount() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel className="text-sm sm:text-base">
-                        Email
+                        Email Address
                       </FormLabel>
                       <FormControl>
                         <Input
@@ -262,77 +333,71 @@ export default function MyAccount() {
                     </FormItem>
                   )}
                 />
-                {/* Password Field with Eye Icon */}
                 <FormField
                   control={profileForm.control}
                   name="password"
-                  render={({ field }) => {
-                    return (
-                      <FormItem>
-                        <FormLabel className="text-sm sm:text-base">
-                          Password
-                        </FormLabel>
-                        <FormControl>
-                          <div className="relative">
-                            <Input
-                              placeholder="New password"
-                              type={showPassword ? "text" : "password"}
-                              {...field}
-                            />
-                            <button
-                              type="button"
-                              className="absolute inset-y-0 right-0 pr-3 flex items-center"
-                              onClick={() => setShowPassword(!showPassword)}
-                            >
-                              {showPassword ? (
-                                <EyeOff className="h-5 w-5 text-gray-500" />
-                              ) : (
-                                <Eye className="h-5 w-5 text-gray-500" />
-                              )}
-                            </button>
-                          </div>
-                        </FormControl>
-                        <FormMessage className="text-xs sm:text-sm" />
-                      </FormItem>
-                    );
-                  }}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm sm:text-base">
+                        Password
+                      </FormLabel>
+                      <FormControl>
+                        <div className="relative">
+                          <Input
+                            placeholder="New password"
+                            type={showPassword ? "text" : "password"}
+                            {...field}
+                          />
+                          <button
+                            type="button"
+                            className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                            onClick={() => setShowPassword(!showPassword)}
+                          >
+                            {showPassword ? (
+                              <EyeOff className="h-5 w-5 text-gray-500" />
+                            ) : (
+                              <Eye className="h-5 w-5 text-gray-500" />
+                            )}
+                          </button>
+                        </div>
+                      </FormControl>
+                      <FormMessage className="text-xs sm:text-sm" />
+                    </FormItem>
+                  )}
                 />
-                {/* Confirm Password Field with Eye Icon */}
                 <FormField
                   control={profileForm.control}
                   name="confirmPassword"
-                  render={({ field }) => {
-                    return (
-                      <FormItem>
-                        <FormLabel className="text-sm sm:text-base">
-                          Confirm Password
-                        </FormLabel>
-                        <FormControl>
-                          <div className="relative">
-                            <Input
-                              placeholder="Confirm new password"
-                              type={showConfirmPassword ? "text" : "password"}
-                              {...field}
-                            />
-                            <button
-                              type="button"
-                              className="absolute inset-y-0 right-0 pr-3 flex items-center"
-                              onClick={() =>
-                                setShowConfirmPassword(!showConfirmPassword)
-                              }
-                            >
-                              {showConfirmPassword ? (
-                                <EyeOff className="h-5 w-5 text-gray-500" />
-                              ) : (
-                                <Eye className="h-5 w-5 text-gray-500" />
-                              )}
-                            </button>
-                          </div>
-                        </FormControl>
-                        <FormMessage className="text-xs sm:text-sm" />
-                      </FormItem>
-                    );
-                  }}
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm sm:text-base">
+                        Confirm Password
+                      </FormLabel>
+                      <FormControl>
+                        <div className="relative">
+                          <Input
+                            placeholder="Confirm new password"
+                            type={showConfirmPassword ? "text" : "password"}
+                            {...field}
+                          />
+                          <button
+                            type="button"
+                            className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                            onClick={() =>
+                              setShowConfirmPassword(!showConfirmPassword)
+                            }
+                          >
+                            {showConfirmPassword ? (
+                              <EyeOff className="h-5 w-5 text-gray-500" />
+                            ) : (
+                              <Eye className="h-5 w-5 text-gray-500" />
+                            )}
+                          </button>
+                        </div>
+                      </FormControl>
+                      <FormMessage className="text-xs sm:text-sm" />
+                    </FormItem>
+                  )}
                 />
                 <FormField
                   control={profileForm.control}
@@ -399,53 +464,19 @@ export default function MyAccount() {
                     </FormItem>
                   )}
                 />
-                <FormField
-                  control={paymentForm.control}
-                  name="cardNumber"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-sm sm:text-base">
-                        Card Number
-                      </FormLabel>
-                      <FormControl>
-                        <Input placeholder="1234 5678 9012 3456" {...field} />
-                      </FormControl>
-                      <FormMessage className="text-xs sm:text-sm" />
-                    </FormItem>
-                  )}
-                />
-                <div className="grid grid-cols-2 gap-4">
-                  <FormField
-                    control={paymentForm.control}
-                    name="exp"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-sm sm:text-base">
-                          Expiration
-                        </FormLabel>
-                        <FormControl>
-                          <Input placeholder="MM/YY" {...field} />
-                        </FormControl>
-                        <FormMessage className="text-xs sm:text-sm" />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={paymentForm.control}
-                    name="cvv"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel className="text-sm sm:text-base">
-                          CVV
-                        </FormLabel>
-                        <FormControl>
-                          <Input placeholder="123" {...field} />
-                        </FormControl>
-                        <FormMessage className="text-xs sm:text-sm" />
-                      </FormItem>
-                    )}
-                  />
-                </div>
+                <FormItem>
+                  <FormLabel className="text-sm sm:text-base">
+                    Card Details
+                  </FormLabel>
+                  <FormControl>
+                    <div className="border rounded-md p-3 bg-gray-100">
+                      <p className="text-sm text-gray-500">
+                        Square iframe placeholder (awaiting GymMaster API
+                        details)
+                      </p>
+                    </div>
+                  </FormControl>
+                </FormItem>
                 <FormField
                   control={paymentForm.control}
                   name="billingAddress"
@@ -469,7 +500,7 @@ export default function MyAccount() {
                   {paymentLoading ? (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   ) : (
-                    "Save Payment"
+                    "Save Payment Method"
                   )}
                 </Button>
               </form>

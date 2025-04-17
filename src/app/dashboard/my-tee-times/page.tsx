@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -19,26 +19,110 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { Loader2 } from "lucide-react";
+import { Loader2, RefreshCw } from "lucide-react";
 import { motion } from "framer-motion";
-import { useBookings } from "@/context/BookingContext";
+import { Booking, useBookings } from "@/context/BookingContext";
+import axios from "axios";
+
+const GYMMASTER_API_KEY = process.env.NEXT_PUBLIC_GYMMASTER_API_KEY;
 
 export default function MyTeeTimes() {
-  const { bookings, deleteBooking } = useBookings();
+  const { bookings, deleteBooking, setBookings } = useBookings();
   const [isLoading, setIsLoading] = useState(false);
   const [deleteBookingId, setDeleteBookingId] = useState<number | null>(null);
+  const [isFetching, setIsFetching] = useState(false);
+
+  const fetchBookings = async () => {
+    setIsFetching(true);
+    try {
+      const token = localStorage.getItem("authToken");
+      if (!token) {
+        throw new Error("Not authenticated");
+      }
+
+      const response = await axios.get("/api/gymmaster/v2/member/bookings", {
+        params: {
+          api_key: GYMMASTER_API_KEY,
+          token,
+        },
+      });
+
+      console.log("Bookings Response:", response.data);
+
+      const fetchedBookings =
+        response.data.result.servicebookings?.map((b: Booking) => {
+          // Normalize time to 24-hour format (e.g., "9:00 am" -> "09:00")
+          let time = b.starttime.slice(0, 5); // Default to "HH:MM"
+          if (b.start_str) {
+            const [hours, minutes, period] = b.start_str
+              .match(/(\d+):(\d+)\s*(am|pm)/i)
+              ?.slice(1) || ["0", "00", "am"];
+            let hourNum = parseInt(hours);
+            if (period.toLowerCase() === "pm" && hourNum !== 12) hourNum += 12;
+            if (period.toLowerCase() === "am" && hourNum === 12) hourNum = 0;
+            time = `${hourNum.toString().padStart(2, "0")}:${minutes}`;
+          }
+
+          return {
+            id: b.id,
+            date: b.day,
+            time,
+            location: b.location || "Simcognito's Golf 2/47 Club",
+            bay: b.name || "Unknown",
+            guests: [], // No guest data from API
+            guestPassUsage: { free: 0, charged: 0 }, // Placeholder
+          };
+        }) || [];
+
+      console.log("Mapped Bookings:", fetchedBookings);
+      setBookings(fetchedBookings);
+      if (fetchedBookings.length === 0) {
+        toast.info("No bookings found");
+      }
+    } catch (error) {
+      console.error("Fetch Bookings Error:", error);
+      toast.error("Failed to fetch bookings", {
+        description: "Please try again later.",
+      });
+    } finally {
+      setIsFetching(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchBookings();
+  }, []);
 
   const handleDelete = async (id: number) => {
     setIsLoading(true);
     try {
       const booking = bookings.find((b) => b.id === id);
       if (!booking) throw new Error("Booking not found");
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      const token = localStorage.getItem("authToken");
+      if (!token) throw new Error("Not authenticated");
+
+      await axios.post(
+        "/api/gymmaster/v1/member/cancelbooking",
+        new URLSearchParams({
+          api_key: GYMMASTER_API_KEY || "",
+          token,
+          bookingid: id.toString(),
+          waitlist: "0",
+        }),
+        {
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+        }
+      );
+
       deleteBooking(id);
       toast.success("Tee time canceled", {
         description: `Your tee time on ${booking.date} at ${booking.time} has been canceled.`,
       });
-    } catch {
+    } catch (error) {
+      console.error("Delete Booking Error:", error);
       toast.error("Failed to cancel tee time", {
         description: "Please try again later.",
       });
@@ -71,6 +155,22 @@ export default function MyTeeTimes() {
         transition={{ duration: 0.5, delay: 0.2 }}
         className="w-full max-w-4xl mx-auto"
       >
+        <div className="flex justify-end mb-4">
+          <Button
+            variant="outline"
+            onClick={fetchBookings}
+            disabled={isFetching}
+            aria-label="Refresh bookings"
+          >
+            {isFetching ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="mr-2 h-4 w-4" />
+            )}
+            Refresh
+          </Button>
+        </div>
+
         {bookings.length === 0 ? (
           <p className="text-center text-gray-500">
             You have no booked tee times.
@@ -173,7 +273,7 @@ export default function MyTeeTimes() {
 
             {/* Mobile Layout: Stacked Card-like View */}
             <div className="sm:hidden space-y-4">
-              {bookings.map((booking) => (
+              {sortedBookings.map((booking) => (
                 <motion.div
                   key={booking.id}
                   initial={{ opacity: 0, y: 20 }}

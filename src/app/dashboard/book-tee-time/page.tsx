@@ -42,10 +42,13 @@ import {
   fetchClubs,
   fetchResourcesAndSessions,
   fetchServices,
+  fetchMemberMemberships,
+  MemberMembership,
 } from "@/api/gymmaster";
 import { useRouter } from "next/navigation";
 
 const GYMMASTER_API_KEY = process.env.NEXT_PUBLIC_GYMMASTER_API_KEY;
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://your-app.com";
 
 const teeTimeSchema = z.object({
   location: z.string().min(1, "Please select a location"),
@@ -74,6 +77,11 @@ const teeTimeSchema = z.object({
 const freeGuestPassesPerMonth = 2;
 const guestPassCharge = 10;
 
+interface CustomField {
+  fieldname: string;
+  value: string;
+}
+
 export default function BookTeeTime() {
   const [selectedSlots, setSelectedSlots] = useState<
     { time: string; bay: string }[]
@@ -88,9 +96,17 @@ export default function BookTeeTime() {
   const [selectedServiceId, setSelectedServiceId] = useState<number | null>(
     null
   );
+  const [selectedBenefitId, setSelectedBenefitId] = useState<number | null>(
+    null
+  );
+  const [membership, setMembership] = useState<MemberMembership | null>(null);
   const [isFetchingClubs, setIsFetchingClubs] = useState(false);
   const [isFetchingServices, setIsFetchingServices] = useState(false);
   const [isFetchingSlots, setIsFetchingSlots] = useState(false);
+  const [hasFetchedClubs, setHasFetchedClubs] = useState(false);
+  const [guestPassesUsed, setGuestPassesUsed] = useState(0);
+  const [referralCodes, setReferralCodes] = useState<string[]>([]);
+  const [guestBookingIds, setGuestBookingIds] = useState<number[]>([]);
   const { addBooking, bookings } = useBookings();
   const router = useRouter();
 
@@ -109,8 +125,105 @@ export default function BookTeeTime() {
   const service = form.watch("service");
   const date = form.watch("date");
 
+  // Generate random referral code
+  const generateReferralCode = () => {
+    const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+    let code = "";
+    for (let i = 0; i < 6; i++) {
+      code += chars[Math.floor(Math.random() * chars.length)];
+    }
+    return code;
+  };
+
+  // Fetch custom fields (guest passes, referral codes, booking IDs)
+  const fetchCustomFields = async (token: string) => {
+    // Temporarily disable broken API call
+    // console.log("Skipping customfields fetch - endpoint not implemented");
+    // return { guestPassesUsed: 0, referralCodes: [], guestBookingIds: [] };
+
+    try {
+      const response = await axios.get(
+        "/api/gymmaster/v1/member/customfields",
+        {
+          params: { api_key: GYMMASTER_API_KEY, token },
+        }
+      );
+      const fields: CustomField[] = response.data.customfields || [];
+      console.log("Custom Fields:", fields);
+      const passesField = fields.find(
+        (f: CustomField) => f.fieldname === "guest_passes_used"
+      );
+      const codesField = fields.find(
+        (f: CustomField) => f.fieldname === "referral_codes"
+      );
+      const bookingIdsField = fields.find(
+        (f: CustomField) => f.fieldname === "guest_booking_ids"
+      );
+      return {
+        guestPassesUsed: passesField ? Number(passesField.value) || 0 : 0,
+        referralCodes: codesField ? JSON.parse(codesField.value || "[]") : [],
+        guestBookingIds: bookingIdsField
+          ? JSON.parse(bookingIdsField.value || "[]")
+          : [],
+      };
+    } catch (err) {
+      console.error("Custom Fields Error:", err);
+      return { guestPassesUsed: 0, referralCodes: [], guestBookingIds: [] };
+    }
+  };
+
+  // Update custom fields
+  const updateCustomFields = async (
+    token: string,
+    guestPassesUsed: number,
+    referralCodes: string[],
+    guestBookingIds: number[]
+  ) => {
+    // Temporarily disable broken API call
+    console.log("Skipping customfields update - endpoint not implemented", {
+      guestPassesUsed,
+      referralCodes,
+      guestBookingIds,
+    });
+
+    try {
+      await axios.put(
+        "/api/gymmaster/v1/member/customfields",
+        {
+          customfields: [
+            {
+              fieldname: "guest_passes_used",
+              value: guestPassesUsed.toString(),
+            },
+            {
+              fieldname: "referral_codes",
+              value: JSON.stringify(referralCodes),
+            },
+            {
+              fieldname: "guest_booking_ids",
+              value: JSON.stringify(guestBookingIds),
+            },
+          ],
+        },
+        {
+          params: { api_key: GYMMASTER_API_KEY, token },
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+      console.log("Updated Custom Fields:", {
+        guestPassesUsed,
+        referralCodes,
+        guestBookingIds,
+      });
+    } catch (err) {
+      console.error("Update Custom Fields Error:", err);
+      toast.error("Failed to update guest data");
+    }
+  };
+
+  // Initial fetch for clubs, memberships, and custom fields
   useEffect(() => {
-    const initialize = async () => {
+    const fetchInitialData = async () => {
       const token = localStorage.getItem("authToken");
       const tokenExpires = localStorage.getItem("tokenExpires");
 
@@ -120,74 +233,131 @@ export default function BookTeeTime() {
         return;
       }
 
+      if (hasFetchedClubs) return;
+
       try {
         setIsFetchingClubs(true);
         const fetchedClubs = await fetchClubs();
         setClubs(fetchedClubs);
-        setIsFetchingClubs(false);
 
-        if (location) {
-          const club = fetchedClubs.find((c) => c.name === location);
-          if (!club) throw new Error("Selected club not found");
+        const memberships = await fetchMemberMemberships(token);
+        console.log("Memberships:", memberships);
+        const activeMembership = memberships.find(
+          (m) =>
+            m.enddate === "Open Ended" ||
+            m.enddate === null ||
+            new Date(m.enddate) > new Date()
+        );
+        if (!activeMembership) throw new Error("No active membership found");
+        setMembership(activeMembership);
 
-          setIsFetchingServices(true);
-          const fetchedServices = await fetchServices(
-            token,
-            undefined,
-            club.id
-          );
-          console.log("All Services:", fetchedServices);
-          const memberServices = fetchedServices.filter((s) =>
-            s.servicename.includes("Member Golf Bay")
-          );
-          console.log(
-            "Available Services:",
-            memberServices.map((s) => ({
-              id: s.serviceid,
-              name: s.servicename,
-            }))
-          );
-          setServices(memberServices);
-          setIsFetchingServices(false);
+        const { guestPassesUsed, referralCodes, guestBookingIds } =
+          await fetchCustomFields(token);
+        setGuestPassesUsed(guestPassesUsed);
+        setReferralCodes(referralCodes);
+        setGuestBookingIds(guestBookingIds);
 
-          if (service && date) {
-            const selectedService = memberServices.find(
-              (s) => s.servicename === service
-            );
-            if (!selectedService) throw new Error("Selected service not found");
-            setSelectedServiceId(selectedService.serviceid);
-
-            setIsFetchingSlots(true);
-            const { dates, resources } = await fetchResourcesAndSessions(
-              token,
-              selectedService.serviceid,
-              date,
-              club.id
-            );
-            console.log(
-              "Fetched Resources for Service",
-              selectedService.serviceid,
-              ":",
-              resources.map((r) => ({ id: r.id, name: r.name }))
-            );
-            setResources(resources);
-            setSessions(dates);
-            setIsFetchingSlots(false);
-          }
-        }
+        setHasFetchedClubs(true);
       } catch (err) {
-        console.error("Initialization Error:", err);
+        console.error("Initial Fetch Error:", err);
         toast.error("Failed to load data", {
           description: (err as Error).message,
         });
+      } finally {
         setIsFetchingClubs(false);
+      }
+    };
+
+    fetchInitialData();
+  }, [router, hasFetchedClubs]);
+
+  // Fetch services when location changes
+  useEffect(() => {
+    if (!location || !membership) return;
+
+    const fetchServicesData = async () => {
+      try {
+        setIsFetchingServices(true);
+        const club = clubs.find((c) => c.name === location);
+        if (!club) throw new Error("Selected club not found");
+
+        const fetchedServices = await fetchServices(
+          localStorage.getItem("authToken")!,
+          undefined,
+          club.id
+        );
+        console.log("All Services:", fetchedServices);
+        const memberServices = fetchedServices
+          .filter((s) => s.servicename.includes("Member Golf Bay"))
+          .map((s) => ({
+            ...s,
+            servicename: s.servicename.trim(),
+          }));
+        console.log(
+          "Available Services:",
+          memberServices.map((s) => ({
+            id: s.serviceid,
+            name: s.servicename,
+            benefitid: s.benefitid,
+          }))
+        );
+        setServices(memberServices);
+      } catch (err) {
+        console.error("Services Fetch Error:", err);
+        toast.error("Failed to load services", {
+          description: (err as Error).message,
+        });
+      } finally {
         setIsFetchingServices(false);
+      }
+    };
+
+    fetchServicesData();
+  }, [location, clubs, membership]);
+
+  // Fetch slots when service or date changes
+  useEffect(() => {
+    if (!service || !date || !membership) return;
+
+    const fetchSlotsData = async () => {
+      try {
+        setIsFetchingSlots(true);
+        const selectedService = services.find((s) => s.servicename === service);
+        if (!selectedService) throw new Error("Selected service not found");
+        setSelectedServiceId(selectedService.serviceid);
+        setSelectedBenefitId(
+          selectedService.benefitid ? Number(selectedService.benefitid) : null
+        );
+
+        const club = clubs.find((c) => c.name === location);
+        if (!club) throw new Error("Selected club not found");
+
+        const { dates, resources } = await fetchResourcesAndSessions(
+          localStorage.getItem("authToken")!,
+          selectedService.serviceid,
+          date,
+          club.id
+        );
+        console.log(
+          "Fetched Resources for Service",
+          selectedService.serviceid,
+          ":",
+          resources.map((r) => ({ id: r.id, name: r.name }))
+        );
+        setResources(resources);
+        setSessions(dates);
+      } catch (err) {
+        console.error("Slots Fetch Error:", err);
+        toast.error("Failed to load time slots", {
+          description: (err as Error).message,
+        });
+      } finally {
         setIsFetchingSlots(false);
       }
     };
 
-    initialize();
-  }, [location, service, date, router]);
+    fetchSlotsData();
+  }, [service, date, services, location, clubs, membership]);
 
   const getSlotDuration = () => {
     if (service.includes("1/2 hr")) return 30;
@@ -281,6 +451,14 @@ export default function BookTeeTime() {
   };
 
   const handleGuestCountChange = (count: number) => {
+    if (
+      count > freeGuestPassesPerMonth &&
+      guestPassesUsed >= freeGuestPassesPerMonth
+    ) {
+      toast.warning("Guest pass limit reached", {
+        description: `You've used ${guestPassesUsed} of ${freeGuestPassesPerMonth} free guest passes. Additional guests cost $${guestPassCharge} each.`,
+      });
+    }
     setGuestCount(count);
     const currentGuests = form.getValues("guests") || [];
     form.setValue(
@@ -297,11 +475,17 @@ export default function BookTeeTime() {
     form.setValue("timeSlots", []);
     form.setValue("service", "");
     setServices([]);
+    setSelectedServiceId(null);
+    setSelectedBenefitId(null);
   };
 
   const handleServiceChange = () => {
     setSelectedSlots([]);
     form.setValue("timeSlots", []);
+    setResources([]);
+    setSessions([]);
+    setSelectedServiceId(null);
+    setSelectedBenefitId(null);
   };
 
   const onSubmit = async (data: z.infer<typeof teeTimeSchema>) => {
@@ -314,12 +498,26 @@ export default function BookTeeTime() {
 
       if (!GYMMASTER_API_KEY) throw new Error("API key missing in environment");
 
+      if (!membership) throw new Error("No active membership found");
+
+      const memberId = localStorage.getItem("memberId") || "123";
       const resourceMap = Object.fromEntries(
         resources.map((r) => [r.name, r.id])
       );
       const club = clubs.find((c) => c.name === data.location);
       if (!club) throw new Error("Selected club not found");
 
+      // Generate referral codes and collect booking IDs
+      const newReferralCodes: string[] = [];
+      const newBookingIds: number[] = [];
+      if (data.guests?.length) {
+        data.guests.forEach(() => {
+          const code = `GUEST_${memberId}_${generateReferralCode()}`;
+          newReferralCodes.push(code);
+        });
+      }
+
+      // Book slots
       for (const slot of data.timeSlots) {
         const { hour, minute } = parseTimeSlot(slot.time);
         const bookingstart = `${hour.toString().padStart(2, "0")}:${minute
@@ -337,14 +535,16 @@ export default function BookTeeTime() {
           token,
           resourceid: resourceMap[slot.bay].toString(),
           serviceid: selectedServiceId.toString(),
-          benefitid: "329120",
-          membershipid: "136558440",
           day: data.date,
           bookingstart,
           bookingend,
           roomid: "",
           equipmentid: "",
+          membershipid: membership.id.toString(),
         };
+        if (selectedBenefitId) {
+          bookingParams.benefitid = selectedBenefitId.toString();
+        }
         console.log("Booking Request:", {
           ...bookingParams,
           serviceName: data.service,
@@ -378,46 +578,81 @@ export default function BookTeeTime() {
           );
         }
 
+        // Store booking ID
+        const bookingId = response.data.result?.bookingid;
+        if (bookingId) {
+          newBookingIds.push(bookingId);
+        }
+
         await addBooking({
           date: data.date,
+          // addition
+          day: new Date(data.date).toLocaleDateString("en-US", {
+            weekday: "long",
+          }),
+          starttime: slot.time,
+          // addition
           time: slot.time,
           location: data.location,
           bay: slot.bay,
           guests: data.guests || [],
           guestPassUsage: {
-            free: Math.min((data.guests || []).length, freeGuestPassesPerMonth),
+            free: Math.min(
+              (data.guests || []).length,
+              Math.max(freeGuestPassesPerMonth - guestPassesUsed, 0)
+            ),
             charged: Math.max(
-              (data.guests || []).length - freeGuestPassesPerMonth,
+              (data.guests || []).length -
+                Math.max(freeGuestPassesPerMonth - guestPassesUsed, 0),
               0
             ),
           },
         });
       }
 
+      // Update guest passes, referral codes, and booking IDs
       if (data.guests?.length) {
-        const referralCode = `GUEST_${
-          localStorage.getItem("memberId") || "123"
-        }`;
-        for (const guest of data.guests) {
+        const newGuestPassesUsed = guestPassesUsed + data.guests.length;
+        const updatedReferralCodes = [...referralCodes, ...newReferralCodes];
+        const updatedBookingIds = [...guestBookingIds, ...newBookingIds];
+        await updateCustomFields(
+          token,
+          newGuestPassesUsed,
+          updatedReferralCodes,
+          updatedBookingIds
+        );
+        setGuestPassesUsed(newGuestPassesUsed);
+        setReferralCodes(updatedReferralCodes);
+        setGuestBookingIds(updatedBookingIds);
+
+        // Send app link to guests
+        for (let i = 0; i < data.guests.length; i++) {
+          const guest = data.guests[i];
+          const referralCode = newReferralCodes[i];
+          const appLink = `${APP_URL}?referral=${encodeURIComponent(
+            referralCode
+          )}`;
           const res = await fetch("/api/send-sms", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               phoneNumber: guest.cell,
-              referralCode,
-              signupLink: "https://your-app.com/signup",
+              message: `Join my tee time at ${data.location}! Sign up or log in: ${appLink}`,
             }),
           });
-          if (!res.ok) throw new Error("SMS failed");
+          if (!res.ok) throw new Error(`SMS failed for ${guest.name}`);
           toast.info("SMS sent to guest", {
-            description: `A signup link with referral code ${referralCode} was sent to ${guest.name} (${guest.cell})`,
+            description: `A link with referral code ${referralCode} was sent to ${guest.name} (${guest.cell})`,
           });
         }
       }
 
       const extraCharge =
-        Math.max((data.guests || []).length - freeGuestPassesPerMonth, 0) *
-        guestPassCharge;
+        Math.max(
+          (data.guests || []).length -
+            Math.max(freeGuestPassesPerMonth - guestPassesUsed, 0),
+          0
+        ) * guestPassCharge;
       toast.success("Tee times booked!", {
         description: `Booked ${data.timeSlots.length} time slot(s) at ${
           data.location
@@ -436,6 +671,7 @@ export default function BookTeeTime() {
       setSelectedSlots([]);
       setGuestCount(0);
       setShowItinerary(false);
+      router.push("/dashboard/my-tee-times");
     } catch (err) {
       console.error("Booking Error:", err);
       toast.error("Failed to book tee times", {
@@ -802,15 +1038,26 @@ export default function BookTeeTime() {
                       <strong>Guest Pass Usage:</strong>{" "}
                       {Math.min(
                         (form.getValues("guests") || []).length,
-                        freeGuestPassesPerMonth
+                        Math.max(freeGuestPassesPerMonth - guestPassesUsed, 0)
                       )}{" "}
                       free pass(es) used.{" "}
-                      {(form.getValues("guests") || []).length >
-                      freeGuestPassesPerMonth
+                      {Math.max(
+                        (form.getValues("guests") || []).length -
+                          Math.max(
+                            freeGuestPassesPerMonth - guestPassesUsed,
+                            0
+                          ),
+                        0
+                      ) > 0
                         ? `Extra charge: $${
-                            ((form.getValues("guests") || []).length -
-                              freeGuestPassesPerMonth) *
-                            guestPassCharge
+                            Math.max(
+                              (form.getValues("guests") || []).length -
+                                Math.max(
+                                  freeGuestPassesPerMonth - guestPassesUsed,
+                                  0
+                                ),
+                              0
+                            ) * guestPassCharge
                           }`
                         : ""}
                     </p>

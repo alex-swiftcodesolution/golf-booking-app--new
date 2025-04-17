@@ -107,6 +107,7 @@ export interface Member {
   memberid: string;
   "Referral Code"?: string;
   "Referral Code Generated"?: string; // Added to fix type errors
+  customtext1?: string;
 }
 
 export interface Resource {

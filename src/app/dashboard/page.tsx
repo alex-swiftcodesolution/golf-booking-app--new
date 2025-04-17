@@ -183,7 +183,7 @@ export default function Dashboard() {
               <CardContent className="space-y-3">
                 {bookings.length > 0 ? (
                   <ul className="space-y-3">
-                    {bookings.map((teeTime, index) => (
+                    {bookings.slice(0, 5).map((teeTime, index) => (
                       <motion.li
                         key={teeTime.id}
                         initial={{ opacity: 0, x: -20 }}

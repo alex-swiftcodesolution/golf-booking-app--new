@@ -46,7 +46,6 @@ import {
   saveWaiver,
   login,
   fetchWaiver,
-  validateReferral,
   type Club,
   type Membership,
 } from "@/api/gymmaster";
@@ -105,7 +104,6 @@ type SignUpFormData = z.infer<typeof signUpSchema>;
 type LoginFormData = z.infer<typeof loginSchema>;
 
 export default function Home() {
-  const [adminToken, setAdminToken] = useState<string | null>(null);
   const [loading, setLoading] = useState({ signup: false, login: false });
   const [showPasswords, setShowPasswords] = useState({
     password: false,
@@ -180,20 +178,7 @@ export default function Home() {
       }
     };
 
-    const fetchAdminToken = async () => {
-      try {
-        const res = await fetch("/api/get-admin-token");
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || "Admin token fetch failed");
-        setAdminToken(data.token);
-      } catch (error) {
-        console.error("Admin token error:", error);
-        toast.error("Referral validation may be unavailable");
-      }
-    };
-
     fetchData();
-    fetchAdminToken();
   }, []);
 
   const onLoginSubmit = async (data: LoginFormData) => {
@@ -222,17 +207,6 @@ export default function Home() {
   const onSignUpSubmit = async (data: SignUpFormData) => {
     setLoading((prev) => ({ ...prev, signup: true }));
     try {
-      if (data.referralCode && !adminToken) {
-        throw new Error("Admin token missing for referral validation");
-      }
-      if (data.referralCode) {
-        const isReferralValid = await validateReferral(
-          data.referralCode,
-          adminToken!
-        );
-        if (!isReferralValid) throw new Error("Invalid referral code");
-      }
-
       const signupData = {
         firstname: data.firstName,
         surname: data.lastName,
@@ -290,25 +264,7 @@ export default function Home() {
       toast.error("Please fix errors before proceeding");
       return;
     }
-    if (step === 1 && signUpForm.getValues("referralCode")) {
-      if (!adminToken) {
-        toast.error("Unable to validate referral code");
-        return;
-      }
-      try {
-        const isReferralValid = await validateReferral(
-          signUpForm.getValues("referralCode") ?? "",
-          adminToken
-        );
-        if (!isReferralValid) {
-          toast.error("Invalid referral code");
-          return;
-        }
-      } catch (error) {
-        console.error("Referral validation error:", error);
-        toast.error("Failed to validate referral code");
-        return;
-      }
+    if (step === 1) {
     }
     if (step === 2) {
       try {

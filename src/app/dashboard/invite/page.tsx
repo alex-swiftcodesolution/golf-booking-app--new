@@ -34,11 +34,23 @@ export default function Invite() {
   const onSubmit = async (data: z.infer<typeof inviteSchema>) => {
     setIsLoading(true);
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1000)); // Simulate API delay
-      toast.success("Invite sent!", {
-        description: `SMS sent to ${data.cell} with signup link and code ${referralCode}`,
+      // Call your backend API to send the SMS
+      const response = await fetch("/api/send-sms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: data.name,
+          phone: data.cell,
+          referrerId: "current_user_id", // Replace with actual user ID (from auth/session)
+        }),
       });
-      form.reset(); // Reset form after submission
+
+      if (!response.ok) throw new Error("Failed to send invite");
+
+      toast.success("Invite sent!", {
+        description: `${data.name} will receive an SMS with your referral link!`,
+      });
+      form.reset();
     } catch {
       toast.error("Failed to send invite");
     } finally {

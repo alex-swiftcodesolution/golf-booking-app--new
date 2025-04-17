@@ -7,7 +7,7 @@ import { Analytics } from "@vercel/analytics/react";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata = {
-  title: "Club Membership App - Demo",
+  title: "Simcognito's 247 Golf Club - Demo",
   description: "A demo of the club membership web application",
 };
 

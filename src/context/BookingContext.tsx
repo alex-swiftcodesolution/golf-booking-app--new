@@ -8,7 +8,7 @@ import {
 } from "react";
 import axios from "axios";
 
-interface Booking {
+export interface Booking {
   id: number;
   date: string;
   time: string;
