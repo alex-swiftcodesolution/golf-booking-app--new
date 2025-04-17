@@ -1,34 +1,52 @@
-import type { NextApiRequest, NextApiResponse } from "next";
+import { NextRequest, NextResponse } from "next/server";
 
-type ReferralResponse = {
-  success: boolean;
-  error?: string;
-};
+// type ReferralResponse = {
+//   success: boolean;
+//   error?: string;
+// };
 
-export default async function GET(
-  req: NextApiRequest,
-  res: NextApiResponse<ReferralResponse>
-) {
-  if (req.method !== "POST") {
-    return res
-      .status(405)
-      .json({ success: false, error: "Method not allowed" });
+export async function POST(req: NextRequest) {
+  try {
+    // Ensure the method is POST
+    if (req.method !== "POST") {
+      return NextResponse.json(
+        { success: false, error: "Method not allowed" },
+        { status: 405 }
+      );
+    }
+
+    // Parse the JSON body
+    const { referralCode } = await req.json();
+
+    // Validate referralCode
+    if (!referralCode) {
+      return NextResponse.json(
+        { success: false, error: "Referral code is required" },
+        { status: 400 }
+      );
+    }
+
+    // Placeholder logic - replace with actual validation (e.g., DB check or GymMaster API)
+    const isValid = referralCode.length > 0; // Mock: replace with real logic
+    if (!isValid) {
+      return NextResponse.json(
+        { success: false, error: "Invalid referral code" },
+        { status: 400 }
+      );
+    }
+
+    return NextResponse.json({ success: true }, { status: 200 });
+  } catch (error: unknown) {
+    const errorMessage =
+      error instanceof Error ? error.message : "Unknown error";
+    console.error("Failed to validate referral:", errorMessage);
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Failed to validate referral",
+        details: errorMessage,
+      },
+      { status: 500 }
+    );
   }
-
-  const { referralCode } = req.body as { referralCode: string };
-  if (!referralCode) {
-    return res
-      .status(400)
-      .json({ success: false, error: "Referral code is required" });
-  }
-
-  // Placeholder logic - replace with actual validation (e.g., DB check or GymMaster API if provided)
-  const isValid = referralCode.length > 0; // Mock: client to provide real logic
-  if (!isValid) {
-    return res
-      .status(400)
-      .json({ success: false, error: "Invalid referral code" });
-  }
-
-  res.status(200).json({ success: true });
 }
