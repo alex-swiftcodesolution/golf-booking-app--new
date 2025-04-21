@@ -106,7 +106,7 @@ export interface Member {
   linked_members?: object[];
   memberid: string;
   "Referral Code"?: string;
-  "Referral Code Generated"?: string; // Added to fix type errors
+  "Referral Code Generated"?: string;
   customtext1?: string;
 }
 
@@ -138,6 +138,12 @@ export interface MemberServiceBooking {
   endtime: string;
   name: string;
   type: string;
+}
+
+export interface PortalLogin {
+  token: string;
+  expires: number;
+  memberid: number;
 }
 
 // API Helpers

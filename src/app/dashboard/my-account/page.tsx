@@ -1,11 +1,14 @@
 "use client";
+
 import { useState, useEffect, useCallback } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
+import { motion } from "framer-motion";
+
 import {
   Form,
   FormControl,
@@ -14,12 +17,12 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { toast } from "sonner";
-import { Eye, EyeOff, Loader2 } from "lucide-react";
-import { motion } from "framer-motion";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { fetchMemberDetails, updateMemberProfile } from "@/api/gymmaster";
-import { useRouter } from "next/navigation";
-import axios from "axios";
+
+const GYMMASTER_USERNAME = "parclub247";
 
 const profileSchema = z
   .object({
@@ -28,48 +31,43 @@ const profileSchema = z
     email: z.string().email("Please enter a valid email"),
     phonecell: z
       .string()
-      .min(10, "Please enter a valid cell number")
       .regex(
         /^\+?\d{1,3}[-.\s]?\d{3}[-.\s]?\d{3}[-.\s]?\d{4}$/,
         "Please enter a valid cell number (e.g., +1-123-456-7890)"
       )
       .optional()
       .or(z.literal("")),
-    password: z
-      .string()
-      .min(6, "Password must be at least 6 characters")
-      .optional(),
-    confirmPassword: z.string().optional(),
+    password: z.string().min(6).optional().or(z.literal("")),
+    confirmPassword: z.string().optional().or(z.literal("")),
     dob: z.string().optional(),
     addressstreet: z.string().optional(),
   })
-  .refine((data) => !data.password || data.password === data.confirmPassword, {
-    message: "Passwords must match",
-    path: ["confirmPassword"],
+  .superRefine((data, ctx) => {
+    if (data.password && data.password !== data.confirmPassword) {
+      ctx.addIssue({
+        path: ["confirmPassword"],
+        code: z.ZodIssueCode.custom,
+        message: "Passwords must match",
+      });
+    }
   });
 
-const paymentSchema = z.object({
-  cardName: z.string().min(1, "Name on card is required"),
-  billingAddress: z.string().min(1, "Billing address is required"),
-});
-
-interface PaymentMethodResponse {
-  result?: string;
-  error?: string | null;
-}
-interface PaymentLogResponse {
-  result?: string;
-  error?: string | null;
-}
+type ProfileFormValues = z.infer<typeof profileSchema>;
 
 export default function MyAccount() {
-  const [profileLoading, setProfileLoading] = useState(false);
-  const [paymentLoading, setPaymentLoading] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const router = useRouter();
 
-  const profileForm = useForm<z.infer<typeof profileSchema>>({
+  const [loading, setLoading] = useState({
+    token: true,
+    profile: false,
+  });
+
+  const [passwordVisibility, setPasswordVisibility] = useState({
+    password: false,
+    confirmPassword: false,
+  });
+
+  const profileForm = useForm<ProfileFormValues>({
     resolver: zodResolver(profileSchema),
     defaultValues: {
       firstname: "",
@@ -83,21 +81,16 @@ export default function MyAccount() {
     },
   });
 
-  const paymentForm = useForm<z.infer<typeof paymentSchema>>({
-    resolver: zodResolver(paymentSchema),
-    defaultValues: {
-      cardName: "",
-      billingAddress: "",
-    },
-  });
-
   const loadProfile = useCallback(async () => {
+    const token = localStorage.getItem("authToken");
+    const expires = localStorage.getItem("tokenExpires");
+
+    if (!token || (expires && Date.now() > Number(expires))) {
+      router.push("/");
+      return;
+    }
+
     try {
-      const token = localStorage.getItem("authToken");
-      if (!token) {
-        router.push("/");
-        return;
-      }
       const memberData = await fetchMemberDetails(token);
       profileForm.reset({
         firstname: memberData.firstname ?? "",
@@ -107,11 +100,10 @@ export default function MyAccount() {
         dob: memberData.dob ?? "",
         addressstreet: memberData.addressstreet ?? "",
       });
-    } catch (error: unknown) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown error";
-      console.error("Failed to fetch profile:", errorMessage);
-      toast.error("Failed to load profile", { description: errorMessage });
+    } catch (err) {
+      console.error("Error fetching profile:", err);
+    } finally {
+      setLoading((prev) => ({ ...prev, token: false }));
     }
   }, [profileForm, router]);
 
@@ -119,15 +111,18 @@ export default function MyAccount() {
     loadProfile();
   }, [loadProfile]);
 
-  const onProfileSubmit = async (data: z.infer<typeof profileSchema>) => {
-    setProfileLoading(true);
-    try {
-      const token = localStorage.getItem("authToken");
-      if (!token) {
-        router.push("/");
-        return;
-      }
+  const onSubmit = async (data: ProfileFormValues) => {
+    setLoading((prev) => ({ ...prev, profile: true }));
 
+    const token = localStorage.getItem("authToken");
+    const expires = localStorage.getItem("tokenExpires");
+
+    if (!token || (expires && Date.now() > Number(expires))) {
+      router.push("/");
+      return;
+    }
+
+    try {
       const updateData = {
         firstname: data.firstname,
         surname: data.surname,
@@ -139,93 +134,15 @@ export default function MyAccount() {
       };
 
       await updateMemberProfile(token, updateData);
+
       toast.success("Profile updated!", {
         description: `Changes saved for ${data.firstname} ${data.surname}`,
       });
-    } catch (error: unknown) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown error";
-      console.error("Failed to update profile:", errorMessage);
-      toast.error("Failed to update profile", { description: errorMessage });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      toast.error("Failed to update profile", { description: message });
     } finally {
-      setProfileLoading(false);
-    }
-  };
-
-  const onPaymentSubmit = async (data: z.infer<typeof paymentSchema>) => {
-    setPaymentLoading(true);
-    try {
-      const token = localStorage.getItem("authToken");
-      if (!token) {
-        router.push("/");
-        return;
-      }
-
-      const GYMMASTER_API_KEY = process.env.NEXT_PUBLIC_GYMMASTER_API_KEY as
-        | string
-        | undefined;
-      if (!GYMMASTER_API_KEY) throw new Error("GYMMASTER_API_KEY is missing");
-
-      // Placeholder: Mock Square iframe nonce
-      const mockNonce = `mock_square_nonce_${Math.random()
-        .toString(36)
-        .slice(2)}`;
-      const mockLast4 = "1111"; // Test card last4 (e.g., 4111 1111 1111 1111)
-
-      // Attempt to store card via GymMaster
-      try {
-        const response = await axios.post<PaymentMethodResponse>(
-          "/api/gymmaster/v1/member/paymentmethod",
-          new URLSearchParams({
-            api_key: GYMMASTER_API_KEY,
-            token,
-            card_nonce: mockNonce,
-            card_name: data.cardName,
-            billing_address: data.billingAddress,
-          }),
-          { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
-        );
-        if (response.data.error) throw new Error(response.data.error);
-      } catch (cardError: unknown) {
-        const cardErrorMessage =
-          cardError instanceof Error ? cardError.message : "Unknown card error";
-        console.warn(
-          "GymMaster payment endpoint failed, logging:",
-          cardErrorMessage
-        );
-        // Fallback: Store last4 in customtext1
-        await updateMemberProfile(token, {
-          customtext1: `card_last4_${mockLast4}`,
-        });
-      }
-
-      // Log to GymMaster
-      const logResponse = await axios.post<PaymentLogResponse>(
-        "/api/gymmaster/v2/payment/log",
-        new URLSearchParams({
-          api_key: GYMMASTER_API_KEY,
-          token,
-          amount: "0.00",
-          paymentmethod_name: `Card ending ${mockLast4}`,
-          note: `Updated payment method for ${data.cardName}`,
-        }),
-        { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
-      );
-      if (logResponse.data.error) throw new Error(logResponse.data.error);
-
-      toast.success("Payment method updated!", {
-        description: `Card ending in ${mockLast4} saved`,
-      });
-      paymentForm.reset();
-    } catch (error: unknown) {
-      const errorMessage =
-        error instanceof Error ? error.message : "Unknown error";
-      console.error("Failed to update payment method:", errorMessage);
-      toast.error("Failed to update payment method", {
-        description: "Awaiting GymMaster API details. Please try again later.",
-      });
-    } finally {
-      setPaymentLoading(false);
+      setLoading((prev) => ({ ...prev, profile: false }));
     }
   };
 
@@ -248,193 +165,127 @@ export default function MyAccount() {
       >
         <Tabs defaultValue="profile" className="w-full">
           <TabsList className="grid w-full grid-cols-2 sm:flex sm:space-x-4 mb-6">
-            <TabsTrigger
-              value="profile"
-              className="w-full sm:w-auto py-2 sm:py-2.5 text-sm sm:text-base"
-              aria-label="Update profile information"
-            >
-              Update Profile
-            </TabsTrigger>
-            <TabsTrigger
-              value="payment"
-              className="w-full sm:w-auto py-2 sm:py-2.5 text-sm sm:text-base"
-              aria-label="Update payment method"
-            >
-              Update Payment
-            </TabsTrigger>
+            <TabsTrigger value="profile">Update Profile</TabsTrigger>
+            <TabsTrigger value="payment">Update Payment</TabsTrigger>
           </TabsList>
+
+          {/* Profile Tab */}
           <TabsContent value="profile">
             <Form {...profileForm}>
               <form
-                onSubmit={profileForm.handleSubmit(onProfileSubmit)}
+                onSubmit={profileForm.handleSubmit(onSubmit)}
                 className="space-y-4"
               >
-                <FormField
-                  control={profileForm.control}
-                  name="firstname"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-sm sm:text-base">
-                        First Name
-                      </FormLabel>
-                      <FormControl>
-                        <Input placeholder="John" {...field} />
-                      </FormControl>
-                      <FormMessage className="text-xs sm:text-sm" />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={profileForm.control}
-                  name="surname"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-sm sm:text-base">
-                        Last Name
-                      </FormLabel>
-                      <FormControl>
-                        <Input placeholder="Doe" {...field} />
-                      </FormControl>
-                      <FormMessage className="text-xs sm:text-sm" />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={profileForm.control}
-                  name="email"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-sm sm:text-base">
-                        Email Address
-                      </FormLabel>
-                      <FormControl>
-                        <Input
-                          placeholder="john@example.com"
-                          type="email"
-                          {...field}
-                        />
-                      </FormControl>
-                      <FormMessage className="text-xs sm:text-sm" />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={profileForm.control}
-                  name="phonecell"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-sm sm:text-base">
-                        Cell
-                      </FormLabel>
-                      <FormControl>
-                        <Input placeholder="123-456-7890" {...field} />
-                      </FormControl>
-                      <FormMessage className="text-xs sm:text-sm" />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={profileForm.control}
-                  name="password"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-sm sm:text-base">
-                        Password
-                      </FormLabel>
-                      <FormControl>
-                        <div className="relative">
+                {[
+                  {
+                    name: "firstname",
+                    label: "First Name",
+                    placeholder: "John",
+                  },
+                  { name: "surname", label: "Last Name", placeholder: "Doe" },
+                  {
+                    name: "email",
+                    label: "Email Address",
+                    placeholder: "john@example.com",
+                    type: "email",
+                  },
+                  {
+                    name: "phonecell",
+                    label: "Cell",
+                    placeholder: "123-456-7890",
+                  },
+                  { name: "dob", label: "Date of Birth", type: "date" },
+                  {
+                    name: "addressstreet",
+                    label: "Address",
+                    placeholder: "123 Main St",
+                  },
+                ].map(({ name, label, placeholder, type }) => (
+                  <FormField
+                    key={name}
+                    control={profileForm.control}
+                    name={name as keyof ProfileFormValues}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{label}</FormLabel>
+                        <FormControl>
                           <Input
-                            placeholder="New password"
-                            type={showPassword ? "text" : "password"}
                             {...field}
+                            placeholder={placeholder}
+                            type={type}
                           />
-                          <button
-                            type="button"
-                            className="absolute inset-y-0 right-0 pr-3 flex items-center"
-                            onClick={() => setShowPassword(!showPassword)}
-                          >
-                            {showPassword ? (
-                              <EyeOff className="h-5 w-5 text-gray-500" />
-                            ) : (
-                              <Eye className="h-5 w-5 text-gray-500" />
-                            )}
-                          </button>
-                        </div>
-                      </FormControl>
-                      <FormMessage className="text-xs sm:text-sm" />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={profileForm.control}
-                  name="confirmPassword"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-sm sm:text-base">
-                        Confirm Password
-                      </FormLabel>
-                      <FormControl>
-                        <div className="relative">
-                          <Input
-                            placeholder="Confirm new password"
-                            type={showConfirmPassword ? "text" : "password"}
-                            {...field}
-                          />
-                          <button
-                            type="button"
-                            className="absolute inset-y-0 right-0 pr-3 flex items-center"
-                            onClick={() =>
-                              setShowConfirmPassword(!showConfirmPassword)
-                            }
-                          >
-                            {showConfirmPassword ? (
-                              <EyeOff className="h-5 w-5 text-gray-500" />
-                            ) : (
-                              <Eye className="h-5 w-5 text-gray-500" />
-                            )}
-                          </button>
-                        </div>
-                      </FormControl>
-                      <FormMessage className="text-xs sm:text-sm" />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={profileForm.control}
-                  name="dob"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-sm sm:text-base">
-                        Date of Birth
-                      </FormLabel>
-                      <FormControl>
-                        <Input type="date" {...field} />
-                      </FormControl>
-                      <FormMessage className="text-xs sm:text-sm" />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={profileForm.control}
-                  name="addressstreet"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-sm sm:text-base">
-                        Address
-                      </FormLabel>
-                      <FormControl>
-                        <Input placeholder="123 Main St" {...field} />
-                      </FormControl>
-                      <FormMessage className="text-xs sm:text-sm" />
-                    </FormItem>
-                  )}
-                />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                ))}
+
+                {/* Password Fields */}
+                {["password", "confirmPassword"].map((fieldKey) => (
+                  <FormField
+                    key={fieldKey}
+                    control={profileForm.control}
+                    name={fieldKey as keyof ProfileFormValues}
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>
+                          {fieldKey === "password"
+                            ? "Password"
+                            : "Confirm Password"}
+                        </FormLabel>
+                        <FormControl>
+                          <div className="relative">
+                            <Input
+                              {...field}
+                              type={
+                                passwordVisibility[
+                                  fieldKey as "password" | "confirmPassword"
+                                ]
+                                  ? "text"
+                                  : "password"
+                              }
+                              placeholder={
+                                fieldKey === "password"
+                                  ? "New password"
+                                  : "Confirm new password"
+                              }
+                            />
+                            <button
+                              type="button"
+                              className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                              onClick={() =>
+                                setPasswordVisibility((prev) => ({
+                                  ...prev,
+                                  [fieldKey]:
+                                    !prev[
+                                      fieldKey as "password" | "confirmPassword"
+                                    ],
+                                }))
+                              }
+                            >
+                              {passwordVisibility[
+                                fieldKey as "password" | "confirmPassword"
+                              ] ? (
+                                <EyeOff className="h-5 w-5 text-gray-500" />
+                              ) : (
+                                <Eye className="h-5 w-5 text-gray-500" />
+                              )}
+                            </button>
+                          </div>
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                ))}
+
                 <Button
                   type="submit"
-                  className="w-full py-2.5 sm:py-3 text-lg sm:text-base"
-                  disabled={profileLoading}
+                  className="w-full py-2.5 sm:py-3 text-lg"
+                  disabled={loading.profile}
                 >
-                  {profileLoading ? (
+                  {loading.profile ? (
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                   ) : (
                     "Save Profile"
@@ -443,68 +294,33 @@ export default function MyAccount() {
               </form>
             </Form>
           </TabsContent>
+
+          {/* Payment Tab */}
           <TabsContent value="payment">
-            <Form {...paymentForm}>
-              <form
-                onSubmit={paymentForm.handleSubmit(onPaymentSubmit)}
-                className="space-y-4"
-              >
-                <FormField
-                  control={paymentForm.control}
-                  name="cardName"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-sm sm:text-base">
-                        Name on Card
-                      </FormLabel>
-                      <FormControl>
-                        <Input placeholder="John Doe" {...field} />
-                      </FormControl>
-                      <FormMessage className="text-xs sm:text-sm" />
-                    </FormItem>
-                  )}
+            {loading.token ? (
+              <div className="flex justify-center">
+                <Loader2 className="h-6 w-6 animate-spin" />
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <iframe
+                  className="gmiframe"
+                  src={`https://${GYMMASTER_USERNAME}.gymmasteronline.com/portal/account/addpaymentinfo`}
+                  style={{
+                    width: "100%",
+                    height: "600px",
+                    overflow: "hidden",
+                  }}
+                  frameBorder="0"
+                  allow="camera *"
                 />
-                <FormItem>
-                  <FormLabel className="text-sm sm:text-base">
-                    Card Details
-                  </FormLabel>
-                  <FormControl>
-                    <div className="border rounded-md p-3 bg-gray-100">
-                      <p className="text-sm text-gray-500">
-                        Square iframe placeholder (awaiting GymMaster API
-                        details)
-                      </p>
-                    </div>
-                  </FormControl>
-                </FormItem>
-                <FormField
-                  control={paymentForm.control}
-                  name="billingAddress"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-sm sm:text-base">
-                        Billing Address
-                      </FormLabel>
-                      <FormControl>
-                        <Input placeholder="123 Main St" {...field} />
-                      </FormControl>
-                      <FormMessage className="text-xs sm:text-sm" />
-                    </FormItem>
-                  )}
-                />
-                <Button
-                  type="submit"
-                  className="w-full py-2.5 sm:py-3 text-lg sm:text-base"
-                  disabled={paymentLoading}
-                >
-                  {paymentLoading ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    "Save Payment Method"
-                  )}
-                </Button>
-              </form>
-            </Form>
+                <p className="text-sm text-gray-500">
+                  For security reasons, you need to log in again to update your
+                  payment details. Use your email and password in the form
+                  below. After logging in, you can update your card details.
+                </p>
+              </div>
+            )}
           </TabsContent>
         </Tabs>
       </motion.div>
