@@ -1,6 +1,6 @@
 import axios from "axios";
 
-// Server-side env vars (no NEXT_PUBLIC_ unless client-side)
+// Server-side env vars
 const GYMMASTER_API_KEY = process.env.NEXT_PUBLIC_GYMMASTER_API_KEY;
 const GYMMASTER_STAFF_API_KEY = process.env.NEXT_PUBLIC_GYMMASTER_STAFF_API_KEY;
 const GATEKEEPER_USERNAME = process.env.NEXT_PUBLIC_GATEKEEPER_USERNAME;
@@ -82,6 +82,7 @@ export interface KioskCheckinResponse {
 }
 
 export interface Member {
+  memberid: string;
   firstname: string;
   surname: string;
   email?: string;
@@ -104,7 +105,6 @@ export interface Member {
   totalpts?: number;
   totalclasses?: number;
   linked_members?: object[];
-  memberid: string;
   "Referral Code"?: string;
   "Referral Code Generated"?: string;
   customtext1?: string;
@@ -140,104 +140,148 @@ export interface MemberServiceBooking {
   type: string;
 }
 
-export interface PortalLogin {
-  token: string;
-  expires: number;
-  memberid: number;
-}
-
 // API Helpers
-const getConfig = (params?: object) => ({
-  params: { api_key: GYMMASTER_API_KEY, ...params },
-});
+const getConfig = (params?: object, useStaffKey: boolean = false) => {
+  const apiKey = useStaffKey ? GYMMASTER_STAFF_API_KEY : GYMMASTER_API_KEY;
+  if (!apiKey) {
+    throw new Error(
+      `${useStaffKey ? "Staff" : "Regular"} API key is missing in environment`
+    );
+  }
+  return {
+    params: { api_key: apiKey, ...params },
+  };
+};
+
 const postConfig = {
   headers: { "Content-Type": "application/x-www-form-urlencoded" },
   transformRequest: [
-    (data: Record<string, string>) => new URLSearchParams(data).toString(),
+    (data: Record<string, unknown>) => {
+      const params = new URLSearchParams();
+      Object.entries(data).forEach(([key, value]) => {
+        if (value != null) {
+          params.append(key, String(value));
+        }
+      });
+      return params.toString();
+    },
   ],
 };
 
-export const fetchCompanies = async (): Promise<Club[]> =>
-  (
-    await axios.get<{ result: Club[] }>(
+export const fetchCompanies = async (): Promise<Club[]> => {
+  try {
+    const res = await axios.get<{ result: Club[]; error?: string }>(
       "/api/gymmaster/v1/companies",
       getConfig()
-    )
-  ).data.result;
+    );
+    if (res.data.error) throw new Error(res.data.error);
+    return res.data.result;
+  } catch (error) {
+    console.error("Fetch companies error:", error);
+    throw error;
+  }
+};
 
-export const fetchMemberships = async (): Promise<Membership[]> =>
-  (
-    await axios.get<{ result: Membership[] }>(
+export const fetchMemberships = async (): Promise<Membership[]> => {
+  try {
+    const res = await axios.get<{ result: Membership[]; error?: string }>(
       "/api/gymmaster/v1/memberships",
       getConfig()
-    )
-  ).data.result;
+    );
+    if (res.data.error) throw new Error(res.data.error);
+    return res.data.result;
+  } catch (error) {
+    console.error("Fetch memberships error:", error);
+    throw error;
+  }
+};
 
 export const fetchWaiver = async (
   membershipTypeId: string,
   token?: string
-): Promise<string> =>
-  (
-    await axios.get<{ result: { body: string }[] }>(
+): Promise<string> => {
+  try {
+    const res = await axios.get<{ result: { body: string }[]; error?: string }>(
       `/api/gymmaster/v2/membership/${membershipTypeId}/agreement`,
       getConfig({ token })
-    )
-  ).data.result[0]?.body || "No waiver content";
+    );
+    if (res.data.error) throw new Error(res.data.error);
+    return res.data.result[0]?.body || "No waiver content";
+  } catch (error) {
+    console.error("Fetch waiver error:", error);
+    throw error;
+  }
+};
 
 export const saveWaiver = async (
   signature: string,
   membershipId: string,
   token: string
 ): Promise<string> => {
-  const base64Data = signature.replace(/^data:image\/\w+;base64,/, "");
-  const res = await axios.post<SignatureResponse>(
-    "/api/gymmaster/v2/member/signature",
-    {
-      api_key: GYMMASTER_API_KEY,
-      token,
-      file: base64Data,
-      membershipid: membershipId,
-      source: "Signup Form",
-    },
-    postConfig
-  );
-  if (res.data.error) throw new Error(res.data.error);
-  return res.data.result;
+  try {
+    const base64Data = signature.replace(/^data:image\/\w+;base64,/, "");
+    const res = await axios.post<SignatureResponse>(
+      "/api/gymmaster/v2/member/signature",
+      {
+        api_key: GYMMASTER_API_KEY,
+        token,
+        file: base64Data,
+        membershipid: membershipId,
+        source: "Signup Form",
+      },
+      postConfig
+    );
+    if (res.data.error) throw new Error(res.data.error);
+    return res.data.result;
+  } catch (error) {
+    console.error("Save waiver error:", error);
+    throw error;
+  }
 };
 
 export const login = async (
   email: string,
   password: string
 ): Promise<LoginResponse["result"]> => {
-  console.log("Member login attempt:", {
-    email,
-    api_key: GYMMASTER_API_KEY,
-  });
-  const res = await axios.post<LoginResponse>(
-    "/api/gymmaster/v1/login",
-    { api_key: GYMMASTER_API_KEY, email, password },
-    postConfig
-  );
-  console.log("Member login response:", res.data);
-  if (res.data.error) throw new Error(res.data.error);
-  return res.data.result;
+  try {
+    console.log("Member login attempt:", {
+      email,
+      api_key: GYMMASTER_API_KEY,
+    });
+    const res = await axios.post<LoginResponse>(
+      "/api/gymmaster/v1/login",
+      { api_key: GYMMASTER_API_KEY, email, password },
+      postConfig
+    );
+    console.log("Member login response:", res.data);
+    if (res.data.error) throw new Error(res.data.error);
+    return res.data.result;
+  } catch (error) {
+    console.error("Login error:", error);
+    throw error;
+  }
 };
 
 export const adminLogin = async (
   memberid: string
 ): Promise<LoginResponse["result"]> => {
-  console.log("Admin login attempt:", {
-    memberid,
-    api_key: GYMMASTER_STAFF_API_KEY,
-  });
-  const res = await axios.post<LoginResponse>(
-    "/api/gymmaster/v1/login",
-    { api_key: GYMMASTER_STAFF_API_KEY, memberid },
-    postConfig
-  );
-  console.log("Admin login response:", res.data);
-  if (res.data.error) throw new Error(res.data.error);
-  return res.data.result;
+  try {
+    console.log("Admin login attempt:", {
+      memberid,
+      api_key: GYMMASTER_STAFF_API_KEY,
+    });
+    const res = await axios.post<LoginResponse>(
+      "/api/gymmaster/v1/login",
+      { api_key: GYMMASTER_STAFF_API_KEY, memberid },
+      postConfig
+    );
+    console.log("Admin login response:", res.data);
+    if (res.data.error) throw new Error(res.data.error);
+    return res.data.result;
+  } catch (error) {
+    console.error("Admin login error:", error);
+    throw error;
+  }
 };
 
 export const signup = async (data: {
@@ -247,108 +291,149 @@ export const signup = async (data: {
   email: string;
   password: string;
   phonecell: string;
+  phonehome?: string;
+  gender?: string;
+  addressstreet?: string;
+  addresssuburb?: string;
+  addresscity?: string;
+  addresscountry?: string;
+  addressareacode?: string;
   membershiptypeid: string;
   companyid: string;
-  addressstreet: string;
   startdate: string;
   firstpaymentdate: string;
   "Referral Code"?: string;
 }): Promise<SignupResponse> => {
-  const res = await axios.post<SignupResponse>(
-    "/api/gymmaster/v1/signup",
-    { api_key: GYMMASTER_API_KEY, ...data },
-    postConfig
-  );
-  if (res.data.error) throw new Error(res.data.error);
-  return res.data;
+  try {
+    const res = await axios.post<SignupResponse>(
+      "/api/gymmaster/v1/signup",
+      { api_key: GYMMASTER_API_KEY, ...data },
+      postConfig
+    );
+    if (res.data.error) throw new Error(res.data.error);
+    return res.data;
+  } catch (error) {
+    console.error("Signup error:", error);
+    throw error;
+  }
 };
 
 export const fetchOutstandingBalance = async (
   token: string
 ): Promise<MemberChargeResponse> => {
-  const res = await axios.get<MemberChargeResponse>(
-    "/api/gymmaster/v1/member/outstandingbalance",
-    getConfig({ token })
-  );
-  if (res.data.error) throw new Error(res.data.error);
-  return res.data;
+  try {
+    const res = await axios.get<MemberChargeResponse>(
+      "/api/gymmaster/v1/member/outstandingbalance",
+      getConfig({ token })
+    );
+    if (res.data.error) throw new Error(res.data.error);
+    return res.data;
+  } catch (error) {
+    console.error("Fetch outstanding balance error:", error);
+    throw error;
+  }
 };
 
 export const kioskCheckin = async (
   token: string,
   doorid: number
 ): Promise<KioskCheckinResponse["result"]> => {
-  const res = await axios.post<KioskCheckinResponse>(
-    "/api/gymmaster/v2/member/kiosk/checkin",
-    { api_key: GYMMASTER_API_KEY, token, doorid },
-    { headers: { "Content-Type": "application/json" } }
-  );
-  if (res.data.error) throw new Error(res.data.error);
-  return res.data.result;
+  try {
+    const res = await axios.post<KioskCheckinResponse>(
+      "/api/gymmaster/v2/member/kiosk/checkin",
+      { api_key: GYMMASTER_API_KEY, token, doorid },
+      { headers: { "Content-Type": "application/json" } }
+    );
+    if (res.data.error) throw new Error(res.data.error);
+    return res.data.result;
+  } catch (error) {
+    console.error("Kiosk checkin error:", error);
+    throw error;
+  }
 };
 
 export const fetchMemberMemberships = async (
   token: string
 ): Promise<MemberMembership[]> => {
-  const res = await axios.get<{
-    result: MemberMembership[];
-    error: string | null;
-  }>("/api/gymmaster/v1/member/memberships", getConfig({ token }));
-  if (res.data.error) throw new Error(res.data.error);
-  return res.data.result;
+  try {
+    const res = await axios.get<{
+      result: MemberMembership[];
+      error: string | null;
+    }>("/api/gymmaster/v1/member/memberships", getConfig({ token }));
+    if (res.data.error) throw new Error(res.data.error);
+    return res.data.result;
+  } catch (error) {
+    console.error("Fetch member memberships error:", error);
+    throw error;
+  }
 };
 
 export const fetchDoors = async (): Promise<Door[]> => {
-  const auth = Buffer.from(
-    `${GATEKEEPER_USERNAME}:${GATEKEEPER_API_KEY}`
-  ).toString("base64");
-  const res = await axios.get<{ doors: Door[]; error: string | null }>(
-    "/api/gatekeeper/doors",
-    {
-      headers: {
-        Authorization: `Basic ${auth}`,
-        "Content-Type": "application/json",
-      },
-    }
-  );
-  if (res.data.error) throw new Error(res.data.error);
-  return res.data.doors;
+  try {
+    const auth = Buffer.from(
+      `${GATEKEEPER_USERNAME}:${GATEKEEPER_API_KEY}`
+    ).toString("base64");
+    const res = await axios.get<{ doors: Door[]; error: string | null }>(
+      "/api/gatekeeper/doors",
+      {
+        headers: {
+          Authorization: `Basic ${auth}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+    if (res.data.error) throw new Error(res.data.error);
+    return res.data.doors;
+  } catch (error) {
+    console.error("Fetch doors error:", error);
+    throw error;
+  }
 };
 
 export const fetchMemberDetails = async (token: string): Promise<Member> => {
-  const res = await axios.get<{ result: Member; error: string | null }>(
-    "/api/gymmaster/v1/member/profile",
-    getConfig({ token })
-  );
-  if (res.data.error) throw new Error(res.data.error);
-  return res.data.result;
+  try {
+    const res = await axios.get<{ result: Member; error: string | null }>(
+      "/api/gymmaster/v1/member/profile",
+      getConfig({ token })
+    );
+    if (res.data.error) throw new Error(res.data.error);
+    return res.data.result;
+  } catch (error) {
+    console.error("Fetch member details error:", error);
+    throw error;
+  }
 };
 
 export const updateMemberProfile = async (
   token: string,
   data: Partial<Member>
 ): Promise<string> => {
-  if (!GYMMASTER_API_KEY) {
-    throw new Error("GYMMASTER_API_KEY is missing in environment");
-  }
-
-  const formData = new FormData();
-  formData.append("api_key", GYMMASTER_API_KEY); // Now guaranteed to be string
-  formData.append("token", token); // Token is already string from param
-  Object.entries(data).forEach(([key, value]) => {
-    if (value != null) {
-      formData.append(key, String(value)); // String() ensures no undefined
+  try {
+    if (!GYMMASTER_API_KEY) {
+      throw new Error("GYMMASTER_API_KEY is missing in environment");
     }
-  });
 
-  const res = await axios.post<{ result: string; error: string | null }>(
-    "/api/gymmaster/v1/member/profile",
-    formData,
-    { headers: { "Content-Type": "multipart/form-data" } }
-  );
+    const formData = new FormData();
+    formData.append("api_key", GYMMASTER_API_KEY);
+    formData.append("token", token);
+    Object.entries(data).forEach(([key, value]) => {
+      if (value != null) {
+        formData.append(key, String(value));
+      }
+    });
 
-  if (res.data.error) throw new Error(res.data.error);
-  return res.data.result;
+    const res = await axios.post<{ result: string; error: string | null }>(
+      "/api/gymmaster/v1/member/profile",
+      formData,
+      { headers: { "Content-Type": "multipart/form-data" } }
+    );
+
+    if (res.data.error) throw new Error(res.data.error);
+    return res.data.result;
+  } catch (error) {
+    console.error("Update member profile error:", error);
+    throw error;
+  }
 };
 
 export const fetchClubs = fetchCompanies; // Alias
@@ -358,12 +443,17 @@ export const fetchServices = async (
   resourceid?: number,
   companyid?: number
 ): Promise<Service[]> => {
-  const res = await axios.get<{ result: Service[]; error: string | null }>(
-    "/api/gymmaster/v1/booking/services",
-    getConfig({ token, resourceid, companyid })
-  );
-  if (res.data.error) throw new Error(res.data.error);
-  return res.data.result;
+  try {
+    const res = await axios.get<{ result: Service[]; error: string | null }>(
+      "/api/gymmaster/v1/booking/services",
+      getConfig({ token, resourceid, companyid })
+    );
+    if (res.data.error) throw new Error(res.data.error);
+    return res.data.result;
+  } catch (error) {
+    console.error("Fetch services error:", error);
+    throw error;
+  }
 };
 
 export const fetchResourcesAndSessions = async (
@@ -372,26 +462,36 @@ export const fetchResourcesAndSessions = async (
   day: string,
   companyid: number
 ): Promise<{ dates: Session[]; resources: Resource[] }> => {
-  const res = await axios.get<{
-    result: { dates: Session[]; resources: Resource[] };
-    error: string | null;
-  }>(
-    "/api/gymmaster/v1/booking/resources_and_sessions",
-    getConfig({ token, serviceid, day, companyid })
-  );
-  if (res.data.error) throw new Error(res.data.error);
-  return res.data.result;
+  try {
+    const res = await axios.get<{
+      result: { dates: Session[]; resources: Resource[] };
+      error: string | null;
+    }>(
+      "/api/gymmaster/v1/booking/resources_and_sessions",
+      getConfig({ token, serviceid, day, companyid })
+    );
+    if (res.data.error) throw new Error(res.data.error);
+    return res.data.result;
+  } catch (error) {
+    console.error("Fetch resources and sessions error:", error);
+    throw error;
+  }
 };
 
 export const fetchMemberBookings = async (
   token: string
 ): Promise<MemberServiceBooking[]> => {
-  const res = await axios.get<{
-    servicebookings: MemberServiceBooking[];
-    error: string | null;
-  }>("/api/gymmaster/v2/member/bookings", getConfig({ token }));
-  if (res.data.error) throw new Error(res.data.error);
-  return res.data.servicebookings;
+  try {
+    const res = await axios.get<{
+      servicebookings: MemberServiceBooking[];
+      error: string | null;
+    }>("/api/gymmaster/v2/member/bookings", getConfig({ token }));
+    if (res.data.error) throw new Error(res.data.error);
+    return res.data.servicebookings;
+  } catch (error) {
+    console.error("Fetch member bookings error:", error);
+    throw error;
+  }
 };
 
 export const storeReferralCode = async (
@@ -399,12 +499,29 @@ export const storeReferralCode = async (
   memberId: string,
   token: string
 ): Promise<void> => {
-  const profile = await fetchMemberDetails(token);
-  const currentCodes = profile["Referral Code Generated"] || "";
-  await updateMemberProfile(token, {
-    memberid: memberId,
-    "Referral Code Generated": currentCodes ? `${currentCodes}\n${code}` : code,
-  });
+  try {
+    if (!code || !memberId || !token) {
+      throw new Error("Missing required parameters: code, memberId, or token");
+    }
+
+    // Fetch current member profile
+    const profile = await fetchMemberDetails(token);
+    const currentCodes = profile["Referral Code Generated"] || "";
+
+    // Append new code with comma separator
+    const updatedCodes = currentCodes ? `${currentCodes},${code}` : code;
+
+    // Update profile
+    const result = await updateMemberProfile(token, {
+      memberid: memberId,
+      "Referral Code Generated": updatedCodes,
+    });
+
+    console.log("Stored referral code:", { code, memberId, result });
+  } catch (error) {
+    console.error("Store referral code error:", error);
+    throw new Error(`Failed to store referral code: ${String(error)}`);
+  }
 };
 
 export const validateReferral = async (
@@ -412,17 +529,31 @@ export const validateReferral = async (
   token: string
 ): Promise<boolean> => {
   try {
-    const res = await axios.get<{ result: Member[] }>(
+    if (!referralCode) {
+      throw new Error("Referral code is required");
+    }
+
+    // Use staff API key to access all members
+    const res = await axios.get<{ result: Member[]; error?: string }>(
       "/api/gymmaster/v1/members",
-      getConfig({ token })
+      getConfig({ token }, true) // Use staff key
     );
-    const isValid = res.data.result.some(
-      (member) => member["Referral Code"] === referralCode
-    );
+    if (res.data.error) throw new Error(res.data.error);
+
+    // Check both fields for the referral code
+    const isValid = res.data.result.some((member) => {
+      const generatedCodes =
+        member["Referral Code Generated"]?.split(",") || [];
+      return (
+        member["Referral Code"] === referralCode ||
+        generatedCodes.includes(referralCode)
+      );
+    });
+
     console.log("Referral validation:", { referralCode, isValid });
     return isValid;
   } catch (error) {
     console.error("Referral validation failed:", error);
-    return false;
+    throw new Error(`Failed to validate referral code: ${String(error)}`);
   }
 };

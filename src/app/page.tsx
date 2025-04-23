@@ -1,17 +1,9 @@
 "use client";
-import {
-  useState,
-  useRef,
-  useEffect,
-  // useCallback
-} from "react";
+import { useState, useRef, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import {
-  useRouter,
-  // useSearchParams
-} from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -49,12 +41,10 @@ import {
   saveWaiver,
   login,
   fetchWaiver,
+  validateReferral,
   type Club,
   type Membership,
 } from "@/api/gymmaster";
-// import axios from "axios";
-
-// const GYMMASTER_API_KEY = process.env.NEXT_PUBLIC_GYMMASTER_API_KEY;
 
 const signUpSchema = z
   .object({
@@ -80,18 +70,15 @@ const signUpSchema = z
     email: z.string().email("Invalid email"),
     password: z.string().min(6, "Password must be at least 6 characters"),
     confirmPassword: z.string().min(6, "Confirm your password"),
-    cell: z
+    phoneCell: z
       .string()
       .regex(
         /^\+?\d{1,3}[-.\s]?\d{3}[-.\s]?\d{3}[-.\s]?\d{4}$/,
         "Use format: +1-123-456-7890"
       ),
-    referringMemberName: z.string().min(1, "Referring member name is required"),
     location: z.string().min(1, "Select a location"),
     membershipType: z.string().min(1, "Select a membership type"),
     waiverSignature: z.string().min(1, "Sign the waiver"),
-    billingAddress: z.string().min(1, "Billing address is required"),
-    cardNonce: z.string().optional(),
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: "Passwords must match",
@@ -117,9 +104,8 @@ export default function Home() {
   const [locations, setLocations] = useState<Club[]>([]);
   const [membershipTypes, setMembershipTypes] = useState<Membership[]>([]);
   const [waiverContent, setWaiverContent] = useState("");
-  // const [defaultTab, setDefaultTab] = useState("login");
   const router = useRouter();
-  // const searchParams = useSearchParams();
+  const searchParams = useSearchParams();
   const sigCanvas = useRef<SignatureCanvas>(null);
 
   const loginForm = useForm<LoginFormData>({
@@ -137,34 +123,20 @@ export default function Home() {
       email: "",
       password: "",
       confirmPassword: "",
-      cell: "",
-      referringMemberName: "",
+      phoneCell: "",
       location: "",
       membershipType: "",
       waiverSignature: "",
-      billingAddress: "",
-      cardNonce: "",
     },
   });
 
-  // Prefill referral code from URL
-  // useEffect(() => {
-  //   const referral = searchParams.get("referral");
-  //   if (referral) {
-  //     signUpForm.setValue("referralCode", referral);
-  //     setDefaultTab("signup");
-  //   }
-  // }, [searchParams, signUpForm]);
-
-  // const isPaymentRequired = useCallback(() => {
-  //   const membershipId = signUpForm.getValues("membershipType");
-  //   const membership = membershipTypes.find(
-  //     (m) => m.id.toString() === membershipId
-  //   );
-  //   return membership
-  //     ? parseFloat(membership.price.replace("$", "")) > 0
-  //     : false;
-  // }, [membershipTypes, signUpForm]);
+  // Pre-populate referral code from URL
+  useEffect(() => {
+    const referral = searchParams.get("referral");
+    if (referral) {
+      signUpForm.setValue("referralCode", referral);
+    }
+  }, [searchParams, signUpForm]);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -216,8 +188,7 @@ export default function Home() {
         dob: data.dob,
         email: data.email,
         password: data.password,
-        phonecell: data.cell,
-        addressstreet: data.billingAddress,
+        phonecell: data.phoneCell,
         membershiptypeid: data.membershipType,
         companyid: data.location,
         startdate: new Date().toISOString().split("T")[0],
@@ -238,7 +209,7 @@ export default function Home() {
       await saveWaiver(data.waiverSignature, membershipid, token);
 
       toast.success(`Welcome, ${data.firstName}! Your membership is set.`);
-      setStep(5);
+      setStep(4);
     } catch (error) {
       console.error("Signup error:", error);
       toast.error("Sign-up failed", { description: String(error) });
@@ -257,22 +228,38 @@ export default function Home() {
         "email",
         "password",
         "confirmPassword",
-        "cell",
+        "phoneCell",
+        "referralCode",
       ],
-      ["referringMemberName", "location", "membershipType"],
+      ["location", "membershipType"],
       ["waiverSignature"],
-      ["billingAddress"],
     ];
     if (!(await signUpForm.trigger(fields[step - 1]))) {
       toast.error("Please fix errors before proceeding");
       return;
     }
-    if (step === 1) {
+    if (step === 1 && signUpForm.getValues("referralCode")) {
+      try {
+        const token = localStorage.getItem("authToken") || "";
+        const isValid = await validateReferral(
+          signUpForm.getValues("referralCode"),
+          token
+        );
+        console.log("Referral validation result:", {
+          code: signUpForm.getValues("referralCode"),
+          isValid,
+        });
+      } catch (error) {
+        console.error("Referral validation error:", error);
+      }
+      // Clear any existing referral code errors and proceed regardless
+      signUpForm.clearErrors("referralCode");
     }
-    if (step === 2) {
+    if (step === 2 && signUpForm.getValues("membershipType")) {
       try {
         const waiver = await fetchWaiver(
-          signUpForm.getValues("membershipType")
+          signUpForm.getValues("membershipType")!,
+          localStorage.getItem("authToken") || ""
         );
         setWaiverContent(waiver || "No waiver content");
       } catch (error) {
@@ -280,7 +267,7 @@ export default function Home() {
         setWaiverContent("No waiver content");
       }
     }
-    if (step === 4) {
+    if (step === 3) {
       return onSignUpSubmit(signUpForm.getValues());
     }
     setStep((prev) => prev + 1);
@@ -338,7 +325,10 @@ export default function Home() {
           />
         </motion.div>
 
-        <Tabs defaultValue="login" className="w-full">
+        <Tabs
+          defaultValue={searchParams.get("referral") ? "signup" : "login"}
+          className="w-full"
+        >
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="login">Login</TabsTrigger>
             <TabsTrigger value="signup">Sign Up</TabsTrigger>
@@ -437,7 +427,7 @@ export default function Home() {
                       "email",
                       "password",
                       "confirmPassword",
-                      "cell",
+                      "phoneCell",
                     ].map((name) => (
                       <FormField
                         key={name}
@@ -448,10 +438,10 @@ export default function Home() {
                             <FormLabel>
                               {name === "dob"
                                 ? "Date of Birth"
-                                : name === "cell"
+                                : name === "phoneCell"
                                 ? "Cell Phone"
                                 : name === "referralCode"
-                                ? "Referral Code"
+                                ? "Referral Code (Optional)"
                                 : name.replace(/([A-Z])/g, " $1").trim()}
                             </FormLabel>
                             <FormControl>
@@ -518,7 +508,7 @@ export default function Home() {
                                   placeholder={
                                     name === "email"
                                       ? "john@example.com"
-                                      : name === "cell"
+                                      : name === "phoneCell"
                                       ? "+1-123-456-7890"
                                       : name === "referralCode"
                                       ? "Referral code (optional)"
@@ -555,19 +545,6 @@ export default function Home() {
                     <h2 className="text-xl font-semibold">
                       Step 2: Membership Details
                     </h2>
-                    <FormField
-                      control={signUpForm.control}
-                      name="referringMemberName"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Referring Member Name</FormLabel>
-                          <FormControl>
-                            <Input placeholder="Jane Smith" {...field} />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
                     <FormField
                       control={signUpForm.control}
                       name="location"
@@ -711,50 +688,15 @@ export default function Home() {
                                 <DialogHeader>
                                   <DialogTitle>Waiver</DialogTitle>
                                 </DialogHeader>
-                                <div className="max-h-[60vh] overflow-y-auto">
-                                  <p>{waiverContent || "Loading..."}</p>
-                                </div>
+                                <div
+                                  className="max-h-[60vh] overflow-y-auto"
+                                  dangerouslySetInnerHTML={{
+                                    __html: waiverContent || "Loading...",
+                                  }}
+                                />
                               </DialogContent>
                             </Dialog>
                           </div>
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                    <div className="flex space-x-2 flex-col-reverse md:flex-col gap-2 space-y-2">
-                      <Button
-                        type="button"
-                        onClick={prevStep}
-                        variant="outline"
-                        className="w-full"
-                      >
-                        Back
-                      </Button>
-                      <Button
-                        type="button"
-                        onClick={nextStep}
-                        className="w-full"
-                      >
-                        Next
-                      </Button>
-                    </div>
-                  </>
-                )}
-
-                {step === 4 && (
-                  <>
-                    <h2 className="text-xl font-semibold">
-                      Step 4: Billing Info
-                    </h2>
-                    <FormField
-                      control={signUpForm.control}
-                      name="billingAddress"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Billing Address</FormLabel>
-                          <FormControl>
-                            <Input placeholder="123 Main St" {...field} />
-                          </FormControl>
                           <FormMessage />
                         </FormItem>
                       )}
@@ -784,9 +726,9 @@ export default function Home() {
                   </>
                 )}
 
-                {step === 5 && (
+                {step === 4 && (
                   <Dialog
-                    open={step === 5}
+                    open={step === 4}
                     onOpenChange={() => router.push("/dashboard")}
                   >
                     <DialogContent>

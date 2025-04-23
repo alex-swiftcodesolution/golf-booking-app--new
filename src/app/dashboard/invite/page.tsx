@@ -1,8 +1,9 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
+import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -14,51 +15,91 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { toast } from "sonner";
-import { Loader2, Copy } from "lucide-react"; // Add Copy icon
-import { motion } from "framer-motion"; // For animations
+import { Loader2, Copy } from "lucide-react";
+import { motion } from "framer-motion";
+import { storeReferralCode } from "@/api/gymmaster";
+import { v4 as uuidv4 } from "uuid";
 
 const inviteSchema = z.object({
   name: z.string().min(1, "Name is required"),
-  cell: z.string().min(10, "Please enter a valid phone number with area code"),
+  email: z.string().email("Invalid email address"),
 });
 
 export default function Invite() {
   const [isLoading, setIsLoading] = useState(false);
-  const referralCode = "REF12345"; // Mock referral code
+  const [referralCode, setReferralCode] = useState<string | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const router = useRouter();
 
   const form = useForm<z.infer<typeof inviteSchema>>({
     resolver: zodResolver(inviteSchema),
-    defaultValues: { name: "", cell: "" },
+    defaultValues: { name: "", email: "" },
   });
 
+  // Check authentication status
+  useEffect(() => {
+    const token = localStorage.getItem("authToken");
+    const memberId = localStorage.getItem("memberId");
+    const tokenExpires = localStorage.getItem("tokenExpires");
+    const isValid =
+      token && memberId && tokenExpires && Number(tokenExpires) > Date.now();
+    setIsAuthenticated(isValid);
+    if (!isValid) {
+      toast.error("Please log in to send invites");
+      router.push("/");
+    }
+  }, [router]);
+
   const onSubmit = async (data: z.infer<typeof inviteSchema>) => {
+    if (!isAuthenticated) {
+      toast.error("Please log in to send invites");
+      router.push("/");
+      return;
+    }
+
     setIsLoading(true);
     try {
-      // Call your backend API to send the SMS
-      const response = await fetch("/api/send-sms", {
+      // Generate unique referral code
+      const newReferralCode = `REF-${uuidv4().slice(0, 8).toUpperCase()}`;
+      setReferralCode(newReferralCode);
+
+      // Store referral code
+      const memberId = localStorage.getItem("memberId")!;
+      const token = localStorage.getItem("authToken")!;
+      await storeReferralCode(newReferralCode, memberId, token);
+
+      // Send email with referral link
+      const referralLink = `http://localhost:3000/?referral=${newReferralCode}`;
+      const response = await fetch("/api/send-email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          to: data.email,
           name: data.name,
-          phone: data.cell,
-          referrerId: "current_user_id", // Replace with actual user ID (from auth/session)
+          referralCode: newReferralCode,
+          referralLink,
         }),
       });
 
-      if (!response.ok) throw new Error("Failed to send invite");
+      if (!response.ok) throw new Error("Failed to send email");
 
       toast.success("Invite sent!", {
-        description: `${data.name} will receive an SMS with your referral link!`,
+        description: `${data.name} will receive an email with your referral link!`,
       });
       form.reset();
-    } catch {
-      toast.error("Failed to send invite");
+    } catch (error) {
+      console.error("Invite error:", error);
+      toast.error("Failed to send invite", { description: String(error) });
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleCopyCode = () => {
+    if (!referralCode) {
+      toast.error("No referral code generated yet");
+      return;
+    }
     navigator.clipboard
       .writeText(referralCode)
       .then(() => {
@@ -70,6 +111,10 @@ export default function Invite() {
         toast.error("Failed to copy referral code");
       });
   };
+
+  if (!isAuthenticated) {
+    return null; // Redirect handled in useEffect
+  }
 
   return (
     <div className="space-y-6 sm:space-y-8 p-4 sm:p-6">
@@ -109,13 +154,14 @@ export default function Invite() {
             />
             <FormField
               control={form.control}
-              name="cell"
+              name="email"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="text-sm sm:text-base">Cell</FormLabel>
+                  <FormLabel className="text-sm sm:text-base">Email</FormLabel>
                   <FormControl>
                     <Input
-                      placeholder="+1-123-456-7890"
+                      placeholder="jane@example.com"
+                      type="email"
                       {...field}
                       className="text-sm sm:text-base"
                     />
@@ -140,19 +186,21 @@ export default function Invite() {
           </form>
         </Form>
 
-        <div className="flex flex-col sm:flex-row items-center justify-between p-4 bg-gray-100 rounded-lg">
-          <p className="text-sm sm:text-base text-gray-700">
-            Referral Code: <strong>{referralCode}</strong>
-          </p>
-          <Button
-            variant="outline"
-            className="mt-2 sm:mt-0 text-sm sm:text-base"
-            onClick={handleCopyCode}
-            aria-label="Copy referral code to clipboard"
-          >
-            <Copy className="mr-2 h-4 w-4" aria-hidden="true" /> Copy Code
-          </Button>
-        </div>
+        {referralCode && (
+          <div className="flex flex-col sm:flex-row items-center justify-between p-4 bg-gray-100 rounded-lg">
+            <p className="text-sm sm:text-base text-gray-700">
+              Referral Code: <strong>{referralCode}</strong>
+            </p>
+            <Button
+              variant="outline"
+              className="mt-2 sm:mt-0 text-sm sm:text-base"
+              onClick={handleCopyCode}
+              aria-label="Copy referral code to clipboard"
+            >
+              <Copy className="mr-2 h-4 w-4" aria-hidden="true" /> Copy Code
+            </Button>
+          </div>
+        )}
       </motion.div>
     </div>
   );
