@@ -3,12 +3,12 @@ import nodemailer from "nodemailer";
 
 // Configure Nodemailer transport
 const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST || "smtp.example.com",
+  host: process.env.EMAIL_HOST || "smtp.sendgrid.net",
   port: parseInt(process.env.EMAIL_PORT || "587"),
   secure: process.env.EMAIL_SECURE === "true",
   auth: {
-    user: process.env.EMAIL_USER || "your-email@example.com",
-    pass: process.env.EMAIL_PASS || "your-email-password",
+    user: process.env.EMAIL_USER || "apikey",
+    pass: process.env.EMAIL_PASS || "your-sendgrid-api-key",
   },
 });
 
@@ -29,9 +29,7 @@ export async function POST(request: Request) {
 
     // Email content
     const mailOptions = {
-      from: `"Simcoquitos 24/7 Golf Club" <${
-        process.env.EMAIL_USER || "your-email@example.com"
-      }>`,
+      from: `"Simcoquitos 24/7 Golf Club" <no-reply@test-swiftcode.sendgrid.net>`,
       to,
       subject: `You're Invited to Join Simcoquitos 24/7 Golf Club!`,
       html: `
