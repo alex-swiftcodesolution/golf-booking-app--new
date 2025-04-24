@@ -557,3 +557,83 @@ export const validateReferral = async (
     throw new Error(`Failed to validate referral code: ${String(error)}`);
   }
 };
+
+export const fetchGuestData = async (
+  token: string
+): Promise<{
+  guestPassesUsed: number;
+  referralCodes: string[];
+  guestBookingIds: number[];
+  guests: { name: string; email: string }[];
+}> => {
+  try {
+    const profile = await fetchMemberDetails(token);
+    console.log("Raw customtext1:", profile.customtext1); // Debug log
+    let customData = {
+      guestPassesUsed: 0,
+      referralCodes: [],
+      guestBookingIds: [],
+      guests: [],
+    };
+    try {
+      customData = profile.customtext1
+        ? JSON.parse(profile.customtext1)
+        : customData;
+    } catch (parseError) {
+      console.error("Error parsing customtext1:", parseError);
+    }
+    return {
+      guestPassesUsed: Number(customData.guestPassesUsed) || 0,
+      referralCodes: Array.isArray(customData.referralCodes)
+        ? customData.referralCodes
+        : [],
+      guestBookingIds: Array.isArray(customData.guestBookingIds)
+        ? customData.guestBookingIds.map(Number)
+        : [],
+      guests: Array.isArray(customData.guests) ? customData.guests : [],
+    };
+  } catch (error) {
+    console.error("Fetch guest data error:", error);
+    return {
+      guestPassesUsed: 0,
+      referralCodes: [],
+      guestBookingIds: [],
+      guests: [],
+    };
+  }
+};
+
+export const updateGuestData = async (
+  token: string,
+  guestPassesUsed: number,
+  referralCodes: string[],
+  guestBookingIds: number[],
+  guests: { name: string; email: string }[]
+): Promise<void> => {
+  try {
+    // Fetch existing guest data to merge
+    const existingData = await fetchGuestData(token);
+    const customData = {
+      guestPassesUsed: guestPassesUsed || existingData.guestPassesUsed,
+      referralCodes:
+        referralCodes.length > 0
+          ? [...new Set([...existingData.referralCodes, ...referralCodes])]
+          : existingData.referralCodes,
+      guestBookingIds:
+        guestBookingIds.length > 0
+          ? [...existingData.guestBookingIds, ...guestBookingIds]
+          : existingData.guestBookingIds,
+      guests:
+        guests.length > 0
+          ? [...existingData.guests, ...guests]
+          : existingData.guests,
+    };
+    await updateMemberProfile(token, {
+      customtext1: JSON.stringify(customData),
+    });
+    console.log("Updated customtext1:", customData); // Debug log
+  } catch (error) {
+    console.error("Update guest data error:", error);
+    throw new Error("Failed to update guest data");
+  }
+};

@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import axios from "axios";
+import { v4 as uuidv4 } from "uuid";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -44,11 +44,14 @@ import {
   fetchServices,
   fetchMemberMemberships,
   MemberMembership,
+  fetchGuestData,
+  updateGuestData,
+  fetchMemberDetails,
 } from "@/api/gymmaster";
 import { useRouter } from "next/navigation";
 
 const GYMMASTER_API_KEY = process.env.NEXT_PUBLIC_GYMMASTER_API_KEY;
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://your-app.com";
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 
 const teeTimeSchema = z.object({
   location: z.string().min(1, "Please select a location"),
@@ -66,9 +69,7 @@ const teeTimeSchema = z.object({
     .array(
       z.object({
         name: z.string().min(1, "Guest name is required"),
-        cell: z
-          .string()
-          .min(10, "Please enter a valid phone number with area code"),
+        email: z.string().email("Please enter a valid email"),
       })
     )
     .optional(),
@@ -76,11 +77,6 @@ const teeTimeSchema = z.object({
 
 const freeGuestPassesPerMonth = 2;
 const guestPassCharge = 10;
-
-interface CustomField {
-  fieldname: string;
-  value: string;
-}
 
 export default function BookTeeTime() {
   const [selectedSlots, setSelectedSlots] = useState<
@@ -125,103 +121,53 @@ export default function BookTeeTime() {
   const service = form.watch("service");
   const date = form.watch("date");
 
-  // Generate random referral code
+  // Generate unique referral code
   const generateReferralCode = () => {
-    const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
-    let code = "";
-    for (let i = 0; i < 6; i++) {
-      code += chars[Math.floor(Math.random() * chars.length)];
-    }
-    return code;
+    return `GUEST_${localStorage.getItem("memberId") || "123"}_${uuidv4().slice(
+      0,
+      6
+    )}`;
   };
 
-  // Fetch custom fields (guest passes, referral codes, booking IDs)
-  const fetchCustomFields = async (token: string) => {
-    // Temporarily disable broken API call
-    // console.log("Skipping customfields fetch - endpoint not implemented");
-    // return { guestPassesUsed: 0, referralCodes: [], guestBookingIds: [] };
-
-    try {
-      const response = await axios.get(
-        "/api/gymmaster/v1/member/customfields",
-        {
-          params: { api_key: GYMMASTER_API_KEY, token },
-        }
-      );
-      const fields: CustomField[] = response.data.customfields || [];
-      console.log("Custom Fields:", fields);
-      const passesField = fields.find(
-        (f: CustomField) => f.fieldname === "guest_passes_used"
-      );
-      const codesField = fields.find(
-        (f: CustomField) => f.fieldname === "referral_codes"
-      );
-      const bookingIdsField = fields.find(
-        (f: CustomField) => f.fieldname === "guest_booking_ids"
-      );
-      return {
-        guestPassesUsed: passesField ? Number(passesField.value) || 0 : 0,
-        referralCodes: codesField ? JSON.parse(codesField.value || "[]") : [],
-        guestBookingIds: bookingIdsField
-          ? JSON.parse(bookingIdsField.value || "[]")
-          : [],
-      };
-    } catch (err) {
-      console.error("Custom Fields Error:", err);
-      return { guestPassesUsed: 0, referralCodes: [], guestBookingIds: [] };
-    }
-  };
-
-  // Update custom fields
-  const updateCustomFields = async (
-    token: string,
+  // Send booking confirmation email to member
+  const sendBookingConfirmationEmail = async (
+    email: string,
+    data: z.infer<typeof teeTimeSchema>,
+    bookingIds: number[],
+    freeGuestPassesPerMonth: number,
     guestPassesUsed: number,
-    referralCodes: string[],
-    guestBookingIds: number[]
+    guestPassCharge: number
   ) => {
-    // Temporarily disable broken API call
-    console.log("Skipping customfields update - endpoint not implemented", {
-      guestPassesUsed,
-      referralCodes,
-      guestBookingIds,
-    });
-
     try {
-      await axios.put(
-        "/api/gymmaster/v1/member/customfields",
-        {
-          customfields: [
-            {
-              fieldname: "guest_passes_used",
-              value: guestPassesUsed.toString(),
-            },
-            {
-              fieldname: "referral_codes",
-              value: JSON.stringify(referralCodes),
-            },
-            {
-              fieldname: "guest_booking_ids",
-              value: JSON.stringify(guestBookingIds),
-            },
-          ],
-        },
-        {
-          params: { api_key: GYMMASTER_API_KEY, token },
-          headers: { "Content-Type": "application/json" },
-        }
-      );
-      console.log("Updated Custom Fields:", {
-        guestPassesUsed,
-        referralCodes,
-        guestBookingIds,
+      const response = await fetch("/api/send-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          emailType: "booking",
+          to: email,
+          date: data.date,
+          location: data.location,
+          service: data.service,
+          timeSlots: data.timeSlots,
+          guests: data.guests || [],
+          bookingIds,
+          freeGuestPassesPerMonth,
+          guestPassesUsed,
+          guestPassCharge,
+        }),
       });
-    } catch (err) {
-      console.error("Update Custom Fields Error:", err);
-      toast.error("Failed to update guest data");
+      if (!response.ok) throw new Error("Failed to send confirmation email");
+      console.log("Confirmation email sent to:", email);
+      toast.info("Confirmation email sent", {
+        description: `A confirmation email was sent to ${email}`,
+      });
+    } catch (error) {
+      console.error("Send confirmation email error:", error);
+      toast.error("Failed to send confirmation email");
     }
   };
 
-  // Initial fetch for clubs, memberships, and custom fields
+  // Initial fetch for clubs, memberships, and guest data
   useEffect(() => {
     const fetchInitialData = async () => {
       const token = localStorage.getItem("authToken");
@@ -241,7 +187,6 @@ export default function BookTeeTime() {
         setClubs(fetchedClubs);
 
         const memberships = await fetchMemberMemberships(token);
-        console.log("Memberships:", memberships);
         const activeMembership = memberships.find(
           (m) =>
             m.enddate === "Open Ended" ||
@@ -252,7 +197,7 @@ export default function BookTeeTime() {
         setMembership(activeMembership);
 
         const { guestPassesUsed, referralCodes, guestBookingIds } =
-          await fetchCustomFields(token);
+          await fetchGuestData(token);
         setGuestPassesUsed(guestPassesUsed);
         setReferralCodes(referralCodes);
         setGuestBookingIds(guestBookingIds);
@@ -286,21 +231,12 @@ export default function BookTeeTime() {
           undefined,
           club.id
         );
-        console.log("All Services:", fetchedServices);
         const memberServices = fetchedServices
           .filter((s) => s.servicename.includes("Member Golf Bay"))
           .map((s) => ({
             ...s,
             servicename: s.servicename.trim(),
           }));
-        console.log(
-          "Available Services:",
-          memberServices.map((s) => ({
-            id: s.serviceid,
-            name: s.servicename,
-            benefitid: s.benefitid,
-          }))
-        );
         setServices(memberServices);
       } catch (err) {
         console.error("Services Fetch Error:", err);
@@ -337,12 +273,6 @@ export default function BookTeeTime() {
           selectedService.serviceid,
           date,
           club.id
-        );
-        console.log(
-          "Fetched Resources for Service",
-          selectedService.serviceid,
-          ":",
-          resources.map((r) => ({ id: r.id, name: r.name }))
         );
         setResources(resources);
         setSessions(dates);
@@ -465,8 +395,9 @@ export default function BookTeeTime() {
       "guests",
       Array(count)
         .fill(null)
-        .map((_, i) => currentGuests[i] || { name: "", cell: "" })
+        .map((_, i) => currentGuests[i] || { name: "", email: "" })
     );
+    console.log("Updated guests:", form.getValues("guests"));
     if (count === 0) form.clearErrors("guests");
   };
 
@@ -500,7 +431,6 @@ export default function BookTeeTime() {
 
       if (!membership) throw new Error("No active membership found");
 
-      const memberId = localStorage.getItem("memberId") || "123";
       const resourceMap = Object.fromEntries(
         resources.map((r) => [r.name, r.id])
       );
@@ -510,142 +440,106 @@ export default function BookTeeTime() {
       // Generate referral codes and collect booking IDs
       const newReferralCodes: string[] = [];
       const newBookingIds: number[] = [];
+      const guestAssignments: number[] = []; // Tracks which booking ID each guest is assigned to
       if (data.guests?.length) {
         data.guests.forEach(() => {
-          const code = `GUEST_${memberId}_${generateReferralCode()}`;
+          const code = generateReferralCode();
           newReferralCodes.push(code);
         });
       }
 
       // Book slots
       for (const slot of data.timeSlots) {
-        const { hour, minute } = parseTimeSlot(slot.time);
-        const bookingstart = `${hour.toString().padStart(2, "0")}:${minute
-          .toString()
-          .padStart(2, "0")}:00`;
-        const duration = getSlotDuration();
-        const endHour = Math.floor((hour * 60 + minute + duration) / 60);
-        const endMinute = (minute + duration) % 60;
-        const bookingend = `${endHour.toString().padStart(2, "0")}:${endMinute
-          .toString()
-          .padStart(2, "0")}:00`;
-
-        const bookingParams: Record<string, string> = {
-          api_key: GYMMASTER_API_KEY,
-          token,
-          resourceid: resourceMap[slot.bay].toString(),
-          serviceid: selectedServiceId.toString(),
-          day: data.date,
-          bookingstart,
-          bookingend,
-          roomid: "",
-          equipmentid: "",
-          membershipid: membership.id.toString(),
-        };
-        if (selectedBenefitId) {
-          bookingParams.benefitid = selectedBenefitId.toString();
-        }
-        console.log("Booking Request:", {
-          ...bookingParams,
-          serviceName: data.service,
-          bayName: slot.bay,
-        });
-
-        const response = await axios.post(
-          "/api/gymmaster/v1/booking/servicebookings",
-          new URLSearchParams(bookingParams),
+        const bookingId = await addBooking(
           {
-            headers: {
-              "Content-Type": "application/x-www-form-urlencoded",
+            date: data.date,
+            day: new Date(data.date).toLocaleDateString("en-US", {
+              weekday: "long",
+            }),
+            time: slot.time,
+            starttime: slot.time,
+            location: data.location,
+            bay: slot.bay,
+            servicename: data.service, // Added service name
+            guests: data.guests || [],
+            guestPassUsage: {
+              free: Math.min(
+                (data.guests || []).length,
+                Math.max(freeGuestPassesPerMonth - guestPassesUsed, 0)
+              ),
+              charged: Math.max(
+                (data.guests || []).length -
+                  Math.max(freeGuestPassesPerMonth - guestPassesUsed, 0),
+                0
+              ),
             },
-          }
-        );
-        console.log(
-          "API Response Status:",
-          response.status,
-          "Data:",
-          JSON.stringify(response.data, null, 2)
-        );
-
-        if (response.data.error || !response.data.result) {
-          throw new Error(
-            response.data.error || "Booking failed: No result returned"
-          );
-        }
-        if (response.status !== 200) {
-          throw new Error(
-            response.data.error || "Booking failed, expected 200 OK"
-          );
-        }
-
-        // Store booking ID
-        const bookingId = response.data.result?.bookingid;
-        if (bookingId) {
-          newBookingIds.push(bookingId);
-        }
-
-        await addBooking({
-          date: data.date,
-          // addition
-          day: new Date(data.date).toLocaleDateString("en-US", {
-            weekday: "long",
-          }),
-          starttime: slot.time,
-          // addition
-          time: slot.time,
-          location: data.location,
-          bay: slot.bay,
-          guests: data.guests || [],
-          guestPassUsage: {
-            free: Math.min(
-              (data.guests || []).length,
-              Math.max(freeGuestPassesPerMonth - guestPassesUsed, 0)
-            ),
-            charged: Math.max(
-              (data.guests || []).length -
-                Math.max(freeGuestPassesPerMonth - guestPassesUsed, 0),
-              0
-            ),
           },
-        });
+          token,
+          selectedServiceId,
+          resourceMap[slot.bay],
+          membership.id,
+          selectedBenefitId || undefined
+        );
+
+        newBookingIds.push(bookingId);
+        // Assign each guest to this booking ID
+        if (data.guests?.length) {
+          data.guests.forEach(() => guestAssignments.push(bookingId));
+        }
       }
 
       // Update guest passes, referral codes, and booking IDs
       if (data.guests?.length) {
         const newGuestPassesUsed = guestPassesUsed + data.guests.length;
         const updatedReferralCodes = [...referralCodes, ...newReferralCodes];
-        const updatedBookingIds = [...guestBookingIds, ...newBookingIds];
-        await updateCustomFields(
+        const updatedBookingIds = [...guestBookingIds, ...guestAssignments];
+        await updateGuestData(
           token,
           newGuestPassesUsed,
           updatedReferralCodes,
-          updatedBookingIds
+          updatedBookingIds,
+          data.guests
         );
         setGuestPassesUsed(newGuestPassesUsed);
         setReferralCodes(updatedReferralCodes);
         setGuestBookingIds(updatedBookingIds);
 
-        // Send app link to guests
+        // Send email invites to guests
         for (let i = 0; i < data.guests.length; i++) {
           const guest = data.guests[i];
           const referralCode = newReferralCodes[i];
-          const appLink = `${APP_URL}?referral=${encodeURIComponent(
+          const referralLink = `${APP_URL}?referral=${encodeURIComponent(
             referralCode
           )}`;
-          const res = await fetch("/api/send-sms", {
+          const res = await fetch("/api/send-email", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              phoneNumber: guest.cell,
-              message: `Join my tee time at ${data.location}! Sign up or log in: ${appLink}`,
+              emailType: "invite",
+              to: guest.email,
+              name: guest.name,
+              referralCode,
+              referralLink,
             }),
           });
-          if (!res.ok) throw new Error(`SMS failed for ${guest.name}`);
-          toast.info("SMS sent to guest", {
-            description: `A link with referral code ${referralCode} was sent to ${guest.name} (${guest.cell})`,
+          if (!res.ok) throw new Error(`Email failed for ${guest.name}`);
+          toast.info("Email sent to guest", {
+            description: `An invite with referral code ${referralCode} was sent to ${guest.name} (${guest.email})`,
           });
         }
       }
+
+      // Send confirmation email to member
+      const memberProfile = await fetchMemberDetails(token);
+      const memberEmail = memberProfile.email || "member@example.com";
+      await sendBookingConfirmationEmail(
+        memberEmail,
+        data,
+        newBookingIds,
+        freeGuestPassesPerMonth,
+        guestPassesUsed,
+        guestPassCharge
+      );
 
       const extraCharge =
         Math.max(
@@ -693,12 +587,12 @@ export default function BookTeeTime() {
   };
 
   return (
-    <div className="space-y-6 sm:space-y-8 p-4 sm:p-6">
+    <div className="space-y-6 sm:space-y-8 p-4 sm:p-6 bg-gray-50 min-h-screen">
       <motion.h1
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="text-3xl sm:text-4xl font-bold text-center"
+        className="text-3xl sm:text-4xl font-bold text-center text-black"
       >
         Book a Tee Time
       </motion.h1>
@@ -707,111 +601,149 @@ export default function BookTeeTime() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, delay: 0.2 }}
-        className="w-full max-w-4xl mx-auto space-y-6 sm:space-y-8"
+        className="w-full max-w-4xl mx-auto space-y-6 sm:space-y-8 bg-white p-6 rounded-lg shadow-md"
       >
         <Form {...form}>
           <form className="space-y-6">
-            <FormField
-              control={form.control}
-              name="date"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-sm sm:text-base flex items-center gap-2">
-                    <Calendar className="h-5 w-5" aria-hidden="true" /> Choose
-                    Date
-                  </FormLabel>
-                  <FormControl>
-                    <Input
-                      type="date"
-                      {...field}
-                      min={new Date().toISOString().split("T")[0]}
-                    />
-                  </FormControl>
-                  <FormMessage className="text-xs sm:text-sm" />
-                </FormItem>
-              )}
-            />
+            <motion.div
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.4, delay: 0.3 }}
+            >
+              <FormField
+                control={form.control}
+                name="date"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-sm sm:text-base flex items-center gap-2 text-black">
+                      <Calendar
+                        className="h-5 w-5 text-black"
+                        aria-hidden="true"
+                      />{" "}
+                      Choose Date
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        type="date"
+                        {...field}
+                        min={new Date().toISOString().split("T")[0]}
+                        className="border-gray-300 focus:border-black focus:ring-black"
+                      />
+                    </FormControl>
+                    <FormMessage className="text-xs sm:text-sm text-red-500" />
+                  </FormItem>
+                )}
+              />
+            </motion.div>
 
-            <FormField
-              control={form.control}
-              name="location"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-sm sm:text-base flex items-center gap-2">
-                    <MapPin className="h-5 w-5" aria-hidden="true" /> Choose
-                    Location
-                  </FormLabel>
-                  <FormControl>
-                    {isFetchingClubs ? (
-                      <div className="flex items-center gap-2 w-full sm:w-64 p-2 border rounded-md">
-                        <Loader2 className="h-5 w-5 animate-spin" />
-                        <span>Loading locations...</span>
-                      </div>
-                    ) : (
-                      <select
-                        value={field.value}
-                        onChange={(e) => {
-                          field.onChange(e.target.value);
-                          handleLocationChange();
-                        }}
-                        className="w-full sm:w-64 p-2 border rounded-md"
-                      >
-                        <option value="">Select a location</option>
-                        {clubs.map((club) => (
-                          <option key={club.id} value={club.name}>
-                            {club.name}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                  </FormControl>
-                  <FormMessage className="text-xs sm:text-sm" />
-                </FormItem>
-              )}
-            />
+            <motion.div
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.4, delay: 0.4 }}
+            >
+              <FormField
+                control={form.control}
+                name="location"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-sm sm:text-base flex items-center gap-2 text-black">
+                      <MapPin
+                        className="h-5 w-5 text-black"
+                        aria-hidden="true"
+                      />{" "}
+                      Choose Location
+                    </FormLabel>
+                    <FormControl>
+                      {isFetchingClubs ? (
+                        <div className="flex items-center gap-2 w-full sm:w-64 p-2 border border-gray-300 rounded-md">
+                          <Loader2 className="h-5 w-5 animate-spin text-black" />
+                          <span className="text-gray-500">
+                            Loading locations...
+                          </span>
+                        </div>
+                      ) : (
+                        <select
+                          value={field.value}
+                          onChange={(e) => {
+                            field.onChange(e.target.value);
+                            handleLocationChange();
+                          }}
+                          className="w-full sm:w-64 p-2 border border-gray-300 rounded-md focus:border-black focus:ring-black"
+                        >
+                          <option value="">Select a location</option>
+                          {clubs.map((club) => (
+                            <option key={club.id} value={club.name}>
+                              {club.name}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </FormControl>
+                    <FormMessage className="text-xs sm:text-sm text-red-500" />
+                  </FormItem>
+                )}
+              />
+            </motion.div>
 
-            <FormField
-              control={form.control}
-              name="service"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-sm sm:text-base flex items-center gap-2">
-                    <MapPin className="h-5 w-5" aria-hidden="true" /> Choose
-                    Service
-                  </FormLabel>
-                  <FormControl>
-                    {isFetchingServices ? (
-                      <div className="flex items-center gap-2 w-full sm:w-64 p-2 border rounded-md">
-                        <Loader2 className="h-5 w-5 animate-spin" />
-                        <span>Loading services...</span>
-                      </div>
-                    ) : (
-                      <select
-                        value={field.value}
-                        onChange={(e) => {
-                          field.onChange(e.target.value);
-                          handleServiceChange();
-                        }}
-                        className="w-full sm:w-64 p-2 border rounded-md"
-                        disabled={!location}
-                      >
-                        <option value="">Select a service</option>
-                        {services.map((svc) => (
-                          <option key={svc.serviceid} value={svc.servicename}>
-                            {svc.servicename}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                  </FormControl>
-                  <FormMessage className="text-xs sm:text-sm" />
-                </FormItem>
-              )}
-            />
+            <motion.div
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.4, delay: 0.5 }}
+            >
+              <FormField
+                control={form.control}
+                name="service"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-sm sm:text-base flex items-center gap-2 text-black">
+                      <MapPin
+                        className="h-5 w-5 text-black"
+                        aria-hidden="true"
+                      />{" "}
+                      Choose Service
+                    </FormLabel>
+                    <FormControl>
+                      {isFetchingServices ? (
+                        <div className="flex items-center gap-2 w-full sm:w-64 p-2 border border-gray-300 rounded-md">
+                          <Loader2 className="h-5 w-5 animate-spin text-black" />
+                          <span className="text-gray-500">
+                            Loading services...
+                          </span>
+                        </div>
+                      ) : (
+                        <select
+                          value={field.value}
+                          onChange={(e) => {
+                            field.onChange(e.target.value);
+                            handleServiceChange();
+                          }}
+                          className="w-full sm:w-64 p-2 border border-gray-300 rounded-md focus:border-black focus:ring-black"
+                          disabled={!location}
+                        >
+                          <option value="">Select a service</option>
+                          {services.map((svc) => (
+                            <option key={svc.serviceid} value={svc.servicename}>
+                              {svc.servicename}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                    </FormControl>
+                    <FormMessage className="text-xs sm:text-sm text-red-500" />
+                  </FormItem>
+                )}
+              />
+            </motion.div>
 
-            <div className="space-y-4">
-              <FormLabel className="text-sm sm:text-base flex items-center gap-2">
-                <Users className="h-5 w-5" aria-hidden="true" /> Bring a Guest
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.6 }}
+              className="space-y-4"
+            >
+              <FormLabel className="text-sm sm:text-base flex items-center gap-2 text-black">
+                <Users className="h-5 w-5 text-black" aria-hidden="true" />{" "}
+                Invite Guests
               </FormLabel>
               <div className="flex gap-2 sm:gap-4">
                 {[0, 1, 2, 3].map((count) => (
@@ -820,7 +752,11 @@ export default function BookTeeTime() {
                     type="button"
                     variant={guestCount === count ? "default" : "outline"}
                     onClick={() => handleGuestCountChange(count)}
-                    className="text-sm sm:text-base"
+                    className={`text-sm sm:text-base ${
+                      guestCount === count
+                        ? "bg-black text-white"
+                        : "border-gray-300 text-black hover:bg-gray-100"
+                    }`}
                   >
                     {count === 0 ? "None" : count}
                   </Button>
@@ -834,260 +770,314 @@ export default function BookTeeTime() {
                   className="space-y-4"
                 >
                   {Array.from({ length: guestCount }).map((_, index) => (
-                    <div
+                    <motion.div
                       key={index}
-                      className="space-y-2 border p-4 rounded-md"
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.3, delay: 0.1 * index }}
+                      className="space-y-2 border p-4 rounded-md bg-gray-50"
                     >
-                      <h4 className="text-sm font-medium">Guest {index + 1}</h4>
+                      <h4 className="text-sm font-medium text-black">
+                        Guest {index + 1}
+                      </h4>
                       <FormField
                         control={form.control}
                         name={`guests.${index}.name`}
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel className="text-xs sm:text-sm">
+                            <FormLabel className="text-xs sm:text-sm text-gray-600">
                               Name
                             </FormLabel>
                             <FormControl>
-                              <Input placeholder="Guest Name" {...field} />
+                              <Input
+                                placeholder="Guest Name"
+                                {...field}
+                                className="border-gray-300 focus:border-black focus:ring-black"
+                              />
                             </FormControl>
-                            <FormMessage className="text-xs sm:text-sm" />
+                            <FormMessage className="text-xs sm:text-sm text-red-500" />
                           </FormItem>
                         )}
                       />
                       <FormField
                         control={form.control}
-                        name={`guests.${index}.cell`}
+                        name={`guests.${index}.email`}
                         render={({ field }) => (
                           <FormItem>
-                            <FormLabel className="text-xs sm:text-sm">
-                              Cell
+                            <FormLabel className="text-xs sm:text-sm text-gray-600">
+                              Email
                             </FormLabel>
                             <FormControl>
-                              <Input placeholder="+1-123-456-7890" {...field} />
+                              <Input
+                                placeholder="guest@example.com"
+                                {...field}
+                                className="border-gray-300 focus:border-black focus:ring-black"
+                              />
                             </FormControl>
-                            <FormMessage className="text-xs sm:text-sm" />
+                            <FormMessage className="text-xs sm:text-sm text-red-500" />
                           </FormItem>
                         )}
                       />
-                    </div>
+                    </motion.div>
                   ))}
                 </motion.div>
               )}
-            </div>
+            </motion.div>
 
-            <FormField
-              control={form.control}
-              name="timeSlots"
-              render={() => (
-                <FormItem>
-                  <FormLabel className="text-sm sm:text-base">
-                    Available Times
-                  </FormLabel>
-                  <div className="mt-2 max-h-96 overflow-y-auto">
-                    {isFetchingSlots ? (
-                      <div className="flex items-center justify-center p-4">
-                        <Loader2 className="h-8 w-8 animate-spin" />
-                        <span className="ml-2">Loading time slots...</span>
-                      </div>
-                    ) : resources.length === 0 ? (
-                      <div className="text-center p-4 text-gray-500">
-                        Select a location, service, and date to see available
-                        times
-                      </div>
-                    ) : (
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead className="text-xs w-[80px] sm:w-[100px] sticky top-0 bg-white">
-                              Time
-                            </TableHead>
-                            {resources.map((r) => (
-                              <TableHead
-                                key={r.id}
-                                className="text-center text-xs w-[60px] sm:w-[80px] sticky top-0 bg-white"
-                              >
-                                {r.name}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.7 }}
+            >
+              <FormField
+                control={form.control}
+                name="timeSlots"
+                render={() => (
+                  <FormItem>
+                    <FormLabel className="text-sm sm:text-base text-black">
+                      Available Times
+                    </FormLabel>
+                    <div className="mt-2 max-h-96 overflow-y-auto border rounded-md">
+                      {isFetchingSlots ? (
+                        <div className="flex items-center justify-center p-4">
+                          <Loader2 className="h-8 w-8 animate-spin text-black" />
+                          <span className="ml-2 text-gray-500">
+                            Loading time slots...
+                          </span>
+                        </div>
+                      ) : resources.length === 0 ? (
+                        <div className="text-center p-4 text-gray-500">
+                          Select a location, service, and date to see available
+                          times
+                        </div>
+                      ) : (
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead className="text-xs w-[80px] sm:w-[100px] sticky top-0 bg-white">
+                                Time
                               </TableHead>
-                            ))}
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {timeSlots.map((time) => (
-                            <TableRow key={time}>
-                              <TableCell className="font-medium text-xs">
-                                {time}
-                              </TableCell>
-                              {resources.map((r) => {
-                                const isSelected = selectedSlots.some(
-                                  (s) => s.time === time && s.bay === r.name
-                                );
-                                const isUnavailable = !isSlotAvailable(
-                                  time,
-                                  r.name
-                                );
-                                return (
-                                  <TableCell
-                                    key={`${r.id}-${time}`}
-                                    className="text-center"
-                                  >
-                                    <Button
-                                      type="button"
-                                      variant={
-                                        isSelected
-                                          ? "default"
-                                          : isUnavailable
-                                          ? "destructive"
-                                          : "outline"
-                                      }
-                                      onClick={() =>
-                                        handleTimeSelect(time, r.name)
-                                      }
-                                      className="w-full text-[10px] sm:text-xs py-0.5 sm:py-1 px-1 sm:px-2"
-                                      disabled={
-                                        isUnavailable || !location || !service
-                                      }
-                                      aria-label={
-                                        isSelected
-                                          ? `Selected: ${time} at ${r.name}`
-                                          : isUnavailable
-                                          ? `Unavailable: ${time} at ${r.name}`
-                                          : `Choose ${time} at ${r.name}`
-                                      }
-                                    >
-                                      {isSelected
-                                        ? "Selected"
-                                        : isUnavailable
-                                        ? "N/A"
-                                        : "Select"}
-                                    </Button>
-                                  </TableCell>
-                                );
-                              })}
+                              {resources.map((r) => (
+                                <TableHead
+                                  key={r.id}
+                                  className="text-center text-xs w-[60px] sm:w-[80px] sticky top-0 bg-white"
+                                >
+                                  {r.name}
+                                </TableHead>
+                              ))}
                             </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    )}
-                  </div>
-                  <FormMessage className="text-xs sm:text-sm" />
-                </FormItem>
-              )}
-            />
-
-            <Dialog open={showItinerary} onOpenChange={setShowItinerary}>
-              <DialogTrigger asChild>
-                <Button
-                  type="button"
-                  className="w-full py-2.5 sm:py-3 text-lg sm:text-base"
-                  disabled={!isFormValid() || isLoading}
-                  onClick={() => setShowItinerary(true)}
-                >
-                  Review Itinerary
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Review Your Booking</DialogTitle>
-                  <DialogDescription>
-                    Review your booking details below.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4">
-                  <p>
-                    <strong>Location:</strong>{" "}
-                    {form.getValues("location") || "Not selected"}
-                  </p>
-                  <p>
-                    <strong>Service:</strong>{" "}
-                    {form.getValues("service") || "Not selected"}
-                  </p>
-                  <p>
-                    <strong>Date:</strong>{" "}
-                    {form.getValues("date") || "Not selected"}
-                  </p>
-                  <div>
-                    <strong>Time Slots:</strong>
-                    {form.getValues("timeSlots").length > 0 ? (
-                      <ul className="list-disc pl-5">
-                        {form.getValues("timeSlots").map((slot, index) => (
-                          <li key={index} className="text-sm sm:text-base">
-                            {slot.time} at {slot.bay}
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      "Not selected"
-                    )}
-                  </div>
-                  {(form.getValues("guests") || []).length > 0 && (
-                    <div>
-                      <strong>Guests:</strong>
-                      <ul className="list-disc pl-5">
-                        {(form.getValues("guests") || []).map(
-                          (guest, index) => (
-                            <li key={index} className="text-sm sm:text-base">
-                              {guest.name} ({guest.cell})
-                            </li>
-                          )
-                        )}
-                      </ul>
+                          </TableHeader>
+                          <TableBody>
+                            {timeSlots.map((time) => (
+                              <TableRow key={time}>
+                                <TableCell className="font-medium text-xs text-black">
+                                  {time}
+                                </TableCell>
+                                {resources.map((r) => {
+                                  const isSelected = selectedSlots.some(
+                                    (s) => s.time === time && s.bay === r.name
+                                  );
+                                  const isUnavailable = !isSlotAvailable(
+                                    time,
+                                    r.name
+                                  );
+                                  return (
+                                    <TableCell
+                                      key={`${r.id}-${time}`}
+                                      className="text-center"
+                                    >
+                                      <Button
+                                        type="button"
+                                        variant={
+                                          isSelected
+                                            ? "default"
+                                            : isUnavailable
+                                              ? "destructive"
+                                              : "outline"
+                                        }
+                                        onClick={() =>
+                                          handleTimeSelect(time, r.name)
+                                        }
+                                        className={`w-full text-[10px] sm:text-xs py-0.5 sm:py-1 px-1 sm:px-2 ${
+                                          isSelected
+                                            ? "bg-black text-white"
+                                            : isUnavailable
+                                              ? "bg-red-500 text-white"
+                                              : "border-gray-300 text-black hover:bg-gray-100"
+                                        }`}
+                                        disabled={
+                                          isUnavailable || !location || !service
+                                        }
+                                        aria-label={
+                                          isSelected
+                                            ? `Selected: ${time} at ${r.name}`
+                                            : isUnavailable
+                                              ? `Unavailable: ${time} at ${r.name}`
+                                              : `Choose ${time} at ${r.name}`
+                                        }
+                                      >
+                                        {isSelected
+                                          ? "Selected"
+                                          : isUnavailable
+                                            ? "N/A"
+                                            : "Select"}
+                                      </Button>
+                                    </TableCell>
+                                  );
+                                })}
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      )}
                     </div>
-                  )}
-                  {(form.getValues("guests") || []).length > 0 && (
-                    <p className="text-sm sm:text-base text-gray-600">
-                      <strong>Guest Pass Usage:</strong>{" "}
-                      {Math.min(
-                        (form.getValues("guests") || []).length,
-                        Math.max(freeGuestPassesPerMonth - guestPassesUsed, 0)
-                      )}{" "}
-                      free pass(es) used.{" "}
-                      {Math.max(
-                        (form.getValues("guests") || []).length -
-                          Math.max(
-                            freeGuestPassesPerMonth - guestPassesUsed,
-                            0
-                          ),
-                        0
-                      ) > 0
-                        ? `Extra charge: $${
+                    <FormMessage className="text-xs sm:text-sm text-red-500" />
+                  </FormItem>
+                )}
+              />
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.8 }}
+            >
+              <Dialog open={showItinerary} onOpenChange={setShowItinerary}>
+                <DialogTrigger asChild>
+                  <Button
+                    type="button"
+                    className="w-full py-2.5 sm:py-3 text-lg sm:text-base bg-black text-white hover:bg-gray-800"
+                    disabled={!isFormValid() || isLoading}
+                    onClick={() => setShowItinerary(true)}
+                  >
+                    Review Itinerary
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-lg">
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ duration: 0.3 }}
+                  >
+                    <DialogHeader>
+                      <DialogTitle className="text-xl text-black">
+                        Review Your Booking
+                      </DialogTitle>
+                      <DialogDescription className="text-gray-600">
+                        Confirm your tee time details below.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4">
+                      <p className="text-sm sm:text-base">
+                        <strong>Location:</strong>{" "}
+                        {form.getValues("location") || "Not selected"}
+                      </p>
+                      <p className="text-sm sm:text-base">
+                        <strong>Service:</strong>{" "}
+                        {form.getValues("service") || "Not selected"}
+                      </p>
+                      <p className="text-sm sm:text-base">
+                        <strong>Date:</strong>{" "}
+                        {form.getValues("date") || "Not selected"}
+                      </p>
+                      <div>
+                        <strong className="text-sm sm:text-base">
+                          Time Slots:
+                        </strong>
+                        {form.getValues("timeSlots").length > 0 ? (
+                          <ul className="list-disc pl-5 mt-1">
+                            {form.getValues("timeSlots").map((slot, index) => (
+                              <li
+                                key={index}
+                                className="text-sm sm:text-base text-gray-600"
+                              >
+                                {slot.time} at {slot.bay}
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          "Not selected"
+                        )}
+                      </div>
+                      {(form.getValues("guests") || []).length > 0 && (
+                        <div>
+                          <strong className="text-sm sm:text-base">
+                            Guests:
+                          </strong>
+                          <ul className="list-disc pl-5 mt-1">
+                            {(form.getValues("guests") || []).map(
+                              (guest, index) => (
+                                <li
+                                  key={index}
+                                  className="text-sm sm:text-base text-gray-600"
+                                >
+                                  {guest.name} ({guest.email})
+                                </li>
+                              )
+                            )}
+                          </ul>
+                        </div>
+                      )}
+                      {(form.getValues("guests") || []).length > 0 && (
+                        <p className="text-sm sm:text-base text-gray-600">
+                          <strong>Guest Pass Usage:</strong>{" "}
+                          {Math.min(
+                            (form.getValues("guests") || []).length,
                             Math.max(
-                              (form.getValues("guests") || []).length -
-                                Math.max(
-                                  freeGuestPassesPerMonth - guestPassesUsed,
-                                  0
-                                ),
+                              freeGuestPassesPerMonth - guestPassesUsed,
                               0
-                            ) * guestPassCharge
-                          }`
-                        : ""}
-                    </p>
-                  )}
-                </div>
-                <div className="flex flex-col sm:flex-row gap-2">
-                  <Button
-                    type="button"
-                    className="w-full sm:w-auto"
-                    disabled={isLoading}
-                    onClick={form.handleSubmit(onSubmit)}
-                  >
-                    {isLoading ? (
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                      "Confirm"
-                    )}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="w-full sm:w-auto"
-                    onClick={() => setShowItinerary(false)}
-                    disabled={isLoading}
-                  >
-                    Edit
-                  </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
+                            )
+                          )}{" "}
+                          free pass(es) used.{" "}
+                          {Math.max(
+                            (form.getValues("guests") || []).length -
+                              Math.max(
+                                freeGuestPassesPerMonth - guestPassesUsed,
+                                0
+                              ),
+                            0
+                          ) > 0
+                            ? `Extra charge: $${
+                                Math.max(
+                                  (form.getValues("guests") || []).length -
+                                    Math.max(
+                                      freeGuestPassesPerMonth - guestPassesUsed,
+                                      0
+                                    ),
+                                  0
+                                ) * guestPassCharge
+                              }`
+                            : ""}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-2 mt-4">
+                      <Button
+                        type="button"
+                        className="w-full sm:w-auto bg-black text-white hover:bg-gray-800"
+                        disabled={isLoading}
+                        onClick={form.handleSubmit(onSubmit)}
+                      >
+                        {isLoading ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          "Confirm Booking"
+                        )}
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="w-full sm:w-auto border-gray-300 text-black hover:bg-gray-100"
+                        onClick={() => setShowItinerary(false)}
+                        disabled={isLoading}
+                      >
+                        Edit
+                      </Button>
+                    </div>
+                  </motion.div>
+                </DialogContent>
+              </Dialog>
+            </motion.div>
           </form>
         </Form>
       </motion.div>
