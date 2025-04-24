@@ -525,7 +525,7 @@ export const storeReferralCode = async (
 };
 
 export const validateReferral = async (
-  referralCode: string,
+  referralCode: string | undefined,
   token: string
 ): Promise<boolean> => {
   try {

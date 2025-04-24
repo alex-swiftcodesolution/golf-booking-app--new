@@ -196,9 +196,8 @@ export default function Home() {
         ...(data.referralCode && { "Referral Code": data.referralCode }),
       };
 
-      const { token, memberid, membershipid, expires } = await signup(
-        signupData
-      );
+      const { token, memberid, membershipid, expires } =
+        await signup(signupData);
       localStorage.setItem("authToken", token);
       localStorage.setItem("memberId", memberid);
       localStorage.setItem(
@@ -242,7 +241,7 @@ export default function Home() {
       try {
         const token = localStorage.getItem("authToken") || "";
         const isValid = await validateReferral(
-          signUpForm.getValues("referralCode"),
+          signUpForm.getValues("referralCode") || "",
           token
         );
         console.log("Referral validation result:", {
@@ -439,10 +438,10 @@ export default function Home() {
                               {name === "dob"
                                 ? "Date of Birth"
                                 : name === "phoneCell"
-                                ? "Cell Phone"
-                                : name === "referralCode"
-                                ? "Referral Code (Optional)"
-                                : name.replace(/([A-Z])/g, " $1").trim()}
+                                  ? "Cell Phone"
+                                  : name === "referralCode"
+                                    ? "Referral Code (Optional)"
+                                    : name.replace(/([A-Z])/g, " $1").trim()}
                             </FormLabel>
                             <FormControl>
                               {name === "dob" ? (
@@ -509,10 +508,12 @@ export default function Home() {
                                     name === "email"
                                       ? "john@example.com"
                                       : name === "phoneCell"
-                                      ? "+1-123-456-7890"
-                                      : name === "referralCode"
-                                      ? "Referral code (optional)"
-                                      : name.replace(/([A-Z])/g, " $1").trim()
+                                        ? "+1-123-456-7890"
+                                        : name === "referralCode"
+                                          ? "Referral code (optional)"
+                                          : name
+                                              .replace(/([A-Z])/g, " $1")
+                                              .trim()
                                   }
                                   type={name === "email" ? "email" : "text"}
                                   {...field}
