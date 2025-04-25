@@ -72,7 +72,7 @@ export default function Invite() {
       await storeReferralCode(newReferralCode, memberId, token);
 
       // Send email with referral link
-      const referralLink = `http://localhost:3000/?referral=${newReferralCode}`;
+      const referralLink = `https://test-swiftcode.vercel.app/?referral=${newReferralCode}`;
       const response = await fetch("/api/send-email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

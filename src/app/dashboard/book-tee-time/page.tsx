@@ -51,7 +51,8 @@ import {
 import { useRouter } from "next/navigation";
 
 const GYMMASTER_API_KEY = process.env.NEXT_PUBLIC_GYMMASTER_API_KEY;
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
+const APP_URL =
+  process.env.NEXT_PUBLIC_APP_URL || "https://test-swiftcode.vercel.app/";
 
 const teeTimeSchema = z.object({
   location: z.string().min(1, "Please select a location"),
