@@ -678,6 +678,7 @@ export const getIPGeolocation = async (): Promise<{
     });
     return { latitude: res.data.lat, longitude: res.data.lon };
   } catch (error: unknown) {
+    console.error("Geolocation error: ", error);
     throw new Error("Failed to fetch IP-based geolocation");
   }
 };
