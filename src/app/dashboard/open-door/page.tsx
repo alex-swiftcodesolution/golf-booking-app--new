@@ -29,6 +29,10 @@ import {
   fetchMemberMemberships,
   fetchDoors,
   Door,
+  getClubCoordinates,
+  getBrowserGeolocation,
+  getIPGeolocation,
+  calculateDistance,
 } from "@/api/gymmaster";
 
 const openDoorSchema = z.object({
@@ -96,6 +100,50 @@ export default function OpenDoor() {
     initializeData();
   }, [router]);
 
+  const validateGeolocation = async (companyId: number): Promise<boolean> => {
+    const clubCoords = getClubCoordinates(companyId);
+    if (!clubCoords) {
+      console.warn("Club coordinates not found for companyId:", companyId);
+      toast.error("Location Error", {
+        description: "Club location data unavailable. Contact support.",
+      });
+      return false; // Block check-in if coordinates are missing
+    }
+
+    try {
+      // Try browser geolocation first
+      let userLocation;
+      try {
+        userLocation = await getBrowserGeolocation();
+      } catch (browserError) {
+        console.warn("Browser geolocation failed:", browserError);
+        // Fallback to IP-based geolocation
+        userLocation = await getIPGeolocation();
+      }
+
+      const distance = calculateDistance(
+        userLocation.latitude,
+        userLocation.longitude,
+        clubCoords.latitude,
+        clubCoords.longitude
+      );
+
+      if (distance > 100) {
+        toast.error("Failed to check in", {
+          description: "Must be near club to open door.",
+        });
+        return false;
+      }
+      return true;
+    } catch (error) {
+      console.error("Geolocation validation error:", error);
+      toast.error("Location Error", {
+        description: "Unable to verify your location. Please try again.",
+      });
+      return false;
+    }
+  };
+
   const onSubmit = async (data: z.infer<typeof openDoorSchema>) => {
     const token = localStorage.getItem("authToken");
     if (!token) {
@@ -114,6 +162,12 @@ export default function OpenDoor() {
       );
       if (!selectedDoor)
         throw new Error("Selected entry point is not accessible");
+
+      // Validate geolocation
+      const isNearClub = await validateGeolocation(selectedDoor.companyid);
+      if (!isNearClub) {
+        throw new Error("Must be near club to open door.");
+      }
 
       const response = await kioskCheckin(token, selectedDoor.id);
       if (response.response.access_state === 1) {

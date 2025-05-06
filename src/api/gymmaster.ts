@@ -6,6 +6,16 @@ const GYMMASTER_STAFF_API_KEY = process.env.NEXT_PUBLIC_GYMMASTER_STAFF_API_KEY;
 const GATEKEEPER_USERNAME = process.env.NEXT_PUBLIC_GATEKEEPER_USERNAME;
 const GATEKEEPER_API_KEY = process.env.NEXT_PUBLIC_GATEKEEPER_API_KEY;
 
+// Static mapping of club coordinates (replace with actual club IDs and coordinates)
+const CLUB_COORDINATES: Record<
+  number,
+  { latitude: number; longitude: number }
+> = {
+  // Example placeholders - update with your club data
+  1: { latitude: 40.7128, longitude: -74.006 }, // Club ID 1 (e.g., New York)
+  2: { latitude: 34.0522, longitude: -118.2437 }, // Club ID 2 (e.g., Los Angeles)
+};
+
 export interface Club {
   id: number;
   name: string;
@@ -637,3 +647,62 @@ export const updateGuestData = async (
     throw new Error("Failed to update guest data");
   }
 };
+
+// Add geolocation helper functions
+export const getBrowserGeolocation = (): Promise<{
+  latitude: number;
+  longitude: number;
+}> =>
+  new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      return reject(new Error("Geolocation is not supported by this browser"));
+    }
+    navigator.geolocation.getCurrentPosition(
+      (position) =>
+        resolve({
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+        }),
+      (error) => reject(error),
+      { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+    );
+  });
+
+export const getIPGeolocation = async (): Promise<{
+  latitude: number;
+  longitude: number;
+}> => {
+  try {
+    const res = await axios.get("http://ip-api.com/json", {
+      params: { fields: "lat,lon" },
+    });
+    return { latitude: res.data.lat, longitude: res.data.lon };
+  } catch (error: unknown) {
+    throw new Error("Failed to fetch IP-based geolocation");
+  }
+};
+
+// Haversine formula to calculate distance (in meters)
+export const calculateDistance = (
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+): number => {
+  const R = 6371e3; // Earth's radius in meters
+  const φ1 = (lat1 * Math.PI) / 180;
+  const φ2 = (lat2 * Math.PI) / 180;
+  const Δφ = ((lat2 - lat1) * Math.PI) / 180;
+  const Δλ = ((lon2 - lon1) * Math.PI) / 180;
+
+  const a =
+    Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+    Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return R * c; // Distance in meters
+};
+
+// Export CLUB_COORDINATES for use in validation
+export const getClubCoordinates = (companyId: number) =>
+  CLUB_COORDINATES[companyId];
