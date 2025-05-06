@@ -11,9 +11,8 @@ const CLUB_COORDINATES: Record<
   number,
   { latitude: number; longitude: number }
 > = {
-  // Example placeholders - update with your club data
-  1: { latitude: 40.7128, longitude: -74.006 }, // Club ID 1 (e.g., New York)
-  2: { latitude: 34.0522, longitude: -118.2437 }, // Club ID 2 (e.g., Los Angeles)
+  // club data
+  1: { latitude: 38.966, longitude: -119.9368 },
 };
 
 export interface Club {
