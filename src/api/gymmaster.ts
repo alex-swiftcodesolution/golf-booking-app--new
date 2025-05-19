@@ -1,4 +1,5 @@
 import axios from "axios";
+import FingerprintJS from "@fingerprintjs/fingerprintjs";
 
 // Server-side env vars
 const GYMMASTER_API_KEY = process.env.NEXT_PUBLIC_GYMMASTER_API_KEY;
@@ -249,12 +250,16 @@ export const saveWaiver = async (
 };
 
 // Helper to generate a unique fingerprint
-const generateFingerprint = (): string => {
-  const userAgent = navigator.userAgent || "unknown";
-  const timestamp = Date.now().toString();
-  // Simple hash of user agent and timestamp for uniqueness
-  const hash = btoa(userAgent + timestamp).slice(0, 32); // Base64 encode and limit length
-  return hash;
+const generateFingerprint = async (): Promise<string> => {
+  try {
+    const fp = await FingerprintJS.load();
+    const result = await fp.get();
+    return result.visitorId;
+  } catch (error) {
+    console.error("Fingerprint error: ", error);
+    const fallback = Math.random().toString(36).substring(2, 15);
+    return fallback;
+  }
 };
 
 export const login = async (
@@ -262,7 +267,7 @@ export const login = async (
   password: string
 ): Promise<LoginResponse["result"]> => {
   try {
-    const fingerprint = generateFingerprint();
+    const fingerprint = await generateFingerprint();
     console.log("Member login attempt:", {
       email,
       api_key: GYMMASTER_API_KEY,
@@ -274,7 +279,14 @@ export const login = async (
       postConfig
     );
     console.log("Member login response:", res.data);
-    if (res.data.error) throw new Error(res.data.error);
+    if (res.data.error) {
+      if (res.data.error.toLowerCase().includes("fingerprint")) {
+        throw new Error(
+          "Another device is already logged in. Please log out from other devices or contact support."
+        );
+      }
+      throw new Error(res.data.error);
+    }
 
     localStorage.setItem("deviceFingerprint", fingerprint);
 
