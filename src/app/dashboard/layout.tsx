@@ -30,7 +30,10 @@ export default function DashboardLayout({
   }, [router]);
 
   const handleLogout = () => {
-    localStorage.clear();
+    // localStorage.clear();
+    localStorage.removeItem("authToken");
+    localStorage.removeItem("tokenExpires");
+    localStorage.removeItem("deviceFingerprint");
     router.push("/");
   };
 

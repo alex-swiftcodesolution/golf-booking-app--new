@@ -248,22 +248,36 @@ export const saveWaiver = async (
   }
 };
 
+// Helper to generate a unique fingerprint
+const generateFingerprint = (): string => {
+  const userAgent = navigator.userAgent || "unknown";
+  const timestamp = Date.now().toString();
+  // Simple hash of user agent and timestamp for uniqueness
+  const hash = btoa(userAgent + timestamp).slice(0, 32); // Base64 encode and limit length
+  return hash;
+};
+
 export const login = async (
   email: string,
   password: string
 ): Promise<LoginResponse["result"]> => {
   try {
+    const fingerprint = generateFingerprint();
     console.log("Member login attempt:", {
       email,
       api_key: GYMMASTER_API_KEY,
+      fingerprint,
     });
     const res = await axios.post<LoginResponse>(
       "/api/gymmaster/v1/login",
-      { api_key: GYMMASTER_API_KEY, email, password },
+      { api_key: GYMMASTER_API_KEY, email, password, fingerprint },
       postConfig
     );
     console.log("Member login response:", res.data);
     if (res.data.error) throw new Error(res.data.error);
+
+    localStorage.setItem("deviceFingerprint", fingerprint);
+
     return res.data.result;
   } catch (error) {
     console.error("Login error:", error);
@@ -612,12 +626,47 @@ export const fetchGuestData = async (
   }
 };
 
+// export const updateGuestData = async (
+//   token: string,
+//   guestPassesUsed: number,
+//   referralCodes: string[],
+//   guestBookingIds: number[],
+//   guests: { name: string; email: string }[]
+// ): Promise<void> => {
+//   try {
+//     // Fetch existing guest data to merge
+//     const existingData = await fetchGuestData(token);
+//     const customData = {
+//       guestPassesUsed: guestPassesUsed || existingData.guestPassesUsed,
+//       referralCodes:
+//         referralCodes.length > 0
+//           ? [...new Set([...existingData.referralCodes, ...referralCodes])]
+//           : existingData.referralCodes,
+//       guestBookingIds:
+//         guestBookingIds.length > 0
+//           ? [...existingData.guestBookingIds, ...guestBookingIds]
+//           : existingData.guestBookingIds,
+//       guests:
+//         guests.length > 0
+//           ? [...existingData.guests, ...guests]
+//           : existingData.guests,
+//     };
+//     await updateMemberProfile(token, {
+//       customtext1: JSON.stringify(customData),
+//     });
+//     console.log("Updated customtext1:", customData); // Debug log
+//   } catch (error) {
+//     console.error("Update guest data error:", error);
+//     throw new Error("Failed to update guest data");
+//   }
+// };
+
 export const updateGuestData = async (
   token: string,
   guestPassesUsed: number,
   referralCodes: string[],
   guestBookingIds: number[],
-  guests: { name: string; email: string }[]
+  guests: { name: string; email: string; date?: string }[] // Add date field
 ): Promise<void> => {
   try {
     // Fetch existing guest data to merge

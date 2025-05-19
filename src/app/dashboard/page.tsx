@@ -8,7 +8,11 @@ import Link from "next/link";
 import { useBookings } from "@/context/BookingContext";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { fetchOutstandingBalance, fetchMemberDetails } from "@/api/gymmaster";
+import {
+  fetchOutstandingBalance,
+  fetchMemberDetails,
+  fetchGuestData,
+} from "@/api/gymmaster";
 import { toast } from "sonner";
 
 export default function Dashboard() {
@@ -17,13 +21,11 @@ export default function Dashboard() {
     "Payment Complete" | "Not Paid Yet" | "Unknown" | null
   >(null);
   const [owingAmount, setOwingAmount] = useState<string | null>(null);
-  const [memberName, setMemberName] = useState<string | null>(null); // Store member name
+  const [memberName, setMemberName] = useState<string | null>(null);
+  const [recentInvites, setRecentInvites] = useState<
+    { name: string; email: string; date?: string }[]
+  >([]);
   const router = useRouter();
-
-  const recentInvites = [
-    { name: "Jane Doe", email: "jane@example.com", date: "2025-03-20" },
-    { name: "John Smith", email: "john@example.com", date: "2025-03-19" },
-  ];
 
   const buttonVariants = {
     hover: { scale: 1.05, transition: { duration: 0.2 } },
@@ -60,6 +62,10 @@ export default function Dashboard() {
         // Fetch member details
         const memberData = await fetchMemberDetails(token);
         setMemberName(`${memberData.firstname} ${memberData.surname}`);
+
+        // Fetch recent invites
+        const guestData = await fetchGuestData(token);
+        setRecentInvites(guestData.guests.slice(0, 2));
       } catch (error) {
         console.error("Failed to fetch data:", error);
         toast.error("Failed to load dashboard data", {
@@ -251,7 +257,7 @@ export default function Dashboard() {
                             {invite.name}
                           </p>
                           <p className="text-xs sm:text-sm text-gray-600">
-                            {invite.email} - Invited on {invite.date}
+                            {invite.email}
                           </p>
                         </div>
                       </motion.li>

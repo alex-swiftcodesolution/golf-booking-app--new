@@ -20,7 +20,7 @@ import {
 import { toast } from "sonner";
 import { Loader2, Copy } from "lucide-react";
 import { motion } from "framer-motion";
-import { storeReferralCode } from "@/api/gymmaster";
+import { storeReferralCode, updateGuestData } from "@/api/gymmaster";
 import { v4 as uuidv4 } from "uuid";
 
 const inviteSchema = z.object({
@@ -70,6 +70,16 @@ export default function Invite() {
       const memberId = localStorage.getItem("memberId")!;
       const token = localStorage.getItem("authToken")!;
       await storeReferralCode(newReferralCode, memberId, token);
+
+      // Store guest data with invite date
+      const inviteDate = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+      await updateGuestData(
+        token,
+        0,
+        [newReferralCode],
+        [],
+        [{ name: data.name, email: data.email, date: inviteDate }]
+      );
 
       // Send email with referral link
       const referralLink = `https://test-swiftcode.vercel.app/?referral=${newReferralCode}`;
