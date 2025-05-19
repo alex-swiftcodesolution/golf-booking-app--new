@@ -262,7 +262,7 @@ const generateFingerprint = async (): Promise<string> => {
   }
 };
 
-// Helper to fetch current session fingerprint from customtext5
+// Helper to fetch current session fingerprint from customtext6
 const fetchSessionFingerprint = async (
   token: string
 ): Promise<string | null> => {
@@ -270,9 +270,9 @@ const fetchSessionFingerprint = async (
     const res = await axios.get("/api/gymmaster/v1/member/profile", {
       params: { api_key: GYMMASTER_API_KEY, token },
     });
-    const customtext5 = res.data.result.customtext5;
-    if (customtext5) {
-      const parsed = JSON.parse(customtext5);
+    const customtext6 = res.data.result.customtext6;
+    if (customtext6) {
+      const parsed = JSON.parse(customtext6);
       return parsed.activeFingerprint || null;
     }
     return null;
@@ -286,13 +286,13 @@ const storeSessionFingerprint = async (
   fingerprint: string
 ): Promise<void> => {
   try {
-    // Fetch existing customtext5 to preserve other data (e.g., guest data)
+    // Fetch existing customtext6 to preserve other data (e.g., guest data)
     const res = await axios.get("/api/gymmaster/v1/member/profile", {
       params: { api_key: GYMMASTER_API_KEY, token },
     });
     let customData = {};
-    if (res.data.result.customtext5) {
-      customData = JSON.parse(res.data.result.customtext5);
+    if (res.data.result.customtext6) {
+      customData = JSON.parse(res.data.result.customtext6);
     }
     customData = { ...customData, activeFingerprint: fingerprint };
     await axios.post(
@@ -300,7 +300,7 @@ const storeSessionFingerprint = async (
       {
         api_key: GYMMASTER_API_KEY,
         token,
-        customtext5: JSON.stringify(customData),
+        customtext6: JSON.stringify(customData),
       },
       postConfig
     );
@@ -314,15 +314,15 @@ interface FingerprintData {
   activeFingerprint?: string;
   [key: string]: unknown;
 }
-// Helper to clear fingerprint from customtext5 on logout
+// Helper to clear fingerprint from customtext6 on logout
 export const clearSessionFingerprint = async (token: string): Promise<void> => {
   try {
     const res = await axios.get("/api/gymmaster/v1/member/profile", {
       params: { api_key: GYMMASTER_API_KEY, token },
     });
     let customData: FingerprintData = {};
-    if (res.data.result.customtext5) {
-      customData = JSON.parse(res.data.result.customtext5);
+    if (res.data.result.customtext6) {
+      customData = JSON.parse(res.data.result.customtext6);
       delete customData.activeFingerprint; // Remove fingerprint
     }
     await axios.post(
@@ -330,7 +330,7 @@ export const clearSessionFingerprint = async (token: string): Promise<void> => {
       {
         api_key: GYMMASTER_API_KEY,
         token,
-        customtext5: JSON.stringify(customData),
+        customtext6: JSON.stringify(customData),
       },
       postConfig
     );
@@ -376,6 +376,7 @@ export const login = async (
         "Another device is already logged in. Please log out from other devices or contact support."
       );
     }
+
     localStorage.setItem("deviceFingerprint", fingerprint);
     await storeSessionFingerprint(res.data.result.token, fingerprint);
 
