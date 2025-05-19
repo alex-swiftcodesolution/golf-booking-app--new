@@ -262,6 +262,85 @@ const generateFingerprint = async (): Promise<string> => {
   }
 };
 
+// Helper to fetch current session fingerprint from customtext5
+const fetchSessionFingerprint = async (
+  token: string
+): Promise<string | null> => {
+  try {
+    const res = await axios.get("/api/gymmaster/v1/member/profile", {
+      params: { api_key: GYMMASTER_API_KEY, token },
+    });
+    const customtext5 = res.data.result.customtext5;
+    if (customtext5) {
+      const parsed = JSON.parse(customtext5);
+      return parsed.activeFingerprint || null;
+    }
+    return null;
+  } catch (error) {
+    console.error("Fetch session fingerprint error:", error);
+    return null; // Fallback to null if error occurs
+  }
+};
+const storeSessionFingerprint = async (
+  token: string,
+  fingerprint: string
+): Promise<void> => {
+  try {
+    // Fetch existing customtext5 to preserve other data (e.g., guest data)
+    const res = await axios.get("/api/gymmaster/v1/member/profile", {
+      params: { api_key: GYMMASTER_API_KEY, token },
+    });
+    let customData = {};
+    if (res.data.result.customtext5) {
+      customData = JSON.parse(res.data.result.customtext5);
+    }
+    customData = { ...customData, activeFingerprint: fingerprint };
+    await axios.post(
+      "/api/gymmaster/v1/member/profile",
+      {
+        api_key: GYMMASTER_API_KEY,
+        token,
+        customtext5: JSON.stringify(customData),
+      },
+      postConfig
+    );
+    console.log("Stored session fingerprint:", fingerprint);
+  } catch (error) {
+    console.error("Store session fingerprint error:", error);
+    throw new Error("Failed to store session fingerprint");
+  }
+};
+interface FingerprintData {
+  activeFingerprint?: string;
+  [key: string]: unknown;
+}
+// Helper to clear fingerprint from customtext5 on logout
+export const clearSessionFingerprint = async (token: string): Promise<void> => {
+  try {
+    const res = await axios.get("/api/gymmaster/v1/member/profile", {
+      params: { api_key: GYMMASTER_API_KEY, token },
+    });
+    let customData: FingerprintData = {};
+    if (res.data.result.customtext5) {
+      customData = JSON.parse(res.data.result.customtext5);
+      delete customData.activeFingerprint; // Remove fingerprint
+    }
+    await axios.post(
+      "/api/gymmaster/v1/member/profile",
+      {
+        api_key: GYMMASTER_API_KEY,
+        token,
+        customtext5: JSON.stringify(customData),
+      },
+      postConfig
+    );
+    console.log("Cleared session fingerprint");
+  } catch (error) {
+    console.error("Clear session fingerprint error:", error);
+    // Log error but don't throw, as logout should proceed
+  }
+};
+
 export const login = async (
   email: string,
   password: string
@@ -273,6 +352,7 @@ export const login = async (
       api_key: GYMMASTER_API_KEY,
       fingerprint,
     });
+
     const res = await axios.post<LoginResponse>(
       "/api/gymmaster/v1/login",
       { api_key: GYMMASTER_API_KEY, email, password, fingerprint },
@@ -288,7 +368,16 @@ export const login = async (
       throw new Error(res.data.error);
     }
 
+    const existingFingerprint = await fetchSessionFingerprint(
+      res.data.result.token
+    );
+    if (existingFingerprint && existingFingerprint !== fingerprint) {
+      throw new Error(
+        "Another device is already logged in. Please log out from other devices or contact support."
+      );
+    }
     localStorage.setItem("deviceFingerprint", fingerprint);
+    await storeSessionFingerprint(res.data.result.token, fingerprint);
 
     return res.data.result;
   } catch (error) {

@@ -9,6 +9,7 @@ import { motion } from "framer-motion";
 import Link from "next/link";
 import { BookingProvider } from "@/context/BookingContext";
 import { useRouter } from "next/navigation";
+import { clearSessionFingerprint } from "@/api/gymmaster";
 
 export default function DashboardLayout({
   children,
@@ -29,8 +30,16 @@ export default function DashboardLayout({
     }
   }, [router]);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     // localStorage.clear();
+    const token = localStorage.getItem("authToken");
+    if (token) {
+      try {
+        await clearSessionFingerprint(token); // Clear fingerprint from customtext1
+      } catch (error) {
+        console.error("Logout error:", error);
+      }
+    }
     localStorage.removeItem("authToken");
     localStorage.removeItem("tokenExpires");
     localStorage.removeItem("deviceFingerprint");
