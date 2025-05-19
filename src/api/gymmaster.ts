@@ -118,6 +118,12 @@ export interface Member {
   "Referral Code"?: string;
   "Referral Code Generated"?: string;
   customtext1?: string;
+  customtext2?: string;
+  customtext3?: string;
+  customtext4?: string;
+  customtext5?: string;
+  customtext6?: string;
+  customtext7?: string;
 }
 
 export interface Resource {
@@ -262,7 +268,7 @@ const generateFingerprint = async (): Promise<string> => {
   }
 };
 
-// Helper to fetch current session fingerprint from customtext6
+// Helper to fetch current session fingerprint from customtext7
 const fetchSessionFingerprint = async (
   token: string
 ): Promise<string | null> => {
@@ -270,9 +276,9 @@ const fetchSessionFingerprint = async (
     const res = await axios.get("/api/gymmaster/v1/member/profile", {
       params: { api_key: GYMMASTER_API_KEY, token },
     });
-    const customtext6 = res.data.result.customtext6;
-    if (customtext6) {
-      const parsed = JSON.parse(customtext6);
+    const customtext7 = res.data.result.customtext7;
+    if (customtext7) {
+      const parsed = JSON.parse(customtext7);
       return parsed.activeFingerprint || null;
     }
     return null;
@@ -286,13 +292,13 @@ const storeSessionFingerprint = async (
   fingerprint: string
 ): Promise<void> => {
   try {
-    // Fetch existing customtext6 to preserve other data (e.g., guest data)
+    // Fetch existing customtext7 to preserve other data (e.g., guest data)
     const res = await axios.get("/api/gymmaster/v1/member/profile", {
       params: { api_key: GYMMASTER_API_KEY, token },
     });
     let customData = {};
-    if (res.data.result.customtext6) {
-      customData = JSON.parse(res.data.result.customtext6);
+    if (res.data.result.customtext7) {
+      customData = JSON.parse(res.data.result.customtext7);
     }
     customData = { ...customData, activeFingerprint: fingerprint };
     await axios.post(
@@ -300,7 +306,7 @@ const storeSessionFingerprint = async (
       {
         api_key: GYMMASTER_API_KEY,
         token,
-        customtext6: JSON.stringify(customData),
+        customtext7: JSON.stringify(customData),
       },
       postConfig
     );
@@ -314,15 +320,15 @@ interface FingerprintData {
   activeFingerprint?: string;
   [key: string]: unknown;
 }
-// Helper to clear fingerprint from customtext6 on logout
+// Helper to clear fingerprint from customtext7 on logout
 export const clearSessionFingerprint = async (token: string): Promise<void> => {
   try {
     const res = await axios.get("/api/gymmaster/v1/member/profile", {
       params: { api_key: GYMMASTER_API_KEY, token },
     });
     let customData: FingerprintData = {};
-    if (res.data.result.customtext6) {
-      customData = JSON.parse(res.data.result.customtext6);
+    if (res.data.result.customtext7) {
+      customData = JSON.parse(res.data.result.customtext7);
       delete customData.activeFingerprint; // Remove fingerprint
     }
     await axios.post(
@@ -330,7 +336,7 @@ export const clearSessionFingerprint = async (token: string): Promise<void> => {
       {
         api_key: GYMMASTER_API_KEY,
         token,
-        customtext6: JSON.stringify(customData),
+        customtext7: JSON.stringify(customData),
       },
       postConfig
     );
@@ -619,6 +625,36 @@ export const fetchMemberBookings = async (
   }
 };
 
+// export const storeReferralCode = async (
+//   code: string,
+//   memberId: string,
+//   token: string
+// ): Promise<void> => {
+//   try {
+//     if (!code || !memberId || !token) {
+//       throw new Error("Missing required parameters: code, memberId, or token");
+//     }
+
+//     // Fetch current member profile
+//     const profile = await fetchMemberDetails(token);
+//     const currentCodes = profile["Referral Code Generated"] || "";
+
+//     // Append new code with comma separator
+//     const updatedCodes = currentCodes ? `${currentCodes},${code}` : code;
+
+//     // Update profile
+//     const result = await updateMemberProfile(token, {
+//       memberid: memberId,
+//       "Referral Code Generated": updatedCodes,
+//     });
+
+//     console.log("Stored referral code:", { code, memberId, result });
+//   } catch (error) {
+//     console.error("Store referral code error:", error);
+//     throw new Error(`Failed to store referral code: ${String(error)}`);
+//   }
+// };
+
 export const storeReferralCode = async (
   code: string,
   memberId: string,
@@ -629,17 +665,25 @@ export const storeReferralCode = async (
       throw new Error("Missing required parameters: code, memberId, or token");
     }
 
-    // Fetch current member profile
+    // Fetch current profile to get existing referral codes
     const profile = await fetchMemberDetails(token);
-    const currentCodes = profile["Referral Code Generated"] || "";
 
-    // Append new code with comma separator
-    const updatedCodes = currentCodes ? `${currentCodes},${code}` : code;
+    let existingCodes: string[] = [];
+    try {
+      existingCodes = profile.customtext4
+        ? JSON.parse(profile.customtext4)
+        : [];
+    } catch (parseError) {
+      console.error("Error parsing customtext4 (referralCodes):", parseError);
+    }
 
-    // Update profile
+    // Merge and deduplicate
+    const updatedCodes = Array.from(new Set([...existingCodes, code]));
+
+    // Update customtext4
     const result = await updateMemberProfile(token, {
       memberid: memberId,
-      "Referral Code Generated": updatedCodes,
+      customtext4: JSON.stringify(updatedCodes),
     });
 
     console.log("Stored referral code:", { code, memberId, result });
@@ -683,39 +727,103 @@ export const validateReferral = async (
   }
 };
 
+// export const fetchGuestData = async (
+//   token: string
+// ): Promise<{
+//   guestPassesUsed: number;
+//   referralCodes: string[];
+//   guestBookingIds: number[];
+//   guests: { name: string; email: string }[];
+// }> => {
+//   try {
+//     const profile = await fetchMemberDetails(token);
+//     console.log("Raw customtext1:", profile.customtext1); // Debug log
+//     let customData = {
+//       guestPassesUsed: 0,
+//       referralCodes: [],
+//       guestBookingIds: [],
+//       guests: [],
+//     };
+//     try {
+//       customData = profile.customtext1
+//         ? JSON.parse(profile.customtext1)
+//         : customData;
+//     } catch (parseError) {
+//       console.error("Error parsing customtext1:", parseError);
+//     }
+//     return {
+//       guestPassesUsed: Number(customData.guestPassesUsed) || 0,
+//       referralCodes: Array.isArray(customData.referralCodes)
+//         ? customData.referralCodes
+//         : [],
+//       guestBookingIds: Array.isArray(customData.guestBookingIds)
+//         ? customData.guestBookingIds.map(Number)
+//         : [],
+//       guests: Array.isArray(customData.guests) ? customData.guests : [],
+//     };
+//   } catch (error) {
+//     console.error("Fetch guest data error:", error);
+//     return {
+//       guestPassesUsed: 0,
+//       referralCodes: [],
+//       guestBookingIds: [],
+//       guests: [],
+//     };
+//   }
+// };
+
 export const fetchGuestData = async (
   token: string
 ): Promise<{
   guestPassesUsed: number;
   referralCodes: string[];
   guestBookingIds: number[];
-  guests: { name: string; email: string }[];
+  guests: { name: string; email: string; date?: string }[];
 }> => {
   try {
     const profile = await fetchMemberDetails(token);
-    console.log("Raw customtext1:", profile.customtext1); // Debug log
-    let customData = {
-      guestPassesUsed: 0,
-      referralCodes: [],
-      guestBookingIds: [],
-      guests: [],
-    };
+
+    // Parse each field separately, with fallbacks
+    let guestPassesUsed = 0;
+    let referralCodes: string[] = [];
+    let guestBookingIds: number[] = [];
+    let guests: { name: string; email: string; date?: string }[] = [];
+
     try {
-      customData = profile.customtext1
-        ? JSON.parse(profile.customtext1)
-        : customData;
-    } catch (parseError) {
-      console.error("Error parsing customtext1:", parseError);
+      guestPassesUsed = profile.customtext2
+        ? Number(JSON.parse(profile.customtext2))
+        : 0;
+    } catch (e) {
+      console.error("Error parsing customtext2 (guestPassesUsed):", e);
     }
+
+    try {
+      referralCodes = profile.customtext4
+        ? JSON.parse(profile.customtext4)
+        : [];
+    } catch (e) {
+      console.error("Error parsing customtext4 (referralCodes):", e);
+    }
+
+    try {
+      guestBookingIds = profile.customtext5
+        ? JSON.parse(profile.customtext5).map(Number)
+        : [];
+    } catch (e) {
+      console.error("Error parsing customtext5 (guestBookingIds):", e);
+    }
+
+    try {
+      guests = profile.customtext6 ? JSON.parse(profile.customtext6) : [];
+    } catch (e) {
+      console.error("Error parsing customtext6 (guests):", e);
+    }
+
     return {
-      guestPassesUsed: Number(customData.guestPassesUsed) || 0,
-      referralCodes: Array.isArray(customData.referralCodes)
-        ? customData.referralCodes
-        : [],
-      guestBookingIds: Array.isArray(customData.guestBookingIds)
-        ? customData.guestBookingIds.map(Number)
-        : [],
-      guests: Array.isArray(customData.guests) ? customData.guests : [],
+      guestPassesUsed,
+      referralCodes,
+      guestBookingIds,
+      guests,
     };
   } catch (error) {
     console.error("Fetch guest data error:", error);
@@ -763,35 +871,84 @@ export const fetchGuestData = async (
 //   }
 // };
 
+// export const updateGuestData = async (
+//   token: string,
+//   guestPassesUsed: number,
+//   referralCodes: string[],
+//   guestBookingIds: number[],
+//   guests: { name: string; email: string; date?: string }[] // Add date field
+// ): Promise<void> => {
+//   try {
+//     // Fetch existing guest data to merge
+//     const existingData = await fetchGuestData(token);
+//     const customData = {
+//       guestPassesUsed: guestPassesUsed || existingData.guestPassesUsed,
+//       referralCodes:
+//         referralCodes.length > 0
+//           ? [...new Set([...existingData.referralCodes, ...referralCodes])]
+//           : existingData.referralCodes,
+//       guestBookingIds:
+//         guestBookingIds.length > 0
+//           ? [...existingData.guestBookingIds, ...guestBookingIds]
+//           : existingData.guestBookingIds,
+//       guests:
+//         guests.length > 0
+//           ? [...existingData.guests, ...guests]
+//           : existingData.guests,
+//     };
+//     await updateMemberProfile(token, {
+//       customtext1: JSON.stringify(customData),
+//     });
+//     console.log("Updated customtext1:", customData); // Debug log
+//   } catch (error) {
+//     console.error("Update guest data error:", error);
+//     throw new Error("Failed to update guest data");
+//   }
+// };
+
 export const updateGuestData = async (
   token: string,
   guestPassesUsed: number,
   referralCodes: string[],
   guestBookingIds: number[],
-  guests: { name: string; email: string; date?: string }[] // Add date field
+  guests: { name: string; email: string; date?: string }[]
 ): Promise<void> => {
   try {
     // Fetch existing guest data to merge
     const existingData = await fetchGuestData(token);
-    const customData = {
-      guestPassesUsed: guestPassesUsed || existingData.guestPassesUsed,
-      referralCodes:
-        referralCodes.length > 0
-          ? [...new Set([...existingData.referralCodes, ...referralCodes])]
-          : existingData.referralCodes,
-      guestBookingIds:
-        guestBookingIds.length > 0
-          ? [...existingData.guestBookingIds, ...guestBookingIds]
-          : existingData.guestBookingIds,
-      guests:
-        guests.length > 0
-          ? [...existingData.guests, ...guests]
-          : existingData.guests,
-    };
+
+    const updatedGuestPassesUsed =
+      guestPassesUsed ?? existingData.guestPassesUsed;
+
+    const updatedReferralCodes =
+      referralCodes.length > 0
+        ? [...new Set([...existingData.referralCodes, ...referralCodes])]
+        : existingData.referralCodes;
+
+    const updatedBookingIds =
+      guestBookingIds.length > 0
+        ? [...existingData.guestBookingIds, ...guestBookingIds]
+        : existingData.guestBookingIds;
+
+    const updatedGuests =
+      guests.length > 0
+        ? [...existingData.guests, ...guests]
+        : existingData.guests;
+
+    // Send separate fields to updateMemberProfile
     await updateMemberProfile(token, {
-      customtext1: JSON.stringify(customData),
+      customtext3: JSON.stringify(updatedGuestPassesUsed), // guestPassesUsed
+      customtext4: JSON.stringify(updatedReferralCodes), // referralCodes
+      customtext5: JSON.stringify(updatedBookingIds), // guestBookingIds
+      customtext6: JSON.stringify(updatedGuests), // guests
     });
-    console.log("Updated customtext1:", customData); // Debug log
+
+    console.log("Updated guest data fields:", {
+      customtext3: updatedGuestPassesUsed,
+      customtext4: updatedReferralCodes,
+      customtext5: updatedBookingIds,
+      customtext6: updatedGuests,
+    });
   } catch (error) {
     console.error("Update guest data error:", error);
     throw new Error("Failed to update guest data");
