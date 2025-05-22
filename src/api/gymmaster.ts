@@ -956,6 +956,7 @@ export const updateGuestData = async (
 };
 
 // Add geolocation helper functions
+// Enhanced getBrowserGeolocation with retry logic
 export const getBrowserGeolocation = (): Promise<{
   latitude: number;
   longitude: number;
@@ -970,24 +971,121 @@ export const getBrowserGeolocation = (): Promise<{
           latitude: position.coords.latitude,
           longitude: position.coords.longitude,
         }),
-      (error) => reject(error),
+      (error) => {
+        switch (error.code) {
+          case error.PERMISSION_DENIED:
+            reject(new Error("Please enable location services to proceed."));
+            break;
+          case error.POSITION_UNAVAILABLE:
+            reject(new Error("Location information is unavailable."));
+            break;
+          case error.TIMEOUT:
+            navigator.geolocation.getCurrentPosition(
+              (position) =>
+                resolve({
+                  latitude: position.coords.latitude,
+                  longitude: position.coords.longitude,
+                }),
+              () =>
+                reject(new Error("Failed to retrieve location after retry.")),
+              { enableHighAccuracy: false, timeout: 10000, maximumAge: 0 }
+            );
+            break;
+          default:
+            reject(new Error("An error occurred while fetching location."));
+        }
+      },
       { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
     );
   });
 
+// Improved IP-based geolocation using ipapi.co
 export const getIPGeolocation = async (): Promise<{
   latitude: number;
   longitude: number;
 }> => {
   try {
-    const res = await axios.get("http://ip-api.com/json", {
-      params: { fields: "lat,lon" },
+    const res = await axios.get("https://ipapi.co/json/", {
+      params: { fields: "latitude,longitude" },
     });
-    return { latitude: res.data.lat, longitude: res.data.lon };
-  } catch (error: unknown) {
-    console.error("Geolocation error: ", error);
-    throw new Error("Failed to fetch IP-based geolocation");
+    if (!res.data.latitude || !res.data.longitude) {
+      throw new Error("Invalid geolocation data received.");
+    }
+    return { latitude: res.data.latitude, longitude: res.data.longitude };
+  } catch (error) {
+    console.error("IP geolocation error:", error);
+    throw new Error("Failed to fetch IP-based geolocation. Please try again.");
   }
+};
+
+// Combined geolocation function with caching
+export const getCachedLocation = (): {
+  latitude: number;
+  longitude: number;
+  timestamp: number;
+} | null => {
+  const cached = localStorage.getItem("userLocation");
+  if (!cached) return null;
+  const parsed = JSON.parse(cached);
+  const age = Date.now() - parsed.timestamp;
+  if (age > 5 * 60 * 1000) return null; // Expire after 5 minutes
+  return parsed;
+};
+
+export const cacheLocation = (location: {
+  latitude: number;
+  longitude: number;
+}): void => {
+  localStorage.setItem(
+    "userLocation",
+    JSON.stringify({ ...location, timestamp: Date.now() })
+  );
+};
+
+export const getUserLocation = async (): Promise<{
+  latitude: number;
+  longitude: number;
+}> => {
+  const cached = getCachedLocation();
+  if (cached) return { latitude: cached.latitude, longitude: cached.longitude };
+  const location = await (async () => {
+    try {
+      return await getBrowserGeolocation();
+    } catch (browserError) {
+      console.warn(
+        "Browser geolocation failed, falling back to IP:",
+        browserError
+      );
+      return await getIPGeolocation();
+    }
+  })();
+  cacheLocation(location);
+  return location;
+};
+
+// Real-time location watching
+export const watchUserLocation = (
+  onUpdate: (location: { latitude: number; longitude: number }) => void
+): number => {
+  if (!navigator.geolocation) {
+    throw new Error("Geolocation is not supported by this browser");
+  }
+  return navigator.geolocation.watchPosition(
+    (position) => {
+      const location = {
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+      };
+      cacheLocation(location); // Cache real-time updates
+      onUpdate(location);
+    },
+    (error) => console.error("Location watch error:", error),
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+  );
+};
+
+export const stopWatchingLocation = (watchId: number): void => {
+  navigator.geolocation.clearWatch(watchId);
 };
 
 // Haversine formula to calculate distance (in meters)

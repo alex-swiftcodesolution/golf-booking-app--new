@@ -21,7 +21,7 @@ import {
   FormControl,
 } from "@/components/ui/form";
 import { toast } from "sonner";
-import { Loader2, Bluetooth } from "lucide-react";
+import { Loader2, Bluetooth, MapPin } from "lucide-react";
 import { motion } from "framer-motion";
 import {
   fetchOutstandingBalance,
@@ -30,9 +30,11 @@ import {
   fetchDoors,
   Door,
   getClubCoordinates,
-  getBrowserGeolocation,
-  getIPGeolocation,
+  getUserLocation,
   calculateDistance,
+  watchUserLocation,
+  stopWatchingLocation,
+  getCachedLocation,
 } from "@/api/gymmaster";
 
 const openDoorSchema = z.object({
@@ -47,6 +49,15 @@ export default function OpenDoor() {
   const [accountStatus, setAccountStatus] = useState<
     "Good" | "Bad" | "Unknown" | null
   >(null);
+  const [locationStatus, setLocationStatus] = useState<
+    "Idle" | "Fetching" | "Retrieved" | "Failed"
+  >("Idle");
+  const [userLocation, setUserLocation] = useState<{
+    latitude: number;
+    longitude: number;
+  } | null>(null);
+  const [distanceToClub, setDistanceToClub] = useState<number | null>(null);
+  const [watchId, setWatchId] = useState<number | null>(null);
   const router = useRouter();
 
   const form = useForm<z.infer<typeof openDoorSchema>>({
@@ -65,7 +76,6 @@ export default function OpenDoor() {
       setLoading(true);
       try {
         const doorData = await fetchDoors();
-
         const memberships = await fetchMemberMemberships(token);
         const activeMemberships = memberships.filter(
           (m) => m.enddate === "Open Ended" || new Date(m.enddate) > new Date()
@@ -85,6 +95,14 @@ export default function OpenDoor() {
         const balanceData = await fetchOutstandingBalance(token);
         const owingAmount = parseFloat(balanceData.owingamount);
         setAccountStatus(owingAmount > 0 ? "Bad" : "Good");
+
+        // Check for cached location
+        const cachedLocation = getCachedLocation();
+        if (cachedLocation) {
+          setUserLocation(cachedLocation);
+          setLocationStatus("Retrieved");
+          updateDistance(cachedLocation, accessible[0]?.companyid);
+        }
       } catch (error) {
         console.error("Initialization error:", error);
         toast.error("Initialization failed", {
@@ -98,7 +116,59 @@ export default function OpenDoor() {
     };
 
     initializeData();
-  }, [router]);
+
+    return () => {
+      if (watchId !== null) {
+        stopWatchingLocation(watchId);
+      }
+    };
+  }, [router, watchId]);
+
+  const updateDistance = (
+    location: { latitude: number; longitude: number },
+    companyId?: number
+  ) => {
+    if (!companyId) return;
+    const clubCoords = getClubCoordinates(companyId);
+    if (clubCoords) {
+      const distance = calculateDistance(
+        location.latitude,
+        location.longitude,
+        clubCoords.latitude,
+        clubCoords.longitude
+      );
+      setDistanceToClub(distance);
+    }
+  };
+
+  const handleLocationRequest = async () => {
+    setLocationStatus("Fetching");
+    try {
+      const location = await getUserLocation();
+      setUserLocation(location);
+      setLocationStatus("Retrieved");
+      updateDistance(location, accessibleDoors[0]?.companyid);
+      toast.success("Location retrieved!", {
+        description: `Latitude: ${location.latitude.toFixed(4)}, Longitude: ${location.longitude.toFixed(4)}`,
+      });
+
+      // Start watching for real-time updates
+      if (watchId === null) {
+        const id = watchUserLocation((newLocation) => {
+          setUserLocation(newLocation);
+          updateDistance(newLocation, accessibleDoors[0]?.companyid);
+        });
+        setWatchId(id);
+      }
+    } catch (error) {
+      setLocationStatus("Failed");
+      const errorMessage =
+        error instanceof Error ? error.message : "Failed to fetch location.";
+      toast.error("Location Error", {
+        description: errorMessage,
+      });
+    }
+  };
 
   const validateGeolocation = async (companyId: number): Promise<boolean> => {
     const clubCoords = getClubCoordinates(companyId);
@@ -107,30 +177,28 @@ export default function OpenDoor() {
       toast.error("Location Error", {
         description: "Club location data unavailable. Contact support.",
       });
-      return false; // Block check-in if coordinates are missing
+      return false;
+    }
+
+    if (!userLocation) {
+      toast.error("Location Required", {
+        description: "Please fetch your location first.",
+      });
+      return false;
     }
 
     try {
-      // Try browser geolocation first
-      let userLocation;
-      try {
-        userLocation = await getBrowserGeolocation();
-      } catch (browserError) {
-        console.warn("Browser geolocation failed:", browserError);
-        // Fallback to IP-based geolocation
-        userLocation = await getIPGeolocation();
-      }
-
       const distance = calculateDistance(
         userLocation.latitude,
         userLocation.longitude,
         clubCoords.latitude,
         clubCoords.longitude
       );
+      setDistanceToClub(distance);
 
       if (distance > 100) {
         toast.error("Failed to check in", {
-          description: "Must be near club to open door.",
+          description: `You are ${distance.toFixed(0)} meters from the club. Must be within 100 meters.`,
         });
         return false;
       }
@@ -163,7 +231,6 @@ export default function OpenDoor() {
       if (!selectedDoor)
         throw new Error("Selected entry point is not accessible");
 
-      // Validate geolocation
       const isNearClub = await validateGeolocation(selectedDoor.companyid);
       if (!isNearClub) {
         throw new Error("Must be near club to open door.");
@@ -219,6 +286,53 @@ export default function OpenDoor() {
           </p>
         </div>
 
+        <div className="flex items-center justify-center space-x-2">
+          <MapPin
+            className={`h-5 w-5 sm:h-6 sm:w-6 ${
+              locationStatus === "Retrieved"
+                ? "text-green-600"
+                : locationStatus === "Failed"
+                  ? "text-red-600"
+                  : "text-gray-600"
+            }`}
+            aria-hidden="true"
+          />
+          <p className="text-sm sm:text-base">
+            {locationStatus === "Retrieved"
+              ? distanceToClub !== null
+                ? `Location retrieved (${distanceToClub.toFixed(0)} meters from club)`
+                : "Location retrieved"
+              : locationStatus === "Fetching"
+                ? "Fetching location..."
+                : locationStatus === "Failed"
+                  ? "Location unavailable"
+                  : "Location not fetched"}
+          </p>
+        </div>
+
+        <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+          <Button
+            onClick={handleLocationRequest}
+            className="w-full py-2.5 sm:py-3 text-sm sm:text-base"
+            disabled={
+              locationStatus === "Fetching" || isCheckingIn || isLoading
+            }
+            aria-label="Fetch your current location"
+          >
+            {locationStatus === "Fetching" ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Fetching Location...
+              </>
+            ) : (
+              <>
+                <MapPin className="mr-2 h-4 w-4" />
+                Get My Location
+              </>
+            )}
+          </Button>
+        </motion.div>
+
         {accountStatus === "Bad" && (
           <p className="text-red-600 text-sm sm:text-base text-center">
             Please settle your outstanding balance to check in.
@@ -244,12 +358,21 @@ export default function OpenDoor() {
                       Choose an Entry Point
                     </FormLabel>
                     <Select
-                      onValueChange={field.onChange}
+                      onValueChange={(value) => {
+                        field.onChange(value);
+                        if (userLocation && accessibleDoors.length > 0) {
+                          const selectedDoor = accessibleDoors.find(
+                            (d) => d.id.toString() === value
+                          );
+                          updateDistance(userLocation, selectedDoor?.companyid);
+                        }
+                      }}
                       defaultValue={field.value}
                       disabled={
                         accessibleDoors.length === 0 ||
                         isLoading ||
-                        isCheckingIn
+                        isCheckingIn ||
+                        locationStatus !== "Retrieved"
                       }
                     >
                       <FormControl>
@@ -283,7 +406,8 @@ export default function OpenDoor() {
                     accountStatus === null ||
                     accountStatus === "Bad" ||
                     accountStatus === "Unknown" ||
-                    accessibleDoors.length === 0
+                    accessibleDoors.length === 0 ||
+                    locationStatus !== "Retrieved"
                   }
                   aria-label="Check in to the selected entry point"
                 >
@@ -303,6 +427,8 @@ export default function OpenDoor() {
                     "Checking Status..."
                   ) : accessibleDoors.length === 0 ? (
                     "No Accessible Entry Points"
+                  ) : locationStatus !== "Retrieved" ? (
+                    "Fetch Location First"
                   ) : (
                     "Open Door"
                   )}

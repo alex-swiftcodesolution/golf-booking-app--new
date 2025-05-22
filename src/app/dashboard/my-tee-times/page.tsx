@@ -69,18 +69,24 @@ export default function MyTeeTimes() {
 
       // Map guest data to bookings
       const guestMap: Record<number, { name: string; email: string }[]> = {};
-      let guestIndex = 0;
-      guestBookingIds.forEach((id: number) => {
-        guestMap[id] = guestMap[id] || [];
-        if (guestIndex < guests.length) {
-          guestMap[id].push(guests[guestIndex]);
-          guestIndex++;
-        } else {
-          guestMap[id].push({
-            name: `Guest ${guestIndex + 1}`,
-            email: `guest${guestIndex + 1}@example.com`,
-          });
-        }
+
+      guestBookingIds.forEach((id: number, index: number) => {
+        const guest = guests[index];
+        const date = guest?.date ?? "";
+        const key = `${id}_${date}`;
+        guestMap[key] = guestMap[key] || [];
+        guestMap[key].push(guest);
+
+        // guestMap[id] = guestMap[id] || [];
+        // if (guestIndex < guests.length) {
+        //   guestMap[id].push(guests[guestIndex]);
+        //   guestIndex++;
+        // } else {
+        //   guestMap[id].push({
+        //     name: `Guest ${guestIndex + 1}`,
+        //     email: `guest${guestIndex + 1}@example.com`,
+        //   });
+        // }
       });
       console.log("Guest Map:", guestMap);
 
@@ -97,7 +103,9 @@ export default function MyTeeTimes() {
             time = `${hourNum.toString().padStart(2, "0")}:${minutes}`;
           }
 
-          const bookingGuests = guestMap[b.id] || [];
+          // const bookingGuests = guestMap[b.id] || [];
+          const guestKey = `${b.id}_${b.day}`;
+          const bookingGuests = guestMap[guestKey] || [];
           return {
             id: b.id,
             date: b.day,
