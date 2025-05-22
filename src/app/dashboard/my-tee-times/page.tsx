@@ -68,7 +68,7 @@ export default function MyTeeTimes() {
       const { guestBookingIds, guests } = guestData;
 
       // Map guest data to bookings
-      const guestMap: Record<number, { name: string; email: string }[]> = {};
+      const guestMap: Record<string, { name: string; email: string }[]> = {};
 
       guestBookingIds.forEach((id: number, index: number) => {
         const guest = guests[index];
