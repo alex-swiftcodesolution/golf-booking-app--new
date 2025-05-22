@@ -13,7 +13,7 @@ const CLUB_COORDINATES: Record<
   { latitude: number; longitude: number }
 > = {
   // club data
-  1: { latitude: 38.966, longitude: -119.9368 },
+  1: { latitude: 38.967649, longitude: -119.936365 },
 };
 
 export interface Club {
