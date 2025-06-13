@@ -368,7 +368,7 @@ export const login = async (
     if (res.data.error) {
       if (res.data.error.toLowerCase().includes("fingerprint")) {
         throw new Error(
-          "Another device is already logged in. Please log out from other devices or contact support."
+          "Device not authorized. Please log in using the device you signed up with or contact support."
         );
       }
       throw new Error(res.data.error);
