@@ -76,17 +76,6 @@ export default function MyTeeTimes() {
         const key = `${id}_${date}`;
         guestMap[key] = guestMap[key] || [];
         guestMap[key].push(guest);
-
-        // guestMap[id] = guestMap[id] || [];
-        // if (guestIndex < guests.length) {
-        //   guestMap[id].push(guests[guestIndex]);
-        //   guestIndex++;
-        // } else {
-        //   guestMap[id].push({
-        //     name: `Guest ${guestIndex + 1}`,
-        //     email: `guest${guestIndex + 1}@example.com`,
-        //   });
-        // }
       });
       console.log("Guest Map:", guestMap);
 

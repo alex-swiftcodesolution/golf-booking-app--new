@@ -696,39 +696,36 @@ export const storeReferralCode = async (
   }
 };
 
-export const validateReferral = async (
-  referralCode: string | undefined,
-  token: string
-): Promise<boolean> => {
-  try {
-    if (!referralCode) {
-      throw new Error("Referral code is required");
-    }
+// export const validateReferral = async (
+//   referralCode: string | undefined,
+//   token: string
+// ): Promise<boolean> => {
+//   try {
+//     if (!referralCode) throw new Error("Referral code is required");
 
-    // Use staff API key to access all members
-    const res = await axios.get<{ result: Member[]; error?: string }>(
-      "/api/gymmaster/v1/members",
-      getConfig({ token }, true) // Use staff key
-    );
-    if (res.data.error) throw new Error(res.data.error);
+//     const res = await axios.get<{ result: Member[]; error?: string }>(
+//       "/api/gymmaster/v1/members",
+//       getConfig({ token }, true) // Use staff key
+//     );
+//     if (res.data.error) throw new Error(res.data.error);
 
-    // Check both fields for the referral code
-    const isValid = res.data.result.some((member) => {
-      const generatedCodes =
-        member["Referral Code Generated"]?.split(",") || [];
-      return (
-        member["Referral Code"] === referralCode ||
-        generatedCodes.includes(referralCode)
-      );
-    });
+//     // Check both fields for the referral code
+//     const isValid = res.data.result.some((member) => {
+//       const generatedCodes =
+//         member["Referral Code Generated"]?.split(",") || [];
+//       return (
+//         member["Referral Code"] === referralCode ||
+//         generatedCodes.includes(referralCode)
+//       );
+//     });
 
-    console.log("Referral validation:", { referralCode, isValid });
-    return isValid;
-  } catch (error) {
-    console.error("Referral validation failed:", error);
-    throw new Error(`Failed to validate referral code: ${String(error)}`);
-  }
-};
+//     console.log("Referral validation:", { referralCode, isValid });
+//     return isValid;
+//   } catch (error) {
+//     console.error("Referral validation failed:", error);
+//     throw new Error(`Failed to validate referral code: ${String(error)}`);
+//   }
+// };
 
 // export const fetchGuestData = async (
 //   token: string
@@ -774,6 +771,33 @@ export const validateReferral = async (
 //     };
 //   }
 // };
+
+export const validateReferral = async (
+  referralCode: string | undefined,
+  token: string
+): Promise<string> => {
+  if (!referralCode) throw new Error("Referral code is required");
+  const res = await axios.get<{ result: Member[]; error?: string }>(
+    "/api/gymmaster/v1/members",
+    getConfig({ token }, true)
+  );
+  if (res.data.error) throw new Error(res.data.error);
+  const inviter = res.data.result.find((member) => {
+    const generatedCodes = member.customtext4
+      ? JSON.parse(member.customtext4)
+      : [];
+    return (
+      member["Referral Code"] === referralCode ||
+      generatedCodes.includes(referralCode)
+    );
+  });
+  if (!inviter) throw new Error("Invalid referral code");
+  console.log("Referral validation:", {
+    referralCode,
+    memberid: inviter.memberid,
+  });
+  return inviter.memberid;
+};
 
 export const fetchGuestData = async (
   token: string

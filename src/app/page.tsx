@@ -48,7 +48,7 @@ import {
 
 const signUpSchema = z
   .object({
-    referralCode: z.string().optional(),
+    referralCode: z.string().min(1, "Referral code is required"),
     firstName: z.string().min(1, "First name is required"),
     lastName: z.string().min(1, "Last name is required"),
     dob: z
@@ -184,9 +184,50 @@ function HomeContent() {
     }
   };
 
+  // const onSignUpSubmit = async (data: SignUpFormData) => {
+  //   setLoading((prev) => ({ ...prev, signup: true }));
+  //   try {
+  //     const signupData = {
+  //       firstname: data.firstName,
+  //       surname: data.lastName,
+  //       dob: data.dob,
+  //       email: data.email,
+  //       password: data.password,
+  //       phonecell: data.phoneCell,
+  //       membershiptypeid: data.membershipType,
+  //       companyid: data.location,
+  //       startdate: new Date().toISOString().split("T")[0],
+  //       firstpaymentdate: new Date().toISOString().split("T")[0],
+  //       ...(data.referralCode && { "Referral Code": data.referralCode }),
+  //     };
+
+  //     const { token, memberid, membershipid, expires } =
+  //       await signup(signupData);
+  //     localStorage.setItem("authToken", token);
+  //     localStorage.setItem("memberId", memberid);
+  //     localStorage.setItem(
+  //       "tokenExpires",
+  //       (Date.now() + expires * 1000).toString()
+  //     );
+
+  //     await saveWaiver(data.waiverSignature, membershipid, token);
+
+  //     toast.success(`Welcome, ${data.firstName}! Your membership is set.`);
+  //     setStep(4);
+  //   } catch (error) {
+  //     console.error("Signup error:", error);
+  //     toast.error("Sign-up failed", { description: String(error) });
+  //     setStep(1);
+  //   } finally {
+  //     setLoading((prev) => ({ ...prev, signup: false }));
+  //   }
+  // };
+
   const onSignUpSubmit = async (data: SignUpFormData) => {
     setLoading((prev) => ({ ...prev, signup: true }));
     try {
+      const token = localStorage.getItem("authToken") || "";
+      const inviterId = await validateReferral(data.referralCode, token);
       const signupData = {
         firstname: data.firstName,
         surname: data.lastName,
@@ -198,20 +239,22 @@ function HomeContent() {
         companyid: data.location,
         startdate: new Date().toISOString().split("T")[0],
         firstpaymentdate: new Date().toISOString().split("T")[0],
-        ...(data.referralCode && { "Referral Code": data.referralCode }),
+        "Referral Code": data.referralCode,
+        customtext3: inviterId,
       };
-
-      const { token, memberid, membershipid, expires } =
-        await signup(signupData);
-      localStorage.setItem("authToken", token);
+      const {
+        token: signupToken,
+        memberid,
+        membershipid,
+        expires,
+      } = await signup(signupData);
+      localStorage.setItem("authToken", signupToken);
       localStorage.setItem("memberId", memberid);
       localStorage.setItem(
         "tokenExpires",
         (Date.now() + expires * 1000).toString()
       );
-
-      await saveWaiver(data.waiverSignature, membershipid, token);
-
+      await saveWaiver(data.waiverSignature, membershipid, signupToken);
       toast.success(`Welcome, ${data.firstName}! Your membership is set.`);
       setStep(4);
     } catch (error) {
@@ -249,12 +292,25 @@ function HomeContent() {
           signUpForm.getValues("referralCode") || "",
           token
         );
+        // if (!isValid) {
+        //   signUpForm.setError("referralCode", {
+        //     message: "Invalid referral code",
+        //   });
+        //   toast.error("Invalid referral code");
+        //   return;
+        // }
         console.log("Referral validation result:", {
           code: signUpForm.getValues("referralCode"),
           isValid,
         });
       } catch (error) {
+        // console.error("Referral validation error:", error);
         console.error("Referral validation error:", error);
+        signUpForm.setError("referralCode", {
+          message: "Failed to validate referral code",
+        });
+        toast.error("Failed to validate referral code");
+        return;
       }
       // Clear any existing referral code errors and proceed regardless
       signUpForm.clearErrors("referralCode");
@@ -431,7 +487,7 @@ function HomeContent() {
                               : name === "phoneCell"
                                 ? "Cell Phone"
                                 : name === "referralCode"
-                                  ? "Referral Code (Optional)"
+                                  ? "Referral Code"
                                   : name.replace(/([A-Z])/g, " $1").trim()}
                           </FormLabel>
                           <FormControl>
