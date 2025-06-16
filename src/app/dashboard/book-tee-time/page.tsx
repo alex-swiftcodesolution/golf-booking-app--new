@@ -69,8 +69,10 @@ const teeTimeSchema = z.object({
   guests: z
     .array(
       z.object({
-        name: z.string().min(1, "Guest name is required"),
-        email: z.string().email("Please enter a valid email"),
+        // name: z.string().min(1, "Guest name is required"),
+        // email: z.string().email("Please enter a valid email"),
+        name: z.string().optional(),
+        email: z.string().email("Please enter a valid email").optional(),
       })
     )
     .optional(),
@@ -442,6 +444,7 @@ export default function BookTeeTime() {
       const newReferralCodes: string[] = [];
       const newBookingIds: number[] = [];
       const guestAssignments: number[] = []; // Tracks which booking ID each guest is assigned to
+
       if (data.guests?.length) {
         data.guests.forEach(() => {
           const code = generateReferralCode();
@@ -462,7 +465,7 @@ export default function BookTeeTime() {
             location: data.location,
             bay: slot.bay,
             servicename: data.service, // Added service name
-            guests: data.guests || [],
+            guests: (data.guests || []) as { name: string; email: string }[],
             guestPassUsage: {
               free: Math.min(
                 (data.guests || []).length,
@@ -499,7 +502,12 @@ export default function BookTeeTime() {
           newGuestPassesUsed,
           updatedReferralCodes,
           updatedBookingIds,
-          data.guests
+          // data.guests
+          (data.guests || []) as {
+            name: string;
+            email: string;
+            date?: string;
+          }[]
         );
         setGuestPassesUsed(newGuestPassesUsed);
         setReferralCodes(updatedReferralCodes);

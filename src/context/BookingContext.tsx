@@ -10,7 +10,7 @@ import axios from "axios";
 import { fetchGuestData, updateGuestData } from "@/api/gymmaster";
 
 export interface Booking {
-  id: number;
+  id?: number;
   date: string;
   time: string;
   location: string;
