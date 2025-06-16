@@ -433,6 +433,8 @@ function HomeContent() {
                             {name === "dob" ? (
                               <Input
                                 type="date"
+                                inputMode="numeric"
+                                pattern="[0-9]*"
                                 {...field}
                                 onChange={(e) => {
                                   field.onChange(e);
