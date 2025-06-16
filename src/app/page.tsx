@@ -278,7 +278,7 @@ function HomeContent() {
   };
 
   const nextStep = async () => {
-    const fields: (keyof SignUpFormData)[][] = [
+    const fields: (keyof Omit<SignUpFormData, "hasReadTerms">)[][] = [
       [
         "firstName",
         "lastName",
@@ -375,6 +375,27 @@ function HomeContent() {
     sigCanvas.current?.clear();
     signUpForm.setValue("waiverSignature", "");
   };
+
+  const textInputFields: (keyof Pick<
+    SignUpFormData,
+    | "referralCode"
+    | "firstName"
+    | "lastName"
+    | "dob"
+    | "email"
+    | "password"
+    | "confirmPassword"
+    | "phoneCell"
+  >)[] = [
+    "referralCode",
+    "firstName",
+    "lastName",
+    "dob",
+    "email",
+    "password",
+    "confirmPassword",
+    "phoneCell",
+  ];
 
   return (
     <div className="relative z-20 w-full max-w-md p-4 sm:p-6 space-y-6">
@@ -483,16 +504,7 @@ function HomeContent() {
                   <h2 className="text-xl font-semibold">
                     Step 1: Personal Info
                   </h2>
-                  {[
-                    "referralCode",
-                    "firstName",
-                    "lastName",
-                    "dob",
-                    "email",
-                    "password",
-                    "confirmPassword",
-                    "phoneCell",
-                  ].map((name) => (
+                  {textInputFields.map((name) => (
                     <FormField
                       key={name}
                       control={signUpForm.control}
@@ -520,6 +532,7 @@ function HomeContent() {
                               //     checkAge(e.target.value);
                               //   }}
                               // />
+
                               <Input
                                 type="text"
                                 inputMode="numeric"
@@ -851,13 +864,14 @@ function HomeContent() {
                       <FormItem>
                         <FormControl>
                           <div className="flex items-center space-x-2">
-                            <Input
+                            <input
                               type="checkbox"
                               checked={field.value as boolean}
                               onChange={(e) => {
                                 field.onChange(e.target.checked);
                                 setHasReadTerms(e.target.checked);
                               }}
+                              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                             />
                             <FormLabel>
                               I have read and agree to the terms
