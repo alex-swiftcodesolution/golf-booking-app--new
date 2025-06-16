@@ -431,12 +431,37 @@ function HomeContent() {
                           </FormLabel>
                           <FormControl>
                             {name === "dob" ? (
+                              // <Input
+                              //   type="number"
+                              //   inputMode="numeric"
+                              //   pattern="[0-9]*"
+                              //   {...field}
+                              //   onChange={(e) => {
+                              //     field.onChange(e);
+                              //     checkAge(e.target.value);
+                              //   }}
+                              // />
                               <Input
-                                type="number"
+                                type="text"
                                 inputMode="numeric"
-                                pattern="[0-9]*"
+                                pattern="\d*"
+                                maxLength={10}
+                                placeholder="MM/DD/YYYY"
                                 {...field}
                                 onChange={(e) => {
+                                  let value = e.target.value.replace(/\D/g, ""); // remove non-digits
+                                  if (value.length > 8)
+                                    value = value.slice(0, 8); // limit to MMDDYYYY
+
+                                  // Add slashes
+                                  if (value.length > 4) {
+                                    value = `${value.slice(0, 2)}/${value.slice(2, 4)}/${value.slice(4)}`;
+                                  } else if (value.length > 2) {
+                                    value = `${value.slice(0, 2)}/${value.slice(2)}`;
+                                  }
+
+                                  e.target.value = value;
+
                                   field.onChange(e);
                                   checkAge(e.target.value);
                                 }}
