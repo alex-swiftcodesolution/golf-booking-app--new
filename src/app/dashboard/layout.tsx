@@ -9,7 +9,7 @@ import { motion } from "framer-motion";
 import Link from "next/link";
 import { BookingProvider } from "@/context/BookingContext";
 import { useRouter } from "next/navigation";
-import { clearSessionFingerprint } from "@/api/gymmaster";
+// import { clearSessionFingerprint } from "@/api/gymmaster";
 
 export default function DashboardLayout({
   children,
@@ -35,14 +35,15 @@ export default function DashboardLayout({
     const token = localStorage.getItem("authToken");
     if (token) {
       try {
-        await clearSessionFingerprint(token); // Clear fingerprint from customtext1
+        // await clearSessionFingerprint(token); // Clear fingerprint from customtext1
+        console.log("logout");
       } catch (error) {
         console.error("Logout error:", error);
       }
     }
     localStorage.removeItem("authToken");
     localStorage.removeItem("tokenExpires");
-    localStorage.removeItem("deviceFingerprint");
+    // localStorage.removeItem("deviceFingerprint");
     router.push("/");
   };
 

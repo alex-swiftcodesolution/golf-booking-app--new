@@ -316,36 +316,38 @@ const storeSessionFingerprint = async (
     throw new Error("Failed to store session fingerprint");
   }
 };
-interface FingerprintData {
-  activeFingerprint?: string;
-  [key: string]: unknown;
-}
+
+// interface FingerprintData {
+//   activeFingerprint?: string;
+//   [key: string]: unknown;
+// }
+
 // Helper to clear fingerprint from customtext7 on logout
-export const clearSessionFingerprint = async (token: string): Promise<void> => {
-  try {
-    const res = await axios.get("/api/gymmaster/v1/member/profile", {
-      params: { api_key: GYMMASTER_API_KEY, token },
-    });
-    let customData: FingerprintData = {};
-    if (res.data.result.customtext7) {
-      customData = JSON.parse(res.data.result.customtext7);
-      delete customData.activeFingerprint; // Remove fingerprint
-    }
-    await axios.post(
-      "/api/gymmaster/v1/member/profile",
-      {
-        api_key: GYMMASTER_API_KEY,
-        token,
-        customtext7: JSON.stringify(customData),
-      },
-      postConfig
-    );
-    console.log("Cleared session fingerprint");
-  } catch (error) {
-    console.error("Clear session fingerprint error:", error);
-    // Log error but don't throw, as logout should proceed
-  }
-};
+// export const clearSessionFingerprint = async (token: string): Promise<void> => {
+//   try {
+//     const res = await axios.get("/api/gymmaster/v1/member/profile", {
+//       params: { api_key: GYMMASTER_API_KEY, token },
+//     });
+//     let customData: FingerprintData = {};
+//     if (res.data.result.customtext7) {
+//       customData = JSON.parse(res.data.result.customtext7);
+//       delete customData.activeFingerprint; // Remove fingerprint
+//     }
+//     await axios.post(
+//       "/api/gymmaster/v1/member/profile",
+//       {
+//         api_key: GYMMASTER_API_KEY,
+//         token,
+//         customtext7: JSON.stringify(customData),
+//       },
+//       postConfig
+//     );
+//     console.log("Cleared session fingerprint");
+//   } catch (error) {
+//     console.error("Clear session fingerprint error:", error);
+//     // Log error but don't throw, as logout should proceed
+//   }
+// };
 
 export const login = async (
   email: string,
