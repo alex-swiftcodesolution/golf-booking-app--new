@@ -432,7 +432,7 @@ function HomeContent() {
                           <FormControl>
                             {name === "dob" ? (
                               <Input
-                                type="date"
+                                type="number"
                                 inputMode="numeric"
                                 pattern="[0-9]*"
                                 {...field}
