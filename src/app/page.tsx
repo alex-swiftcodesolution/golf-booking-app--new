@@ -522,17 +522,6 @@ function HomeContent() {
                           </FormLabel>
                           <FormControl>
                             {name === "dob" ? (
-                              // <Input
-                              //   type="number"
-                              //   inputMode="numeric"
-                              //   pattern="[0-9]*"
-                              //   {...field}
-                              //   onChange={(e) => {
-                              //     field.onChange(e);
-                              //     checkAge(e.target.value);
-                              //   }}
-                              // />
-
                               <Input
                                 type="text"
                                 inputMode="numeric"
@@ -540,6 +529,7 @@ function HomeContent() {
                                 maxLength={10}
                                 placeholder="MM/DD/YYYY"
                                 {...field}
+                                value={String(field.value)}
                                 onChange={(e) => {
                                   let value = e.target.value.replace(/\D/g, ""); // remove non-digits
                                   if (value.length > 8)
@@ -577,6 +567,7 @@ function HomeContent() {
                                       : "password"
                                   }
                                   {...field}
+                                  value={String(field.value)}
                                   className="pr-10"
                                 />
                                 <button
@@ -618,6 +609,7 @@ function HomeContent() {
                                 }
                                 type={name === "email" ? "email" : "text"}
                                 {...field}
+                                value={String(field.value)}
                               />
                             )}
                           </FormControl>
