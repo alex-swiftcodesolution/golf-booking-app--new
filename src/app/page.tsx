@@ -84,6 +84,9 @@ const signUpSchema = z
     location: z.string().min(1, "Select a location"),
     membershipType: z.string().min(1, "Select a membership type"),
     waiverSignature: z.string().min(1, "Sign the waiver"),
+    hasReadTerms: z
+      .boolean()
+      .refine((val) => val === true, "You must read the terms"),
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: "Passwords must match",
@@ -113,6 +116,8 @@ function HomeContent() {
   const searchParams = useSearchParams();
   const sigCanvas = useRef<SignatureCanvas>(null);
 
+  const [hasReadTerms, setHasReadTerms] = useState(false);
+
   const loginForm = useForm<LoginFormData>({
     resolver: zodResolver(loginSchema),
     defaultValues: { email: "", password: "" },
@@ -132,6 +137,7 @@ function HomeContent() {
       location: "",
       membershipType: "",
       waiverSignature: "",
+      hasReadTerms: false,
     },
   });
 
@@ -254,6 +260,11 @@ function HomeContent() {
         "tokenExpires",
         (Date.now() + expires * 1000).toString()
       );
+
+      if (!data.hasReadTerms) {
+        throw new Error("You must read the terms");
+      }
+
       await saveWaiver(data.waiverSignature, membershipid, signupToken);
       toast.success(`Welcome, ${data.firstName}! Your membership is set.`);
       setStep(4);
@@ -288,27 +299,33 @@ function HomeContent() {
     if (step === 1 && signUpForm.getValues("referralCode")) {
       try {
         const token = localStorage.getItem("authToken") || "";
+
         const isValid = await validateReferral(
           signUpForm.getValues("referralCode") || "",
           token
         );
-        // if (!isValid) {
-        //   signUpForm.setError("referralCode", {
-        //     message: "Invalid referral code",
-        //   });
-        //   toast.error("Invalid referral code");
-        //   return;
-        // }
+
+        if (!isValid) {
+          signUpForm.setError("referralCode", {
+            message: "Invalid referral code",
+          });
+          toast.error("Invalid referral code");
+          return;
+        }
+
         console.log("Referral validation result:", {
           code: signUpForm.getValues("referralCode"),
           isValid,
         });
       } catch (error) {
         // console.error("Referral validation error:", error);
+
         console.error("Referral validation error:", error);
+
         signUpForm.setError("referralCode", {
           message: "Failed to validate referral code",
         });
+
         toast.error("Failed to validate referral code");
         return;
       }
@@ -327,7 +344,8 @@ function HomeContent() {
         setWaiverContent("No waiver content");
       }
     }
-    if (step === 3) {
+    if (step === 3 && !hasReadTerms) {
+      toast.error("You must read the terms");
       return onSignUpSubmit(signUpForm.getValues());
     }
     setStep((prev) => prev + 1);
@@ -582,7 +600,7 @@ function HomeContent() {
                                     : name === "phoneCell"
                                       ? "+1-123-456-7890"
                                       : name === "referralCode"
-                                        ? "Referral code (optional)"
+                                        ? "Referral code"
                                         : name.replace(/([A-Z])/g, " $1").trim()
                                 }
                                 type={name === "email" ? "email" : "text"}
@@ -716,6 +734,60 @@ function HomeContent() {
               {step === 3 && (
                 <>
                   <h2 className="text-xl font-semibold">Step 3: Sign Waiver</h2>
+                  {/* <FormField
+                    control={signUpForm.control}
+                    name="waiverSignature"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Sign the Waiver</FormLabel>
+                        <FormControl>
+                          <div className="border rounded-md">
+                            <SignatureCanvas
+                              ref={sigCanvas}
+                              canvasProps={{ className: "w-full h-32" }}
+                              onEnd={() =>
+                                field.onChange(
+                                  sigCanvas.current?.toDataURL() || ""
+                                )
+                              }
+                            />
+                          </div>
+                        </FormControl>
+                        <div className="mt-2 flex space-x-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            onClick={clearSignature}
+                          >
+                            Clear
+                          </Button>
+                          <Dialog>
+                            <DialogTrigger asChild>
+                              <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => setHasReadTerms(true)}
+                              >
+                                Read Terms
+                              </Button>
+                            </DialogTrigger>
+                            <DialogContent>
+                              <DialogHeader>
+                                <DialogTitle>Waiver</DialogTitle>
+                              </DialogHeader>
+                              <div
+                                className="max-h-[60vh] overflow-y-auto"
+                                dangerouslySetInnerHTML={{
+                                  __html: waiverContent || "Loading...",
+                                }}
+                              />
+                            </DialogContent>
+                          </Dialog>
+                        </div>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  /> */}
                   <FormField
                     control={signUpForm.control}
                     name="waiverSignature"
@@ -745,7 +817,11 @@ function HomeContent() {
                           </Button>
                           <Dialog>
                             <DialogTrigger asChild>
-                              <Button type="button" variant="outline">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => setHasReadTerms(true)}
+                              >
                                 Read Terms
                               </Button>
                             </DialogTrigger>
@@ -762,10 +838,37 @@ function HomeContent() {
                             </DialogContent>
                           </Dialog>
                         </div>
+
                         <FormMessage />
                       </FormItem>
                     )}
                   />
+
+                  <FormField
+                    control={signUpForm.control}
+                    name="hasReadTerms"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormControl>
+                          <div className="flex items-center space-x-2">
+                            <Input
+                              type="checkbox"
+                              checked={field.value as boolean}
+                              onChange={(e) => {
+                                field.onChange(e.target.checked);
+                                setHasReadTerms(e.target.checked);
+                              }}
+                            />
+                            <FormLabel>
+                              I have read and agree to the terms
+                            </FormLabel>
+                          </div>
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
                   <div className="flex space-x-2 flex-col-reverse md:flex-col gap-2 space-y-2">
                     <Button
                       type="button"

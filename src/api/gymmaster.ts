@@ -772,17 +772,44 @@ export const storeReferralCode = async (
 //   }
 // };
 
+// export const validateReferral = async (
+//   referralCode: string | undefined,
+//   token: string
+// ): Promise<string> => {
+//   if (!referralCode) throw new Error("Referral code is required");
+//   const res = await axios.get<{ result: Member[]; error?: string }>(
+//     "/api/gymmaster/v1/members",
+//     getConfig({ token }, true)
+//   );
+//   if (res.data.error) throw new Error(res.data.error);
+//   const inviter = res.data.result.find((member) => {
+//     const generatedCodes = member.customtext4
+//       ? JSON.parse(member.customtext4)
+//       : [];
+//     return (
+//       member["Referral Code"] === referralCode ||
+//       generatedCodes.includes(referralCode)
+//     );
+//   });
+//   if (!inviter) throw new Error("Invalid referral code");
+//   console.log("Referral validation:", {
+//     referralCode,
+//     memberid: inviter.memberid,
+//   });
+//   return inviter.memberid;
+// };
+
 export const validateReferral = async (
   referralCode: string | undefined,
   token: string
-): Promise<string> => {
-  if (!referralCode) throw new Error("Referral code is required");
+): Promise<boolean> => {
+  if (!referralCode) return false;
   const res = await axios.get<{ result: Member[]; error?: string }>(
     "/api/gymmaster/v1/members",
     getConfig({ token }, true)
   );
-  if (res.data.error) throw new Error(res.data.error);
-  const inviter = res.data.result.find((member) => {
+  if (res.data.error) return false;
+  const hasCode = res.data.result.some((member) => {
     const generatedCodes = member.customtext4
       ? JSON.parse(member.customtext4)
       : [];
@@ -791,12 +818,7 @@ export const validateReferral = async (
       generatedCodes.includes(referralCode)
     );
   });
-  if (!inviter) throw new Error("Invalid referral code");
-  console.log("Referral validation:", {
-    referralCode,
-    memberid: inviter.memberid,
-  });
-  return inviter.memberid;
+  return hasCode;
 };
 
 export const fetchGuestData = async (
