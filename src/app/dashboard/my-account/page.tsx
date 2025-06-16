@@ -63,6 +63,8 @@ type ProfileFormValues = z.infer<typeof profileSchema>;
 export default function MyAccount() {
   const router = useRouter();
 
+  const [iframeSrc, setIframeSrc] = useState("");
+
   const [loading, setLoading] = useState({
     token: true,
     profile: false,
@@ -116,6 +118,33 @@ export default function MyAccount() {
   useEffect(() => {
     loadProfile();
   }, [loadProfile]);
+
+  useEffect(() => {
+    const iframe = document.querySelector(".gmiframe");
+    if (iframe) {
+      setIframeSrc(iframe.getAttribute("src") || "");
+
+      const observer = new MutationObserver(() => {
+        const newSrc = iframe.getAttribute("src") || "";
+        setIframeSrc(newSrc);
+      });
+      observer.observe(iframe, { attributes: true, attributeFilter: ["src"] });
+
+      return () => observer.disconnect();
+    }
+  }, []);
+
+  useEffect(() => {
+    if (iframeSrc.includes("addpaymentinfo")) {
+      router.push("/account?tab=payment"); // Stay on payment tab
+    } else if (iframeSrc.includes("success")) {
+      router.push("/account?tab=profile"); // Navigate to profile on success
+      toast.success("Payment details updated!");
+    } else if (iframeSrc.includes("error")) {
+      router.push("/account?tab=payment");
+      toast.error("Payment update failed.");
+    }
+  }, [iframeSrc, router]);
 
   const onSubmit = async (data: ProfileFormValues) => {
     setLoading((prev) => ({ ...prev, profile: true }));
@@ -309,6 +338,11 @@ export default function MyAccount() {
               </div>
             ) : (
               <div className="space-y-4">
+                <p className="text-xs text-center text-gray-500">
+                  For security reasons, you need to log in again to update your
+                  payment details. Use your email and password in the form
+                  below. After logging in, you can update your card details.
+                </p>
                 <iframe
                   className="gmiframe"
                   src={`https://${GYMMASTER_USERNAME}.gymmasteronline.com/portal/account/addpaymentinfo`}
@@ -320,11 +354,6 @@ export default function MyAccount() {
                   frameBorder="0"
                   allow="camera *"
                 />
-                <p className="text-sm text-gray-500">
-                  For security reasons, you need to log in again to update your
-                  payment details. Use your email and password in the form
-                  below. After logging in, you can update your card details.
-                </p>
               </div>
             )}
           </TabsContent>
