@@ -370,7 +370,7 @@ export const login = async (
     if (res.data.error) {
       if (res.data.error.toLowerCase().includes("fingerprint")) {
         throw new Error(
-          "Device not authorized. Please log in using the device you signed up with or contact support."
+          "This account can only be accessed by one device at a time. To gain access on this device, please contact support"
         );
       }
       throw new Error(res.data.error);

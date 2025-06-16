@@ -29,14 +29,15 @@ const profileSchema = z
     firstname: z.string().min(1, "First name is required"),
     surname: z.string().min(1, "Last name is required"),
     email: z.string().email("Please enter a valid email"),
-    phonecell: z
-      .string()
-      .regex(
-        /^\+?\d{1,3}[-.\s]?\d{3}[-.\s]?\d{3}[-.\s]?\d{4}$/,
-        "Please enter a valid cell number (e.g., +1-123-456-7890)"
-      )
-      .optional()
-      .or(z.literal("")),
+    // phonecell: z
+    //   .string()
+    //   .regex(
+    //     /^\+?\d{1,3}[-.\s]?\d{3}[-.\s]?\d{3}[-.\s]?\d{4}$/,
+    //     "Please enter a valid cell number (e.g., +1-123-456-7890)"
+    //   )
+    //   .optional()
+    //   .or(z.literal("")),
+    phonecell: z.string().optional(),
     password: z.string().min(6).optional().or(z.literal("")),
     confirmPassword: z.string().optional().or(z.literal("")),
     dob: z.string().optional(),
