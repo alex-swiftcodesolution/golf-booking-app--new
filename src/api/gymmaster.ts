@@ -381,7 +381,7 @@ export const login = async (
     );
     if (existingFingerprint && existingFingerprint !== fingerprint) {
       throw new Error(
-        "Another device is already logged in. Please log out from other devices or contact support."
+        "This account can only be accessed from the device used during signup. To gain access on this device, please contact support."
       );
     }
 
