@@ -70,12 +70,17 @@ const signUpSchema = z
     email: z.string().email("Invalid email"),
     password: z.string().min(6, "Password must be at least 6 characters"),
     confirmPassword: z.string().min(6, "Confirm your password"),
+    // phoneCell: z
+    //   .string()
+    //   .regex(
+    //     /^\+?\d{1,3}[-.\s]?\d{3}[-.\s]?\d{3}[-.\s]?\d{4}$/,
+    //     "Use format: +1-123-456-7890"
+    //   ),
     phoneCell: z
       .string()
-      .regex(
-        /^\+?\d{1,3}[-.\s]?\d{3}[-.\s]?\d{3}[-.\s]?\d{4}$/,
-        "Use format: +1-123-456-7890"
-      ),
+      .min(10, "Phone number must be 10 digits")
+      .max(10, "Phone number must be 10 digits")
+      .regex(/^\d{10}$/, "Phone number must contain only digits"),
     location: z.string().min(1, "Select a location"),
     membershipType: z.string().min(1, "Select a membership type"),
     waiverSignature: z.string().min(1, "Sign the waiver"),

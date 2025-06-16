@@ -287,6 +287,7 @@ const fetchSessionFingerprint = async (
     return null; // Fallback to null if error occurs
   }
 };
+
 const storeSessionFingerprint = async (
   token: string,
   fingerprint: string
@@ -957,7 +958,6 @@ export const updateGuestData = async (
   }
 };
 
-// Add geolocation helper functions
 // Enhanced getBrowserGeolocation with retry logic
 export const getBrowserGeolocation = (): Promise<{
   latitude: number;

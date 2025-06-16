@@ -37,7 +37,12 @@ const profileSchema = z
     //   )
     //   .optional()
     //   .or(z.literal("")),
-    phonecell: z.string().optional(),
+    phonecell: z
+      .string()
+      .min(10, "Phone number must be 10 digits")
+      .max(10, "Phone number must be 10 digits")
+      .regex(/^\d{10}$/, "Phone number must contain only digits")
+      .optional(),
     password: z.string().min(6).optional().or(z.literal("")),
     confirmPassword: z.string().optional().or(z.literal("")),
     dob: z.string().optional(),
