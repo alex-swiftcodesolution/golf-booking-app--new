@@ -371,7 +371,7 @@ export const login = async (
     if (res.data.error) {
       if (res.data.error.toLowerCase().includes("fingerprint")) {
         throw new Error(
-          "This account can only be accessed by one device at a time. To gain access on this device, please contact support"
+          "Access to this account is only allowed on one device at a time. Please contact support if you have changed devices."
         );
       }
       throw new Error(res.data.error);
@@ -382,7 +382,7 @@ export const login = async (
     );
     if (existingFingerprint && existingFingerprint !== fingerprint) {
       throw new Error(
-        "This account can only be accessed from the device used during signup. To gain access on this device, please contact support."
+        "Access to this account is only allowed on one device at a time. Please contact support if you have changed devices."
       );
     }
 
