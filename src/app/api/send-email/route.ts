@@ -1,7 +1,15 @@
 import { NextResponse } from "next/server";
-import { Resend } from "resend";
+import nodemailer from "nodemailer";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+const transporter = nodemailer.createTransport({
+  host: process.env.SMTP_HOST,
+  port: Number(process.env.SMTP_PORT) || 587,
+  secure: process.env.SMTP_SECURE === "true",
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
+  },
+});
 
 interface InviteEmailPayload {
   emailType?: "invite";
@@ -38,7 +46,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // Default to "invite" if emailType is undefined for backward compatibility
     if (!payload.emailType || payload.emailType === "invite") {
       const { name, referralCode, referralLink } =
         payload as InviteEmailPayload;
@@ -52,9 +59,9 @@ export async function POST(request: Request) {
         );
       }
 
-      const { data, error } = await resend.emails.send({
-        from: "Simcoquitos 24/7 Golf Club <onboarding@resend.dev>",
-        to: [payload.to],
+      const mailOptions = {
+        from: "Simcoquitos 24/7 Golf Club <no-reply@yourdomain.com>",
+        to: payload.to,
         subject:
           "You're Invited to Join a Tee Time at Simcoquitos 24/7 Golf Club!",
         html: `
@@ -98,18 +105,11 @@ export async function POST(request: Request) {
             </p>
           </div>
         `,
-      });
+      };
 
-      if (error) {
-        console.error("Resend error:", error);
-        return NextResponse.json(
-          { error: "Failed to send email", details: error.message },
-          { status: 500 }
-        );
-      }
-
+      await transporter.sendMail(mailOptions);
       return NextResponse.json(
-        { message: "Email sent successfully", data },
+        { message: "Email sent successfully" },
         { status: 200 }
       );
     } else if (payload.emailType === "booking") {
@@ -135,9 +135,9 @@ export async function POST(request: Request) {
         );
       }
 
-      const { data, error } = await resend.emails.send({
-        from: "Simcoquitos 24/7 Golf Club <onboarding@resend.dev>",
-        to: [payload.to],
+      const mailOptions = {
+        from: "Simcoquitos 24/7 Golf Club <no-reply@yourdomain.com>",
+        to: payload.to,
         subject: "Your Tee Time Booking Confirmation",
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
@@ -153,9 +153,7 @@ export async function POST(request: Request) {
               <li><strong>Service:</strong> ${service}</li>
               <li><strong>Time Slots:</strong>
                 <ul>
-                  ${timeSlots
-                    .map((slot) => `<li>${slot.time} at ${slot.bay}</li>`)
-                    .join("")}
+                  ${timeSlots.map((slot) => `<li>${slot.time} at ${slot.bay}</li>`).join("")}
                 </ul>
               </li>
               <li><strong>Guests:</strong> ${
@@ -181,18 +179,11 @@ export async function POST(request: Request) {
             </p>
           </div>
         `,
-      });
+      };
 
-      if (error) {
-        console.error("Resend error:", error);
-        return NextResponse.json(
-          { error: "Failed to send email", details: error.message },
-          { status: 500 }
-        );
-      }
-
+      await transporter.sendMail(mailOptions);
       return NextResponse.json(
-        { message: "Email sent successfully", data },
+        { message: "Email sent successfully" },
         { status: 200 }
       );
     } else {
