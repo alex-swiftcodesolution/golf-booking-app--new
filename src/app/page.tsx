@@ -116,6 +116,8 @@ function HomeContent() {
   const searchParams = useSearchParams();
   const sigCanvas = useRef<SignatureCanvas>(null);
 
+  const referralCode = searchParams.get("referral");
+
   const [hasReadTerms, setHasReadTerms] = useState(false);
 
   const loginForm = useForm<LoginFormData>({
@@ -245,7 +247,10 @@ function HomeContent() {
         companyid: data.location,
         startdate: new Date().toISOString().split("T")[0],
         firstpaymentdate: new Date().toISOString().split("T")[0],
-        ...(data.referralCode && { customtext4: data.referralCode }),
+        // ...(data.referralCode && { customtext4: data.referralCode }),
+        ...((data.referralCode || referralCode) && {
+          customtext4: data.referralCode || referralCode,
+        }),
       };
       const {
         token: signupToken,
