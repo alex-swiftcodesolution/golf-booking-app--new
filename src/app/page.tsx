@@ -41,7 +41,7 @@ import {
   saveWaiver,
   login,
   fetchWaiver,
-  validateReferral,
+  // validateReferral,
   type Club,
   type Membership,
 } from "@/api/gymmaster";
@@ -300,47 +300,50 @@ function HomeContent() {
       toast.error("Please fix errors before proceeding");
       return;
     }
-    if (step === 1 && signUpForm.getValues("referralCode") && !referralCode) {
-      try {
-        const token = localStorage.getItem("authToken") || "";
+    // if (step === 1 && signUpForm.getValues("referralCode") && !referralCode) {
+    //   try {
+    //     const token = localStorage.getItem("authToken") || "";
 
-        const isValid = await validateReferral(
-          signUpForm.getValues("referralCode") || "",
-          token
-        );
+    //     const isValid = await validateReferral(
+    //       signUpForm.getValues("referralCode") || "",
+    //       token
+    //     );
 
-        if (!isValid) {
-          signUpForm.setError("referralCode", {
-            message: "Invalid referral code",
-          });
-          toast.error("Invalid referral code");
-          return;
-        }
+    //     if (!isValid) {
+    //       signUpForm.setError("referralCode", {
+    //         message: "Invalid referral code",
+    //       });
+    //       toast.error("Invalid referral code");
+    //       return;
+    //     }
 
-        console.log("Referral validation result:", {
-          code: signUpForm.getValues("referralCode"),
-          isValid,
-        });
-      } catch (error) {
-        // console.error("Referral validation error:", error);
+    //     console.log("Referral validation result:", {
+    //       code: signUpForm.getValues("referralCode"),
+    //       isValid,
+    //     });
+    //   } catch (error) {
+    //     // console.error("Referral validation error:", error);
 
-        console.error("Referral validation error:", error);
+    //     console.error("Referral validation error:", error);
 
-        signUpForm.setError("referralCode", {
-          message: "Failed to validate referral code",
-        });
+    //     signUpForm.setError("referralCode", {
+    //       message: "Failed to validate referral code",
+    //     });
 
-        toast.error("Failed to validate referral code");
-        return;
-      }
-      // Clear any existing referral code errors and proceed regardless
-      signUpForm.clearErrors("referralCode");
-    }
+    //     toast.error("Failed to validate referral code");
+    //     return;
+    //   }
+    //   // Clear any existing referral code errors and proceed regardless
+    //   signUpForm.clearErrors("referralCode");
+    // }
+
+    signUpForm.clearErrors("referralCode");
     if (step === 2 && signUpForm.getValues("membershipType")) {
       try {
         const waiver = await fetchWaiver(
           signUpForm.getValues("membershipType")!,
-          localStorage.getItem("authToken") || ""
+          // localStorage.getItem("authToken") || ""
+          ""
         );
         setWaiverContent(waiver || "No waiver content");
       } catch (error) {
@@ -350,7 +353,8 @@ function HomeContent() {
     }
     if (step === 3 && !hasReadTerms) {
       toast.error("You must read the terms");
-      return onSignUpSubmit(signUpForm.getValues());
+      // return onSignUpSubmit(signUpForm.getValues());
+      return;
     }
     setStep((prev) => prev + 1);
   };
