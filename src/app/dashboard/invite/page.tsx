@@ -82,7 +82,7 @@ export default function Invite() {
       );
 
       // Send email with referral link
-      const referralLink = `https://test-swiftcode.vercel.app/?referral=${newReferralCode}`;
+      const referralLink = `https://test-swiftcode.vercel.app/`;
       const response = await fetch("/api/send-email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },

@@ -517,9 +517,7 @@ export default function BookTeeTime() {
         for (let i = 0; i < data.guests.length; i++) {
           const guest = data.guests[i];
           const referralCode = newReferralCodes[i];
-          const referralLink = `${APP_URL}?referral=${encodeURIComponent(
-            referralCode
-          )}`;
+          const referralLink = `${APP_URL}`;
           const res = await fetch("/api/send-email", {
             method: "POST",
             headers: { "Content-Type": "application/json" },

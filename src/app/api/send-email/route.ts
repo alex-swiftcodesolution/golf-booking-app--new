@@ -96,6 +96,7 @@ export async function POST(request: Request) {
               <br />
               <a href="${referralLink}" style="color: #000;">${referralLink}</a>
             </p>
+            <p style="font-size: 14px; color: #777;">and use this code: "${referralCode}"</p>
             <p style="font-size: 16px; color: #555;">
               We can't wait to see you on the course!
             </p>
