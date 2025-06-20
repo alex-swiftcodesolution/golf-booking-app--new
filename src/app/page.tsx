@@ -300,7 +300,7 @@ function HomeContent() {
       toast.error("Please fix errors before proceeding");
       return;
     }
-    if (step === 1 && signUpForm.getValues("referralCode") && !referralCode) {
+    if (step === 1 && signUpForm.getValues("referralCode")) {
       try {
         const token = localStorage.getItem("authToken") || "";
 
