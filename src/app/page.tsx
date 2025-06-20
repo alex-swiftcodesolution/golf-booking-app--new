@@ -232,8 +232,8 @@ function HomeContent() {
   const onSignUpSubmit = async (data: SignUpFormData) => {
     setLoading((prev) => ({ ...prev, signup: true }));
     try {
-      const token = localStorage.getItem("authToken") || "";
-      const inviterId = await validateReferral(data.referralCode, token);
+      // const token = localStorage.getItem("authToken") || "";
+      // const inviterId = await validateReferral(data.referralCode, token);
       const signupData = {
         firstname: data.firstName,
         surname: data.lastName,
@@ -245,8 +245,7 @@ function HomeContent() {
         companyid: data.location,
         startdate: new Date().toISOString().split("T")[0],
         firstpaymentdate: new Date().toISOString().split("T")[0],
-        "Referral Code": data.referralCode,
-        customtext3: inviterId,
+        ...(data.referralCode && { customtext4: data.referralCode }),
       };
       const {
         token: signupToken,
