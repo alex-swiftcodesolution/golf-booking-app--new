@@ -436,8 +436,7 @@ export const signup = async (data: {
   companyid: string;
   startdate: string;
   firstpaymentdate: string;
-  // "Referral Code"?: string;
-  customtext4?: string;
+  "Referral Code"?: string;
 }): Promise<SignupResponse> => {
   try {
     const res = await axios.post<SignupResponse>(
@@ -445,10 +444,7 @@ export const signup = async (data: {
       { api_key: GYMMASTER_API_KEY, ...data },
       postConfig
     );
-    console.log("Signup API response:", res.data);
     if (res.data.error) throw new Error(res.data.error);
-    if (!res.data.memberid || !res.data.membershipid)
-      throw new Error("Member or membership not created");
     return res.data;
   } catch (error) {
     console.error("Signup error:", error);
