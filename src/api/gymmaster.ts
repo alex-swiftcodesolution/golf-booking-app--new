@@ -214,13 +214,9 @@ export const fetchMemberships = async (): Promise<Membership[]> => {
 
 export const fetchWaiver = async (
   membershipTypeId: string,
-  token: string
+  token?: string
 ): Promise<string> => {
   try {
-    if (!token) {
-      console.log("No token provided, using default waiver or skipping fetch");
-      return "Default waiver content"; // Fallback content
-    }
     const res = await axios.get<{ result: { body: string }[]; error?: string }>(
       `/api/gymmaster/v2/membership/${membershipTypeId}/agreement`,
       getConfig({ token })
