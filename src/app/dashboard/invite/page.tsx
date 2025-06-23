@@ -21,7 +21,7 @@ import { toast } from "sonner";
 import { Loader2, Copy } from "lucide-react";
 import { motion } from "framer-motion";
 import { storeReferralCode, updateGuestData } from "@/api/gymmaster";
-import { v4 as uuidv4 } from "uuid";
+// import { v4 as uuidv4 } from "uuid";
 
 const inviteSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -63,7 +63,23 @@ export default function Invite() {
     setIsLoading(true);
     try {
       // Generate unique referral code
-      const newReferralCode = `REF-${uuidv4().slice(0, 8).toUpperCase()}`;
+      // const newReferralCode = `REF-${uuidv4().slice(0, 8).toUpperCase()}`;
+      // setReferralCode(newReferralCode);
+
+      const getNextReferralCode = () => {
+        const start = 102000;
+        const key = "referralCounter";
+
+        const current = parseInt(
+          localStorage.getItem(key) || start.toString(),
+          10
+        );
+        localStorage.setItem(key, (current + 1).toString());
+
+        return `REF-${current}`;
+      };
+
+      const newReferralCode = getNextReferralCode();
       setReferralCode(newReferralCode);
 
       // Store referral code

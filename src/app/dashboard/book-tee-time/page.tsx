@@ -3,7 +3,7 @@ import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-import { v4 as uuidv4 } from "uuid";
+// import { v4 as uuidv4 } from "uuid";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -125,11 +125,26 @@ export default function BookTeeTime() {
   const date = form.watch("date");
 
   // Generate unique referral code
+  /*
   const generateReferralCode = () => {
     return `GUEST_${localStorage.getItem("memberId") || "123"}_${uuidv4().slice(
       0,
       6
     )}`;
+  };
+  */
+
+  const generateReferralCode = () => {
+    const start = 102000;
+    const key = "referralCounter";
+
+    // Get the current counter or start at 102000
+    const current = parseInt(localStorage.getItem(key) || start.toString(), 10);
+
+    // Save the next value back to localStorage
+    localStorage.setItem(key, (current + 1).toString());
+
+    return current.toString();
   };
 
   // Send booking confirmation email to member

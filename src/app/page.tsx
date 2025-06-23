@@ -162,7 +162,10 @@ function HomeContent() {
         setMembershipTypes(memberships || []);
       } catch (error) {
         console.error("Fetch data error:", error);
-        toast.error("Failed to load data", { description: String(error) });
+        toast.error("Failed to load data", {
+          description: String(error),
+          duration: 30000,
+        });
       }
     };
 
@@ -182,11 +185,14 @@ function HomeContent() {
         "tokenExpires",
         (Date.now() + expires * 1000).toString()
       );
-      toast.success(`Welcome back, ${data.email}!`);
+      toast.success(`Welcome back, ${data.email}!`, { duration: 30000 });
       router.push("/dashboard");
     } catch (error) {
       console.error("Login error:", error);
-      toast.error("Login failed", { description: String(error) });
+      toast.error("Login failed", {
+        description: String(error),
+        duration: 30000,
+      });
     } finally {
       setLoading((prev) => ({ ...prev, login: false }));
     }
@@ -270,11 +276,16 @@ function HomeContent() {
       }
 
       await saveWaiver(data.waiverSignature, membershipid, signupToken);
-      toast.success(`Welcome, ${data.firstName}! Your membership is set.`);
+      toast.success(`Welcome, ${data.firstName}! Your membership is set.`, {
+        duration: 30000,
+      });
       setStep(4);
     } catch (error) {
       console.error("Signup error:", error);
-      toast.error("Sign-up failed", { description: String(error) });
+      toast.error("Sign-up failed", {
+        description: String(error),
+        duration: 30000,
+      });
       setStep(1);
     } finally {
       setLoading((prev) => ({ ...prev, signup: false }));
@@ -297,7 +308,7 @@ function HomeContent() {
       ["waiverSignature"],
     ];
     if (!(await signUpForm.trigger(fields[step - 1]))) {
-      toast.error("Please fix errors before proceeding");
+      toast.error("Please fix errors before proceeding", { duration: 30000 });
       return;
     }
     if (step === 1 && signUpForm.getValues("referralCode")) {
@@ -313,7 +324,7 @@ function HomeContent() {
           signUpForm.setError("referralCode", {
             message: "Invalid referral code",
           });
-          toast.error("Invalid referral code");
+          toast.error("Invalid referral code", { duration: 30000 });
           return;
         }
 
@@ -330,7 +341,7 @@ function HomeContent() {
           message: "Failed to validate referral code",
         });
 
-        toast.error("Failed to validate referral code");
+        toast.error("Failed to validate referral code", { duration: 30000 });
         return;
       }
       // Clear any existing referral code errors and proceed regardless
@@ -349,7 +360,7 @@ function HomeContent() {
       }
     }
     if (step === 3 && !hasReadTerms) {
-      toast.error("You must read the terms");
+      toast.error("You must read the terms", { duration: 30000 });
       return onSignUpSubmit(signUpForm.getValues());
     }
     setStep((prev) => prev + 1);
@@ -606,7 +617,7 @@ function HomeContent() {
                                   name === "email"
                                     ? "john@example.com"
                                     : name === "phoneCell"
-                                      ? "+1-123-456-7890"
+                                      ? "1234567890"
                                       : name === "referralCode"
                                         ? "Referral code"
                                         : name.replace(/([A-Z])/g, " $1").trim()
