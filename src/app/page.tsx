@@ -118,6 +118,7 @@ function HomeContent() {
 
   const referralCode = searchParams.get("referral");
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [hasReadTerms, setHasReadTerms] = useState(false);
 
   const loginForm = useForm<LoginFormData>({
@@ -294,7 +295,7 @@ function HomeContent() {
   };
 
   const nextStep = async () => {
-    const fields: (keyof Omit<SignUpFormData, "hasReadTerms">)[][] = [
+    const fields: (keyof SignUpFormData)[][] = [
       [
         "firstName",
         "lastName",
@@ -306,7 +307,7 @@ function HomeContent() {
         "referralCode",
       ],
       ["location", "membershipType"],
-      ["waiverSignature"],
+      ["waiverSignature", "hasReadTerms"], // Include hasReadTerms
     ];
     if (!(await signUpForm.trigger(fields[step - 1]))) {
       toast.error("Please fix errors before proceeding", { duration: 30000 });
@@ -315,12 +316,10 @@ function HomeContent() {
     if (step === 1 && signUpForm.getValues("referralCode")) {
       try {
         const token = localStorage.getItem("authToken") || "";
-
         const isValid = await validateReferral(
           signUpForm.getValues("referralCode") || "",
           token
         );
-
         if (!isValid) {
           signUpForm.setError("referralCode", {
             message: "Invalid referral code",
@@ -328,25 +327,18 @@ function HomeContent() {
           toast.error("Invalid referral code", { duration: 30000 });
           return;
         }
-
         console.log("Referral validation result:", {
           code: signUpForm.getValues("referralCode"),
           isValid,
         });
       } catch (error) {
-        // console.error("Referral validation error:", error);
-
         console.error("Referral validation error:", error);
-
         signUpForm.setError("referralCode", {
           message: "Failed to validate referral code",
         });
-
         toast.error("Failed to validate referral code", { duration: 30000 });
         return;
       }
-      // Clear any existing referral code errors and proceed regardless
-      signUpForm.clearErrors("referralCode");
     }
     if (step === 2 && signUpForm.getValues("membershipType")) {
       try {
@@ -361,11 +353,7 @@ function HomeContent() {
       }
     }
     if (step === 3) {
-      if (!hasReadTerms) {
-        toast.error("You must read the terms", { duration: 30000 });
-        return;
-      }
-      await onSignUpSubmit(signUpForm.getValues()); // Always call signup
+      await onSignUpSubmit(signUpForm.getValues()); // Call signup
       return; // Prevent step increment (signup handles redirect)
     }
     setStep((prev) => prev + 1);
@@ -759,60 +747,6 @@ function HomeContent() {
               {step === 3 && (
                 <>
                   <h2 className="text-xl font-semibold">Step 3: Sign Waiver</h2>
-                  {/* <FormField
-                    control={signUpForm.control}
-                    name="waiverSignature"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Sign the Waiver</FormLabel>
-                        <FormControl>
-                          <div className="border rounded-md">
-                            <SignatureCanvas
-                              ref={sigCanvas}
-                              canvasProps={{ className: "w-full h-32" }}
-                              onEnd={() =>
-                                field.onChange(
-                                  sigCanvas.current?.toDataURL() || ""
-                                )
-                              }
-                            />
-                          </div>
-                        </FormControl>
-                        <div className="mt-2 flex space-x-2">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            onClick={clearSignature}
-                          >
-                            Clear
-                          </Button>
-                          <Dialog>
-                            <DialogTrigger asChild>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                onClick={() => setHasReadTerms(true)}
-                              >
-                                Read Terms
-                              </Button>
-                            </DialogTrigger>
-                            <DialogContent>
-                              <DialogHeader>
-                                <DialogTitle>Waiver</DialogTitle>
-                              </DialogHeader>
-                              <div
-                                className="max-h-[60vh] overflow-y-auto"
-                                dangerouslySetInnerHTML={{
-                                  __html: waiverContent || "Loading...",
-                                }}
-                              />
-                            </DialogContent>
-                          </Dialog>
-                        </div>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  /> */}
                   <FormField
                     control={signUpForm.control}
                     name="waiverSignature"
@@ -863,12 +797,10 @@ function HomeContent() {
                             </DialogContent>
                           </Dialog>
                         </div>
-
                         <FormMessage />
                       </FormItem>
                     )}
                   />
-
                   <FormField
                     control={signUpForm.control}
                     name="hasReadTerms"
@@ -878,7 +810,7 @@ function HomeContent() {
                           <div className="flex items-center space-x-2">
                             <input
                               type="checkbox"
-                              checked={field.value as boolean}
+                              checked={field.value}
                               onChange={(e) => {
                                 field.onChange(e.target.checked);
                                 setHasReadTerms(e.target.checked);
@@ -890,11 +822,10 @@ function HomeContent() {
                             </FormLabel>
                           </div>
                         </FormControl>
-                        <FormMessage />
+                        <FormMessage /> {/* Ensure error displays */}
                       </FormItem>
                     )}
                   />
-
                   <div className="flex space-x-2 flex-col-reverse md:flex-col gap-2 space-y-2">
                     <Button
                       type="button"
