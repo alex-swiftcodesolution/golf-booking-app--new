@@ -7,13 +7,19 @@ import { Clock, Users, DoorOpen } from "lucide-react";
 import Link from "next/link";
 import { useBookings } from "@/context/BookingContext";
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   fetchOutstandingBalance,
   fetchMemberDetails,
   fetchGuestData,
 } from "@/api/gymmaster";
 import { toast } from "sonner";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 export default function Dashboard() {
   const { bookings } = useBookings();
@@ -25,7 +31,10 @@ export default function Dashboard() {
   const [recentInvites, setRecentInvites] = useState<
     { name: string; email: string; date?: string }[]
   >([]);
+  const [showSuccessDialog, setShowSuccessDialog] = useState(false);
+
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const buttonVariants = {
     hover: { scale: 1.05, transition: { duration: 0.2 } },
@@ -37,6 +46,16 @@ export default function Dashboard() {
     if (!token) {
       router.push("/");
       return;
+    }
+
+    // Check for signup success query param
+    const isNewSignup = searchParams.get("newSignup") === "true";
+    if (isNewSignup) {
+      setShowSuccessDialog(true);
+      // Clean up URL
+      const newUrl = new URL(window.location.href);
+      newUrl.searchParams.delete("newSignup");
+      router.replace(newUrl.pathname, { scroll: false });
     }
 
     const fetchData = async () => {
@@ -76,10 +95,25 @@ export default function Dashboard() {
     };
 
     fetchData();
-  }, [router]);
+  }, [router, searchParams]);
 
   return (
     <div className="space-y-6 sm:space-y-8 p-4 sm:p-6">
+      <Dialog open={showSuccessDialog} onOpenChange={setShowSuccessDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Confirmation</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <p>
+              <strong>Welcome, {memberName || "Member"}!</strong>
+            </p>
+            <p>Your membership is set.</p>
+            <Button onClick={() => setShowSuccessDialog(false)}>Close</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <motion.h1
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}

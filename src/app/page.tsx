@@ -279,7 +279,8 @@ function HomeContent() {
       toast.success(`Welcome, ${data.firstName}! Your membership is set.`, {
         duration: 30000,
       });
-      setStep(4);
+      // setStep(4);
+      router.push("/dashboard?newSignup=true");
     } catch (error) {
       console.error("Signup error:", error);
       toast.error("Sign-up failed", {
@@ -359,9 +360,13 @@ function HomeContent() {
         setWaiverContent("No waiver content");
       }
     }
-    if (step === 3 && !hasReadTerms) {
-      toast.error("You must read the terms", { duration: 30000 });
-      return onSignUpSubmit(signUpForm.getValues());
+    if (step === 3) {
+      if (!hasReadTerms) {
+        toast.error("You must read the terms", { duration: 30000 });
+        return;
+      }
+      await onSignUpSubmit(signUpForm.getValues()); // Always call signup
+      return; // Prevent step increment (signup handles redirect)
     }
     setStep((prev) => prev + 1);
   };
