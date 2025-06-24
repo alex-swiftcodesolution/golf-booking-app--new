@@ -1,5 +1,4 @@
 import axios from "axios";
-import FingerprintJS from "@fingerprintjs/fingerprintjs";
 
 // Server-side env vars
 const GYMMASTER_API_KEY = process.env.NEXT_PUBLIC_GYMMASTER_API_KEY;
@@ -255,6 +254,110 @@ export const saveWaiver = async (
   }
 };
 
+// 24 JUNE
+const generateDeviceIdentifier = async (userId: string): Promise<string> => {
+  try {
+    // Collect stable browser and device attributes
+    const attributes = {
+      userAgent: navigator.userAgent,
+      language: navigator.language,
+      platform: navigator.platform,
+      screenResolution: `${window.screen.width}x${window.screen.height}`,
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      hardwareConcurrency: navigator.hardwareConcurrency || 4,
+      userId, // Include user-specific data to ensure uniqueness per user
+    };
+
+    // Convert attributes to a stable string (sorted keys for consistency)
+    const attributeString = JSON.stringify(
+      attributes,
+      Object.keys(attributes).sort()
+    );
+
+    // Use Web Crypto API to generate SHA-256 hash
+    const msgBuffer = new TextEncoder().encode(attributeString);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", msgBuffer);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray
+      .map((b) => b.toString(16).padStart(2, "0"))
+      .join("");
+
+    return hashHex;
+  } catch (error) {
+    console.error("Device identifier generation error:", error);
+    // Fallback: Retrieve or generate a persistent UUID-like string
+    let fallbackId = localStorage.getItem("deviceIdentifier");
+    if (!fallbackId) {
+      fallbackId = crypto.randomUUID
+        ? crypto.randomUUID()
+        : generateRandomUUID();
+      localStorage.setItem("deviceIdentifier", fallbackId);
+    }
+    return fallbackId;
+  }
+};
+
+// Utility to generate a random UUID (polyfill for older browsers)
+const generateRandomUUID = (): string => {
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+};
+
+// Helper to fetch current session fingerprint from customtext7
+const fetchSessionFingerprint = async (
+  token: string
+): Promise<string | null> => {
+  try {
+    const res = await axios.get("/api/gymmaster/v1/member/profile", {
+      params: { api_key: GYMMASTER_API_KEY, token },
+    });
+    const customtext7 = res.data.result.customtext7;
+    if (customtext7) {
+      const parsed = JSON.parse(customtext7);
+      return parsed.activeFingerprint || null;
+    }
+    return null;
+  } catch (error) {
+    console.error("Fetch session fingerprint error:", error);
+    return null;
+  }
+};
+
+// Helper to store session fingerprint in customtext7
+const storeSessionFingerprint = async (
+  token: string,
+  fingerprint: string
+): Promise<void> => {
+  try {
+    const res = await axios.get("/api/gymmaster/v1/member/profile", {
+      params: { api_key: GYMMASTER_API_KEY, token },
+    });
+    let customData = {};
+    if (res.data.result.customtext7) {
+      customData = JSON.parse(res.data.result.customtext7);
+    }
+    customData = { ...customData, activeFingerprint: fingerprint };
+    await axios.post(
+      "/api/gymmaster/v1/member/profile",
+      {
+        api_key: GYMMASTER_API_KEY,
+        token,
+        customtext7: JSON.stringify(customData),
+      },
+      postConfig
+    );
+    console.log("Stored session fingerprint:", fingerprint);
+  } catch (error) {
+    console.error("Store session fingerprint error:", error);
+    throw new Error("Failed to store session fingerprint");
+  }
+};
+// 24 JUNE
+
+/*
 // Helper to generate a unique fingerprint
 const generateFingerprint = async (): Promise<string> => {
   try {
@@ -267,7 +370,9 @@ const generateFingerprint = async (): Promise<string> => {
     return fallback;
   }
 };
+*/
 
+/*
 // Helper to fetch current session fingerprint from customtext7
 const fetchSessionFingerprint = async (
   token: string
@@ -287,7 +392,9 @@ const fetchSessionFingerprint = async (
     return null; // Fallback to null if error occurs
   }
 };
+*/
 
+/*
 const storeSessionFingerprint = async (
   token: string,
   fingerprint: string
@@ -317,6 +424,7 @@ const storeSessionFingerprint = async (
     throw new Error("Failed to store session fingerprint");
   }
 };
+*/
 
 // interface FingerprintData {
 //   activeFingerprint?: string;
@@ -355,7 +463,14 @@ export const login = async (
   password: string
 ): Promise<LoginResponse["result"]> => {
   try {
-    const fingerprint = await generateFingerprint();
+    // const fingerprint = await generateFingerprint();
+    // console.log("Member login attempt:", {
+    //   email,
+    //   api_key: GYMMASTER_API_KEY,
+    //   fingerprint,
+    // });
+
+    const fingerprint = await generateDeviceIdentifier(email);
     console.log("Member login attempt:", {
       email,
       api_key: GYMMASTER_API_KEY,
@@ -386,8 +501,12 @@ export const login = async (
       );
     }
 
+    // If no fingerprint exists, store the new one
+    if (!existingFingerprint) {
+      await storeSessionFingerprint(res.data.result.token, fingerprint);
+    }
+
     localStorage.setItem("deviceFingerprint", fingerprint);
-    await storeSessionFingerprint(res.data.result.token, fingerprint);
 
     return res.data.result;
   } catch (error) {
@@ -439,12 +558,21 @@ export const signup = async (data: {
   "Referral Code"?: string;
 }): Promise<SignupResponse> => {
   try {
+    // Generate fingerprint during signup
+    const fingerprint = await generateDeviceIdentifier(data.email);
+    console.log("Signup fingerprint generated:", fingerprint);
+
     const res = await axios.post<SignupResponse>(
       "/api/gymmaster/v1/signup",
       { api_key: GYMMASTER_API_KEY, ...data },
       postConfig
     );
     if (res.data.error) throw new Error(res.data.error);
+
+    // Store fingerprint in customtext7
+    await storeSessionFingerprint(res.data.token, fingerprint);
+    localStorage.setItem("deviceIdentifier", fingerprint);
+
     return res.data;
   } catch (error) {
     console.error("Signup error:", error);
