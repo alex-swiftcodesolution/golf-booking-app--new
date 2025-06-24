@@ -21,7 +21,7 @@ import {
 import { toast } from "sonner";
 import { Loader2, RefreshCw } from "lucide-react";
 import { motion } from "framer-motion";
-import { useBookings } from "@/context/BookingContext";
+import { Booking, useBookings } from "@/context/BookingContext";
 import axios from "axios";
 import { fetchGuestData, updateGuestData } from "@/api/gymmaster";
 
@@ -44,6 +44,7 @@ export default function MyTeeTimes() {
   const [deleteBookingId, setDeleteBookingId] = useState<number | null>(null);
   const [isFetching, setIsFetching] = useState(false);
 
+  /*
   const fetchBookings = useCallback(async () => {
     setIsFetching(true);
     try {
@@ -120,6 +121,105 @@ export default function MyTeeTimes() {
 
       console.log("Mapped Bookings:", fetchedBookings);
       setBookings(fetchedBookings);
+      if (fetchedBookings.length === 0) {
+        toast.info("No bookings found");
+      }
+    } catch (error) {
+      console.error("Fetch Bookings Error:", error);
+      toast.error("Failed to fetch bookings", {
+        description: "Please try again later.",
+      });
+    } finally {
+      setIsFetching(false);
+    }
+  }, [setBookings]);
+  */
+
+  // src/app/dashboard/my-tee-times/page.tsx
+  const fetchBookings = useCallback(async () => {
+    setIsFetching(true);
+    try {
+      const token = localStorage.getItem("authToken");
+      if (!token) {
+        throw new Error("Not authenticated");
+      }
+
+      const [bookingsRes, guestData] = await Promise.all([
+        axios.get("/api/gymmaster/v2/member/bookings", {
+          params: {
+            api_key: GYMMASTER_API_KEY,
+            token,
+          },
+        }),
+        fetchGuestData(token),
+      ]);
+
+      const { guestBookingIds, guests } = guestData;
+
+      const guestMap: Record<
+        string,
+        { name: string; email: string; date?: string }[]
+      > = {};
+      guestBookingIds.forEach((id: number, index: number) => {
+        const guest = guests[index];
+        const date = guest?.date ?? "";
+        const key = `${id}_${date}`;
+        guestMap[key] = guestMap[key] || [];
+        guestMap[key].push(guest);
+      });
+
+      const fetchedBookings =
+        bookingsRes.data.result?.servicebookings?.map((b: ServiceBooking) => {
+          let time = b.starttime?.slice(0, 5) || "00:00";
+          if (b.start_str) {
+            const [hours, minutes, period] = b.start_str
+              .match(/(\d+):(\d+)\s*(am|pm)/i)
+              ?.slice(1) || ["0", "00", "am"];
+            let hourNum = parseInt(hours);
+            if (period.toLowerCase() === "pm" && hourNum !== 12) hourNum += 12;
+            if (period.toLowerCase() === "am" && hourNum === 12) hourNum = 0;
+            time = `${hourNum.toString().padStart(2, "0")}:${minutes}`;
+          }
+
+          const guestKey = `${b.id}_${b.day}`;
+          const bookingGuests = guestMap[guestKey] || [];
+          return {
+            id: b.id,
+            date: b.day,
+            time,
+            location: b.location || "Simcoquitos 24/7 Golf Club",
+            bay: b.name || "Unknown",
+            servicename: b.servicename || "Golf Simulator",
+            guests: bookingGuests,
+            guestPassUsage: {
+              free: bookingGuests.length
+                ? Math.min(bookingGuests.length, 2)
+                : 0,
+              charged: bookingGuests.length
+                ? Math.max(bookingGuests.length - 2, 0)
+                : 0,
+            },
+            day: new Date(b.day).toLocaleDateString("en-US", {
+              weekday: "long",
+            }),
+            starttime: time,
+          };
+        }) || [];
+
+      // Merge with existing bookings instead of overwriting
+      setBookings((prev) => {
+        const merged = [...prev];
+        fetchedBookings.forEach((newBooking: Booking) => {
+          const index = merged.findIndex((b) => b.id === newBooking.id);
+          if (index >= 0) {
+            merged[index] = { ...merged[index], ...newBooking };
+          } else {
+            merged.push(newBooking);
+          }
+        });
+        return merged;
+      });
+
       if (fetchedBookings.length === 0) {
         toast.info("No bookings found");
       }

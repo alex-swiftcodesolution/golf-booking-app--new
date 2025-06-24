@@ -80,19 +80,36 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
         const { guestBookingIds, guests } = guestData;
 
         // Map guest data to bookings
-        const guestMap: Record<number, { name: string; email: string }[]> = {};
-        let guestIndex = 0;
-        guestBookingIds.forEach((id: number) => {
-          guestMap[id] = guestMap[id] || [];
-          if (guestIndex < guests.length) {
-            guestMap[id].push(guests[guestIndex]);
-            guestIndex++;
-          } else {
-            guestMap[id].push({
-              name: `Guest ${guestIndex + 1}`,
-              email: `guest${guestIndex + 1}@example.com`,
-            });
-          }
+        // const guestMap: Record<number, { name: string; email: string }[]> = {};
+        // let guestIndex = 0;
+        // guestBookingIds.forEach((id: number) => {
+        //   guestMap[id] = guestMap[id] || [];
+        //   if (guestIndex < guests.length) {
+        //     guestMap[id].push(guests[guestIndex]);
+        //     guestIndex++;
+        //   } else {
+        //     guestMap[id].push({
+        //       name: `Guest ${guestIndex + 1}`,
+        //       email: `guest${guestIndex + 1}@example.com`,
+        //     });
+        //   }
+        // });
+
+        const guestMap: Record<
+          string,
+          { name: string; email: string; date?: string }[]
+        > = {};
+        guestBookingIds.forEach((id: number, index: number) => {
+          const guest = guests[index];
+          const date = guest?.date ?? "";
+          const key = `${id}_${date}`;
+          guestMap[key] = guestMap[key] || [];
+          guestMap[key].push(
+            guest || {
+              name: `Guest ${index + 1}`,
+              email: `guest${index + 1}@example.com`,
+            }
+          );
         });
         console.log("Guest Map:", guestMap);
 

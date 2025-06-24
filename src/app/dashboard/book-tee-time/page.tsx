@@ -587,7 +587,9 @@ export default function BookTeeTime() {
       setSelectedSlots([]);
       setGuestCount(0);
       setShowItinerary(false);
-      router.push("/dashboard/my-tee-times");
+      setTimeout(() => {
+        router.push("/dashboard/my-tee-times");
+      }, 1000);
     } catch (err) {
       console.error("Booking Error:", err);
       toast.error("Failed to book tee times", {

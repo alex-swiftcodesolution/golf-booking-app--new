@@ -839,11 +839,11 @@ export const fetchGuestData = async (
     let guests: { name: string; email: string; date?: string }[] = [];
 
     try {
-      guestPassesUsed = profile.customtext2
-        ? Number(JSON.parse(profile.customtext2))
+      guestPassesUsed = profile.customtext3
+        ? Number(JSON.parse(profile.customtext3))
         : 0;
     } catch (e) {
-      console.error("Error parsing customtext2 (guestPassesUsed):", e);
+      console.error("Error parsing customtext3 (guestPassesUsed):", e);
     }
 
     try {
