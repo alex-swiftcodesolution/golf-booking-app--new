@@ -1398,3 +1398,158 @@ export const calculateDistance = (
 // Export CLUB_COORDINATES for use in validation
 export const getClubCoordinates = (companyId: number) =>
   CLUB_COORDINATES[companyId];
+
+/*
+export const logMembershipAgreement = async (
+  membershipId: string,
+  token: string
+): Promise<string> => {
+  try {
+    const res = await axios.post<SignatureResponse>(
+      `/api/gymmaster/v2/member/membership/${membershipId}/agreement`,
+      {
+        api_key: GYMMASTER_API_KEY,
+        token,
+      },
+      postConfig
+    );
+    if (res.data.error) throw new Error(res.data.error);
+    return res.data.result;
+  } catch (error) {
+    console.error("Log membership agreement error:", error);
+    throw error;
+  }
+};
+*/
+
+export const logMembershipAgreement = async (
+  membershipId: string,
+  token: string,
+  agreementType: string = "default" // Optional parameter to indicate agreement type (e.g., "Guest Waiver")
+): Promise<string> => {
+  try {
+    const res = await axios.post<SignatureResponse>(
+      `/api/gymmaster/v2/member/membership/${membershipId}/agreement`,
+      {
+        api_key: GYMMASTER_API_KEY,
+        token,
+      },
+      postConfig
+    );
+    if (res.data.error) throw new Error(res.data.error);
+    console.log(
+      `Logged ${agreementType} agreement for membership ID: ${membershipId}`
+    );
+    return res.data.result;
+  } catch (error) {
+    console.error(
+      `Error logging ${agreementType} agreement for membership ID ${membershipId}:`,
+      error
+    );
+    throw new Error(
+      `Failed to log ${agreementType} agreement: ${String(error)}`
+    );
+  }
+};
+
+export const fetchMembershipAgreements = async (
+  membershipId: string,
+  token: string
+): Promise<
+  { id: string; name: string; status: string; lastSigned: string }[]
+> => {
+  try {
+    const res = await axios.get<{
+      result: {
+        id: string;
+        name: string;
+        status: string;
+        lastSigned: string;
+      }[];
+      error?: string;
+    }>(
+      `/api/gymmaster/v2/membership/${membershipId}/agreement`,
+      getConfig({ token })
+    );
+    if (res.data.error) throw new Error(res.data.error);
+    console.log(
+      `Fetched agreements for membership ID ${membershipId}:`,
+      res.data.result
+    );
+    return res.data.result;
+  } catch (error) {
+    console.error("Fetch membership agreements error:", error);
+    throw error;
+  }
+};
+
+export const logSpecificAgreement = async (
+  memberId: string,
+  token: string,
+  agreementName: string
+): Promise<string> => {
+  try {
+    // First, fetch all member agreements to find the Guest Waiver
+    const agreements = await fetchAllMemberAgreements(token);
+    console.log(`All agreements for member:`, agreements);
+    const targetAgreement = agreements.find((a) =>
+      a.name.toLowerCase().includes(agreementName.toLowerCase())
+    );
+
+    if (!targetAgreement) {
+      throw new Error(`Agreement "${agreementName}" not found for member`);
+    }
+
+    console.log(`Found ${agreementName}, ID:`, targetAgreement.id);
+
+    // Hypothetical endpoint to log a specific agreement; confirm with GymMaster
+    const res = await axios.post<SignatureResponse>(
+      `/api/gymmaster/v2/member/agreement/${targetAgreement.id}`, // Adjust endpoint as needed
+      {
+        api_key: GYMMASTER_API_KEY,
+        token,
+        memberid: memberId,
+      },
+      postConfig
+    );
+
+    if (res.data.error) throw new Error(res.data.error);
+    console.log(`Logged ${agreementName} agreement for member ID: ${memberId}`);
+    return res.data.result;
+  } catch (error) {
+    console.error(
+      `Error logging ${agreementName} agreement for member ID ${memberId}:`,
+      error
+    );
+    throw new Error(
+      `Failed to log ${agreementName} agreement: ${String(error)}`
+    );
+  }
+};
+
+export const fetchAllMemberAgreements = async (
+  token: string
+): Promise<
+  { id: string; name: string; status: string; lastSigned: string }[]
+> => {
+  try {
+    const res = await axios.get<{
+      result: {
+        id: string;
+        name: string;
+        status: string;
+        lastSigned: string;
+      }[];
+      error?: string;
+    }>(
+      `/api/gymmaster/v2/member/agreements`, // Hypothetical endpoint; confirm with GymMaster
+      getConfig({ token })
+    );
+    if (res.data.error) throw new Error(res.data.error);
+    console.log("Fetched all member agreements:", res.data.result);
+    return res.data.result;
+  } catch (error) {
+    console.error("Fetch all member agreements error:", error);
+    return []; // Return empty array to avoid breaking the flow
+  }
+};

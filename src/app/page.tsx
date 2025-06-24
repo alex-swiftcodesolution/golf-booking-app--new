@@ -44,6 +44,8 @@ import {
   validateReferral,
   type Club,
   type Membership,
+  logMembershipAgreement,
+  fetchMembershipAgreements,
 } from "@/api/gymmaster";
 
 const signUpSchema = z
@@ -199,45 +201,7 @@ function HomeContent() {
     }
   };
 
-  // const onSignUpSubmit = async (data: SignUpFormData) => {
-  //   setLoading((prev) => ({ ...prev, signup: true }));
-  //   try {
-  //     const signupData = {
-  //       firstname: data.firstName,
-  //       surname: data.lastName,
-  //       dob: data.dob,
-  //       email: data.email,
-  //       password: data.password,
-  //       phonecell: data.phoneCell,
-  //       membershiptypeid: data.membershipType,
-  //       companyid: data.location,
-  //       startdate: new Date().toISOString().split("T")[0],
-  //       firstpaymentdate: new Date().toISOString().split("T")[0],
-  //       ...(data.referralCode && { "Referral Code": data.referralCode }),
-  //     };
-
-  //     const { token, memberid, membershipid, expires } =
-  //       await signup(signupData);
-  //     localStorage.setItem("authToken", token);
-  //     localStorage.setItem("memberId", memberid);
-  //     localStorage.setItem(
-  //       "tokenExpires",
-  //       (Date.now() + expires * 1000).toString()
-  //     );
-
-  //     await saveWaiver(data.waiverSignature, membershipid, token);
-
-  //     toast.success(`Welcome, ${data.firstName}! Your membership is set.`);
-  //     setStep(4);
-  //   } catch (error) {
-  //     console.error("Signup error:", error);
-  //     toast.error("Sign-up failed", { description: String(error) });
-  //     setStep(1);
-  //   } finally {
-  //     setLoading((prev) => ({ ...prev, signup: false }));
-  //   }
-  // };
-
+  /*
   const onSignUpSubmit = async (data: SignUpFormData) => {
     setLoading((prev) => ({ ...prev, signup: true }));
     try {
@@ -281,6 +245,278 @@ function HomeContent() {
         duration: 30000,
       });
       // setStep(4);
+      router.push("/dashboard?newSignup=true");
+    } catch (error) {
+      console.error("Signup error:", error);
+      toast.error("Sign-up failed", {
+        description: String(error),
+        duration: 30000,
+      });
+      setStep(1);
+    } finally {
+      setLoading((prev) => ({ ...prev, signup: false }));
+    }
+  };
+  */
+
+  /*
+  const onSignUpSubmit = async (data: SignUpFormData) => {
+    setLoading((prev) => ({ ...prev, signup: true }));
+    try {
+      const signupData = {
+        firstname: data.firstName,
+        surname: data.lastName,
+        dob: data.dob,
+        email: data.email,
+        password: data.password,
+        phonecell: data.phoneCell,
+        membershiptypeid: data.membershipType,
+        companyid: data.location,
+        startdate: new Date().toISOString().split("T")[0],
+        firstpaymentdate: new Date().toISOString().split("T")[0],
+        ...((data.referralCode || referralCode) && {
+          customtext4: data.referralCode || referralCode,
+        }),
+      };
+      const {
+        token: signupToken,
+        memberid,
+        membershipid,
+        expires,
+      } = await signup(signupData);
+      localStorage.setItem("authToken", signupToken);
+      localStorage.setItem("memberId", memberid);
+      localStorage.setItem(
+        "tokenExpires",
+        (Date.now() + expires * 1000).toString()
+      );
+
+      if (!data.hasReadTerms) {
+        throw new Error("You must read the terms");
+      }
+
+      // Save the signature
+      await saveWaiver(data.waiverSignature, membershipid, signupToken);
+
+      // Log the membership agreement to update waiver status
+      await logMembershipAgreement(membershipid, signupToken);
+
+      toast.success(`Welcome, ${data.firstName}! Your membership is set.`, {
+        duration: 30000,
+      });
+      router.push("/dashboard?newSignup=true");
+    } catch (error) {
+      console.error("Signup error:", error);
+      toast.error("Sign-up failed", {
+        description: String(error),
+        duration: 30000,
+      });
+      setStep(1);
+    } finally {
+      setLoading((prev) => ({ ...prev, signup: false }));
+    }
+  };
+  */
+
+  /*
+  const onSignUpSubmit = async (data: SignUpFormData) => {
+    setLoading((prev) => ({ ...prev, signup: true }));
+    try {
+      const signupData = {
+        firstname: data.firstName,
+        surname: data.lastName,
+        dob: data.dob,
+        email: data.email,
+        password: data.password,
+        phonecell: data.phoneCell,
+        membershiptypeid: data.membershipType,
+        companyid: data.location,
+        startdate: new Date().toISOString().split("T")[0],
+        firstpaymentdate: new Date().toISOString().split("T")[0],
+        ...((data.referralCode || referralCode) && {
+          customtext4: data.referralCode || referralCode,
+        }),
+      };
+      const {
+        token: signupToken,
+        memberid,
+        membershipid,
+        expires,
+      } = await signup(signupData);
+      localStorage.setItem("authToken", signupToken);
+      localStorage.setItem("memberId", memberid);
+      localStorage.setItem(
+        "tokenExpires",
+        (Date.now() + expires * 1000).toString()
+      );
+
+      if (!data.hasReadTerms) {
+        throw new Error("You must read the terms");
+      }
+
+      // Save the signature
+      await saveWaiver(data.waiverSignature, membershipid, signupToken);
+
+      // Log the membership agreement for the selected membership
+      await logMembershipAgreement(membershipid, signupToken);
+
+      // Check if the selected membership is a guest membership
+      const selectedMembership = membershipTypes.find(
+        (m) => m.id.toString() === data.membershipType
+      );
+      const isGuestMembership = selectedMembership?.name
+        .toLowerCase()
+        .includes("guest");
+
+      if (isGuestMembership) {
+        // Fetch member's memberships to find the guest membership
+        const memberships = await fetchMemberMemberships(signupToken);
+        const guestMembership = memberships.find((m) =>
+          m.name.toLowerCase().includes("guest")
+        );
+
+        if (guestMembership) {
+          // Log the guest membership agreement to mark Guest Waiver as Signed
+          await logMembershipAgreement(
+            guestMembership.id.toString(),
+            signupToken
+          );
+        } else {
+          console.warn("Guest membership not found for member after signup");
+        }
+      }
+
+      toast.success(`Welcome, ${data.firstName}! Your membership is set.`, {
+        duration: 30000,
+      });
+      router.push("/dashboard?newSignup=true");
+    } catch (error) {
+      console.error("Signup error:", error);
+      toast.error("Sign-up failed", {
+        description: String(error),
+        duration: 30000,
+      });
+      setStep(1);
+    } finally {
+      setLoading((prev) => ({ ...prev, signup: false }));
+    }
+  };
+  */
+
+  const onSignUpSubmit = async (data: SignUpFormData) => {
+    setLoading((prev) => ({ ...prev, signup: true }));
+    try {
+      const signupData = {
+        firstname: data.firstName,
+        surname: data.lastName,
+        dob: data.dob,
+        email: data.email,
+        password: data.password,
+        phonecell: data.phoneCell,
+        membershiptypeid: data.membershipType,
+        companyid: data.location,
+        startdate: new Date().toISOString().split("T")[0],
+        firstpaymentdate: new Date().toISOString().split("T")[0],
+        ...((data.referralCode || referralCode) && {
+          customtext4: data.referralCode || referralCode,
+        }),
+      };
+      console.log("Signup data:", signupData);
+      const {
+        token: signupToken,
+        memberid,
+        membershipid,
+        expires,
+      } = await signup(signupData);
+      console.log("Signup response:", {
+        token: signupToken,
+        memberid,
+        membershipid,
+        expires,
+      });
+      localStorage.setItem("authToken", signupToken);
+      localStorage.setItem("memberId", memberid);
+      localStorage.setItem(
+        "tokenExpires",
+        (Date.now() + expires * 1000).toString()
+      );
+
+      if (!data.hasReadTerms) {
+        throw new Error("You must read the terms");
+      }
+
+      // Save the signature
+      console.log("Saving waiver signature for membership ID:", membershipid);
+      await saveWaiver(data.waiverSignature, membershipid, signupToken);
+
+      // Log the membership agreement for the selected membership
+      console.log("Logging primary agreement for membership ID:", membershipid);
+      await logMembershipAgreement(membershipid, signupToken, "Primary Waiver");
+
+      // Check if the selected membership is a guest membership
+      const selectedMembership = membershipTypes.find(
+        (m) => m.id.toString() === data.membershipType
+      );
+      const isGuestMembership = selectedMembership?.name
+        .toLowerCase()
+        .includes("guest");
+
+      if (isGuestMembership) {
+        console.log(
+          "Guest membership detected, using signup membership ID:",
+          membershipid
+        );
+        // Directly log the Guest Waiver agreement using the signup membershipId
+        await logMembershipAgreement(membershipid, signupToken, "Guest Waiver");
+
+        // Verify the Guest Waiver status as a fallback
+        try {
+          const agreements = await fetchMembershipAgreements(
+            membershipid,
+            signupToken
+          );
+          const guestWaiver = agreements.find((a) =>
+            a.name.toLowerCase().includes("guest waiver")
+          );
+          if (guestWaiver) {
+            console.log("Guest Waiver status:", {
+              id: guestWaiver.id,
+              status: guestWaiver.status,
+            });
+            if (guestWaiver.status.toLowerCase() !== "signed") {
+              console.warn("Guest Waiver not marked as Signed, retrying...");
+              await logMembershipAgreement(
+                membershipid,
+                signupToken,
+                "Guest Waiver Retry"
+              );
+            }
+          } else {
+            console.warn(
+              "Guest Waiver not found in agreements for membership ID:",
+              membershipid
+            );
+            toast.error(
+              "Guest Waiver not linked to membership. Please contact support.",
+              {
+                duration: 30000,
+              }
+            );
+          }
+        } catch (error) {
+          console.error("Error verifying Guest Waiver agreements:", error);
+          toast.error(
+            "Failed to verify Guest Waiver. Please contact support.",
+            {
+              duration: 30000,
+            }
+          );
+        }
+      }
+
+      toast.success(`Welcome, ${data.firstName}! Your membership is set.`, {
+        duration: 30000,
+      });
       router.push("/dashboard?newSignup=true");
     } catch (error) {
       console.error("Signup error:", error);
