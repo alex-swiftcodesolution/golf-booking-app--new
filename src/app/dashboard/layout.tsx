@@ -110,6 +110,7 @@ export default function DashboardLayout({
               {/* Client Logo */}
               <div className="mb-6 flex justify-center">
                 <Image
+                  priority
                   src="/logo.png"
                   alt="Simcognito's 24/7 golf club logo"
                   width={150} // Base width

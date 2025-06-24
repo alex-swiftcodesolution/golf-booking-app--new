@@ -786,6 +786,7 @@ export const fetchMemberBookings = async (
 //   }
 // };
 
+/*
 export const storeReferralCode = async (
   code: string,
   memberId: string,
@@ -823,6 +824,45 @@ export const storeReferralCode = async (
     throw new Error(`Failed to store referral code: ${String(error)}`);
   }
 };
+*/
+
+// 24 JUNE
+// src/api/gymmaster.ts
+export const storeReferralCode = async (
+  code: string,
+  memberId: string,
+  token: string
+): Promise<void> => {
+  try {
+    if (!code || !memberId || !token) {
+      throw new Error("Missing required parameters: code, memberId, or token");
+    }
+
+    const profile = await fetchMemberDetails(token);
+    let existingCodes: string[] = [];
+    try {
+      if (profile.customtext4) {
+        const parsed = JSON.parse(profile.customtext4);
+        existingCodes = Array.isArray(parsed) ? parsed : [profile.customtext4]; // Handle non-array case
+      }
+    } catch (parseError) {
+      console.error("Error parsing customtext4:", parseError);
+      existingCodes = profile.customtext4 ? [profile.customtext4] : []; // Fallback to single code
+    }
+
+    const updatedCodes = Array.from(new Set([...existingCodes, code]));
+    const result = await updateMemberProfile(token, {
+      memberid: memberId,
+      customtext4: JSON.stringify(updatedCodes),
+    });
+
+    console.log("Stored referral code:", { code, memberId, result });
+  } catch (error) {
+    console.error("Store referral code error:", error);
+    throw new Error(`Failed to store referral code: ${String(error)}`);
+  }
+};
+// 24 JUNE
 
 // export const validateReferral = async (
 //   referralCode: string | undefined,
@@ -949,6 +989,7 @@ export const validateReferral = async (
   return hasCode;
 };
 
+/*
 export const fetchGuestData = async (
   token: string
 ): Promise<{
@@ -1012,6 +1053,75 @@ export const fetchGuestData = async (
     };
   }
 };
+*/
+
+// 24 JUNE
+// src/api/gymmaster.ts
+export const fetchGuestData = async (
+  token: string
+): Promise<{
+  guestPassesUsed: number;
+  referralCodes: string[];
+  guestBookingIds: number[];
+  guests: { name: string; email: string; date?: string }[];
+}> => {
+  try {
+    const profile = await fetchMemberDetails(token);
+
+    let guestPassesUsed = 0;
+    let referralCodes: string[] = [];
+    let guestBookingIds: number[] = [];
+    let guests: { name: string; email: string; date?: string }[] = [];
+
+    try {
+      guestPassesUsed = profile.customtext3
+        ? Number(JSON.parse(profile.customtext3))
+        : 0;
+    } catch (e) {
+      console.error("Error parsing customtext3 (guestPassesUsed):", e);
+    }
+
+    try {
+      if (profile.customtext4) {
+        const parsed = JSON.parse(profile.customtext4);
+        referralCodes = Array.isArray(parsed) ? parsed : [profile.customtext4]; // Handle non-array
+      }
+    } catch (e) {
+      console.error("Error parsing customtext4 (referralCodes):", e);
+      referralCodes = profile.customtext4 ? [profile.customtext4] : []; // Fallback
+    }
+
+    try {
+      guestBookingIds = profile.customtext5
+        ? JSON.parse(profile.customtext5).map(Number)
+        : [];
+    } catch (e) {
+      console.error("Error parsing customtext5 (guestBookingIds):", e);
+    }
+
+    try {
+      guests = profile.customtext6 ? JSON.parse(profile.customtext6) : [];
+    } catch (e) {
+      console.error("Error parsing customtext6 (guests):", e);
+    }
+
+    return {
+      guestPassesUsed,
+      referralCodes,
+      guestBookingIds,
+      guests,
+    };
+  } catch (error) {
+    console.error("Fetch guest data error:", error);
+    return {
+      guestPassesUsed: 0,
+      referralCodes: [],
+      guestBookingIds: [],
+      guests: [],
+    };
+  }
+};
+// 24 JUNE
 
 // export const updateGuestData = async (
 //   token: string,

@@ -414,6 +414,7 @@ function HomeContent() {
         className="flex justify-center"
       >
         <Image
+          priority
           src="/logo-white.png"
           alt="Simcoquitos 24/7 Golf Club Logo"
           width={150}
