@@ -76,7 +76,7 @@ export default function Invite() {
         );
         localStorage.setItem(key, (current + 1).toString());
 
-        return `REF-${current}`;
+        return `${current}`;
       };
 
       const newReferralCode = getNextReferralCode();

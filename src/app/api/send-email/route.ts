@@ -62,13 +62,12 @@ export async function POST(request: Request) {
       const mailOptions = {
         from: "Simcoquitos 24/7 Golf Club <no-reply@yourdomain.com>",
         to: payload.to,
-        subject:
-          "You're Invited to Join a Tee Time at Simcoquitos 24/7 Golf Club!",
+        subject: "You're Invited at Simcoquitos 24/7 Golf Club!",
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
             <h1 style="color: #333;">Hello, ${name}!</h1>
             <p style="font-size: 16px; color: #555;">
-              You've been invited to join a tee time at <strong>Simcoquitos 24/7 Golf Club</strong>!
+              You've been invited at <strong>Simcoquitos 24/7 Golf Club</strong>!
             </p>
             <p style="font-size: 16px; color: #555;">
               Use your unique referral code: <strong style="color: #333;">${referralCode}</strong>
@@ -89,7 +88,7 @@ export async function POST(request: Request) {
                 margin: 10px 0;
               "
             >
-              Join Tee Time
+              Become a Member
             </a>
             <p style="font-size: 14px; color: #777;">
               If the button doesn't work, copy and paste this link:
