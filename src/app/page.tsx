@@ -496,12 +496,6 @@ function HomeContent() {
               "Guest Waiver not found in agreements for membership ID:",
               membershipid
             );
-            toast.error(
-              "Guest Waiver not linked to membership. Please contact support.",
-              {
-                duration: 30000,
-              }
-            );
           }
         } catch (error) {
           console.error("Error verifying Guest Waiver agreements:", error);
