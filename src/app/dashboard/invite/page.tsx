@@ -216,7 +216,7 @@ export default function Invite() {
         </Form>
 
         {referralCode && (
-          <div className="flex flex-col sm:flex-row items-center justify-between p-4 bg-gray-100 rounded-lg">
+          <div className="opacity-0 flex-col sm:flex-row items-center justify-between p-4 bg-gray-100 rounded-lg">
             <p className="text-sm sm:text-base text-gray-700">
               Referral Code: <strong>{referralCode}</strong>
             </p>
