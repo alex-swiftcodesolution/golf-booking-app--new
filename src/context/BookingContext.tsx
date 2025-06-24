@@ -34,7 +34,8 @@ interface BookingContextType {
   ) => Promise<number>;
   deleteBooking: (id: number) => void;
   updateBooking: (id: number, updatedBooking: Partial<Booking>) => void;
-  setBookings: (bookings: Booking[]) => void;
+  // setBookings: (bookings: Booking[]) => void;
+  setBookings: React.Dispatch<React.SetStateAction<Booking[]>>; // Updated type
 }
 
 const BookingContext = createContext<BookingContextType | undefined>(undefined);

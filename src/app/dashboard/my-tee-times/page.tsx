@@ -168,7 +168,7 @@ export default function MyTeeTimes() {
         guestMap[key].push(guest);
       });
 
-      const fetchedBookings =
+      const fetchedBookings: Booking[] =
         bookingsRes.data.result?.servicebookings?.map((b: ServiceBooking) => {
           let time = b.starttime?.slice(0, 5) || "00:00";
           if (b.start_str) {
@@ -206,9 +206,9 @@ export default function MyTeeTimes() {
           };
         }) || [];
 
-      // Merge with existing bookings instead of overwriting
-      setBookings((prev) => {
-        const merged = [...prev];
+      // Explicitly type prev as Booking[]
+      setBookings((prev: Booking[]) => {
+        const merged: Booking[] = [...prev];
         fetchedBookings.forEach((newBooking: Booking) => {
           const index = merged.findIndex((b) => b.id === newBooking.id);
           if (index >= 0) {
