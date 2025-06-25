@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 "use client";
 import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
@@ -345,6 +346,7 @@ export default function BookTeeTime() {
     );
   };
 
+  /*
   const checkTimeSlotConflict = (time: string, bay: string) => {
     const { hour: startHour, minute: startMinute } = parseTimeSlot(time);
     const startMinutes = startHour * 60 + startMinute;
@@ -367,6 +369,7 @@ export default function BookTeeTime() {
         (booking.time === time || booking.time === slotTime)
     );
   };
+  */
 
   const handleTimeSelect = (time: string, bay: string) => {
     if (!location || !service || !date) {
@@ -377,10 +380,12 @@ export default function BookTeeTime() {
       toast.error("Slot unavailable");
       return;
     }
-    if (checkTimeSlotConflict(time, bay)) {
-      toast.error("Time slot conflict");
-      return;
-    }
+
+    // if (checkTimeSlotConflict(time, bay)) {
+    //   toast.error("Time slot conflict");
+    //   return;
+    // }
+
     const slotIndex = selectedSlots.findIndex(
       (slot) => slot.time === time && slot.bay === bay
     );
