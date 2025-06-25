@@ -1553,3 +1553,18 @@ export const fetchAllMemberAgreements = async (
     return []; // Return empty array to avoid breaking the flow
   }
 };
+
+export const resetMemberPassword = async (email: string): Promise<string> => {
+  try {
+    const res = await axios.post<{ result: string; error: string | null }>(
+      "/api/gymmaster/v1/email/resetpassword",
+      { api_key: GYMMASTER_API_KEY, email },
+      postConfig
+    );
+    if (res.data.error) throw new Error(res.data.error);
+    return res.data.result;
+  } catch (error) {
+    console.error("Reset password error:", error);
+    throw error;
+  }
+};

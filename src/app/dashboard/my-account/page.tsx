@@ -6,7 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Eye, EyeOff, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { motion } from "framer-motion";
 
 import {
@@ -20,43 +20,27 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { fetchMemberDetails, updateMemberProfile } from "@/api/gymmaster";
+import {
+  fetchMemberDetails,
+  resetMemberPassword,
+  updateMemberProfile,
+} from "@/api/gymmaster";
 
 const GYMMASTER_USERNAME = "parclub247";
 
-const profileSchema = z
-  .object({
-    firstname: z.string().min(1, "First name is required"),
-    surname: z.string().min(1, "Last name is required"),
-    email: z.string().email("Please enter a valid email"),
-    // phonecell: z
-    //   .string()
-    //   .regex(
-    //     /^\+?\d{1,3}[-.\s]?\d{3}[-.\s]?\d{3}[-.\s]?\d{4}$/,
-    //     "Please enter a valid cell number (e.g., +1-123-456-7890)"
-    //   )
-    //   .optional()
-    //   .or(z.literal("")),
-    phonecell: z
-      .string()
-      .min(10, "Phone number must be 10 digits")
-      .max(10, "Phone number must be 10 digits")
-      .regex(/^\d{10}$/, "Phone number must contain only digits")
-      .optional(),
-    password: z.string().min(6).optional().or(z.literal("")),
-    confirmPassword: z.string().optional().or(z.literal("")),
-    dob: z.string().optional(),
-    addressstreet: z.string().optional(),
-  })
-  .superRefine((data, ctx) => {
-    if (data.password && data.password !== data.confirmPassword) {
-      ctx.addIssue({
-        path: ["confirmPassword"],
-        code: z.ZodIssueCode.custom,
-        message: "Passwords must match",
-      });
-    }
-  });
+const profileSchema = z.object({
+  firstname: z.string().min(1, "First name is required"),
+  surname: z.string().min(1, "Last name is required"),
+  email: z.string().email("Please enter a valid email"),
+  phonecell: z
+    .string()
+    .min(10, "Phone number must be 10 digits")
+    .max(10, "Phone number must be 10 digits")
+    .regex(/^\d{10}$/, "Phone number must contain only digits")
+    .optional(),
+  dob: z.string().optional(),
+  addressstreet: z.string().optional(),
+});
 
 type ProfileFormValues = z.infer<typeof profileSchema>;
 
@@ -64,15 +48,10 @@ export default function MyAccount() {
   const router = useRouter();
 
   const [iframeSrc, setIframeSrc] = useState("");
-
   const [loading, setLoading] = useState({
     token: true,
     profile: false,
-  });
-
-  const [passwordVisibility, setPasswordVisibility] = useState({
-    password: false,
-    confirmPassword: false,
+    resetPassword: false,
   });
 
   const profileForm = useForm<ProfileFormValues>({
@@ -82,8 +61,6 @@ export default function MyAccount() {
       surname: "",
       email: "",
       phonecell: "",
-      password: "",
-      confirmPassword: "",
       dob: "",
       addressstreet: "",
     },
@@ -123,22 +100,20 @@ export default function MyAccount() {
     const iframe = document.querySelector(".gmiframe");
     if (iframe) {
       setIframeSrc(iframe.getAttribute("src") || "");
-
       const observer = new MutationObserver(() => {
         const newSrc = iframe.getAttribute("src") || "";
         setIframeSrc(newSrc);
       });
       observer.observe(iframe, { attributes: true, attributeFilter: ["src"] });
-
       return () => observer.disconnect();
     }
   }, []);
 
   useEffect(() => {
     if (iframeSrc.includes("addpaymentinfo")) {
-      router.push("/account?tab=payment"); // Stay on payment tab
+      router.push("/account?tab=payment");
     } else if (iframeSrc.includes("success")) {
-      router.push("/account?tab=profile"); // Navigate to profile on success
+      router.push("/account?tab=profile");
       toast.success("Payment details updated!");
     } else if (iframeSrc.includes("error")) {
       router.push("/account?tab=payment");
@@ -165,7 +140,6 @@ export default function MyAccount() {
         phonecell: data.phonecell,
         dob: data.dob,
         addressstreet: data.addressstreet,
-        ...(data.password && { password: data.password }),
       };
 
       await updateMemberProfile(token, updateData);
@@ -178,6 +152,31 @@ export default function MyAccount() {
       toast.error("Failed to update profile", { description: message });
     } finally {
       setLoading((prev) => ({ ...prev, profile: false }));
+    }
+  };
+
+  const handleResetPassword = async () => {
+    setLoading((prev) => ({ ...prev, resetPassword: true }));
+
+    const token = localStorage.getItem("authToken");
+    const expires = localStorage.getItem("tokenExpires");
+
+    if (!token || (expires && Date.now() > Number(expires))) {
+      router.push("/");
+      return;
+    }
+
+    try {
+      const email = profileForm.getValues("email");
+      await resetMemberPassword(email);
+      toast.success("Password reset link sent to your email!");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      toast.error("Failed to send password reset link", {
+        description: message,
+      });
+    } finally {
+      setLoading((prev) => ({ ...prev, resetPassword: false }));
     }
   };
 
@@ -204,7 +203,6 @@ export default function MyAccount() {
             <TabsTrigger value="payment">Update Payment</TabsTrigger>
           </TabsList>
 
-          {/* Profile Tab */}
           <TabsContent value="profile">
             <Form {...profileForm}>
               <form
@@ -227,7 +225,7 @@ export default function MyAccount() {
                   {
                     name: "phonecell",
                     label: "Cell",
-                    placeholder: "123-456-7890",
+                    placeholder: "1234567890",
                   },
                   { name: "dob", label: "Date of Birth", type: "date" },
                   {
@@ -256,81 +254,35 @@ export default function MyAccount() {
                   />
                 ))}
 
-                {/* Password Fields */}
-                {["password", "confirmPassword"].map((fieldKey) => (
-                  <FormField
-                    key={fieldKey}
-                    control={profileForm.control}
-                    name={fieldKey as keyof ProfileFormValues}
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>
-                          {fieldKey === "password"
-                            ? "Password"
-                            : "Confirm Password"}
-                        </FormLabel>
-                        <FormControl>
-                          <div className="relative">
-                            <Input
-                              {...field}
-                              type={
-                                passwordVisibility[
-                                  fieldKey as "password" | "confirmPassword"
-                                ]
-                                  ? "text"
-                                  : "password"
-                              }
-                              placeholder={
-                                fieldKey === "password"
-                                  ? "New password"
-                                  : "Confirm new password"
-                              }
-                            />
-                            <button
-                              type="button"
-                              className="absolute inset-y-0 right-0 pr-3 flex items-center"
-                              onClick={() =>
-                                setPasswordVisibility((prev) => ({
-                                  ...prev,
-                                  [fieldKey]:
-                                    !prev[
-                                      fieldKey as "password" | "confirmPassword"
-                                    ],
-                                }))
-                              }
-                            >
-                              {passwordVisibility[
-                                fieldKey as "password" | "confirmPassword"
-                              ] ? (
-                                <EyeOff className="h-5 w-5 text-gray-500" />
-                              ) : (
-                                <Eye className="h-5 w-5 text-gray-500" />
-                              )}
-                            </button>
-                          </div>
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
+                <div className="flex space-y-4 flex-col">
+                  <Button
+                    type="submit"
+                    className="w-full py-2.5 sm:py-3 text-lg"
+                    disabled={loading.profile}
+                  >
+                    {loading.profile ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      "Save Profile"
                     )}
-                  />
-                ))}
-
-                <Button
-                  type="submit"
-                  className="w-full py-2.5 sm:py-3 text-lg"
-                  disabled={loading.profile}
-                >
-                  {loading.profile ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    "Save Profile"
-                  )}
-                </Button>
+                  </Button>
+                  <Button
+                    type="button"
+                    className="w-full py-2.5 sm:py-3 text-lg"
+                    onClick={handleResetPassword}
+                    disabled={loading.resetPassword}
+                  >
+                    {loading.resetPassword ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      "Reset Password"
+                    )}
+                  </Button>
+                </div>
               </form>
             </Form>
           </TabsContent>
 
-          {/* Payment Tab */}
           <TabsContent value="payment">
             {loading.token ? (
               <div className="flex justify-center">
