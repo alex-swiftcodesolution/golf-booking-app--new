@@ -23,11 +23,15 @@ import { Loader2, RefreshCw } from "lucide-react";
 import { motion } from "framer-motion";
 import { Booking, useBookings } from "@/context/BookingContext";
 import axios from "axios";
-import { fetchGuestData, updateGuestData } from "@/api/gymmaster";
+import {
+  fetchGuestData,
+  updateGuestData,
+  fetchServices,
+  fetchClubs,
+} from "@/api/gymmaster";
 
 const GYMMASTER_API_KEY = process.env.NEXT_PUBLIC_GYMMASTER_API_KEY;
 
-// Interface for GymMaster service booking response
 interface ServiceBooking {
   id: number;
   day: string;
@@ -36,6 +40,8 @@ interface ServiceBooking {
   location?: string;
   name?: string;
   servicename?: string;
+  serviceid?: number;
+  type?: string;
 }
 
 export default function MyTeeTimes() {
@@ -44,7 +50,6 @@ export default function MyTeeTimes() {
   const [deleteBookingId, setDeleteBookingId] = useState<number | null>(null);
   const [isFetching, setIsFetching] = useState(false);
 
-  /*
   const fetchBookings = useCallback(async () => {
     setIsFetching(true);
     try {
@@ -63,99 +68,14 @@ export default function MyTeeTimes() {
         fetchGuestData(token),
       ]);
 
-      console.log("Bookings Response:", bookingsRes.data);
-      console.log("Guest Data:", guestData);
+      console.log(
+        "Raw API Bookings:",
+        bookingsRes.data.result?.servicebookings
+      );
 
       const { guestBookingIds, guests } = guestData;
 
-      // Map guest data to bookings
-      const guestMap: Record<string, { name: string; email: string }[]> = {};
-
-      guestBookingIds.forEach((id: number, index: number) => {
-        const guest = guests[index];
-        const date = guest?.date ?? "";
-        const key = `${id}_${date}`;
-        guestMap[key] = guestMap[key] || [];
-        guestMap[key].push(guest);
-      });
-      console.log("Guest Map:", guestMap);
-
-      const fetchedBookings =
-        bookingsRes.data.result?.servicebookings?.map((b: ServiceBooking) => {
-          let time = b.starttime?.slice(0, 5) || "00:00";
-          if (b.start_str) {
-            const [hours, minutes, period] = b.start_str
-              .match(/(\d+):(\d+)\s*(am|pm)/i)
-              ?.slice(1) || ["0", "00", "am"];
-            let hourNum = parseInt(hours);
-            if (period.toLowerCase() === "pm" && hourNum !== 12) hourNum += 12;
-            if (period.toLowerCase() === "am" && hourNum === 12) hourNum = 0;
-            time = `${hourNum.toString().padStart(2, "0")}:${minutes}`;
-          }
-
-          // const bookingGuests = guestMap[b.id] || [];
-          const guestKey = `${b.id}_${b.day}`;
-          const bookingGuests = guestMap[guestKey] || [];
-          return {
-            id: b.id,
-            date: b.day,
-            time,
-            location: b.location || "Simcoquitos 24/7 Golf Club",
-            bay: b.name || "Unknown",
-            servicename: b.servicename || "Golf Simulator",
-            guests: bookingGuests,
-            guestPassUsage: {
-              free: bookingGuests.length
-                ? Math.min(bookingGuests.length, 2)
-                : 0,
-              charged: bookingGuests.length
-                ? Math.max(bookingGuests.length - 2, 0)
-                : 0,
-            },
-            day: new Date(b.day).toLocaleDateString("en-US", {
-              weekday: "long",
-            }),
-            starttime: time,
-          };
-        }) || [];
-
-      console.log("Mapped Bookings:", fetchedBookings);
-      setBookings(fetchedBookings);
-      if (fetchedBookings.length === 0) {
-        toast.info("No bookings found");
-      }
-    } catch (error) {
-      console.error("Fetch Bookings Error:", error);
-      toast.error("Failed to fetch bookings", {
-        description: "Please try again later.",
-      });
-    } finally {
-      setIsFetching(false);
-    }
-  }, [setBookings]);
-  */
-
-  // src/app/dashboard/my-tee-times/page.tsx
-  const fetchBookings = useCallback(async () => {
-    setIsFetching(true);
-    try {
-      const token = localStorage.getItem("authToken");
-      if (!token) {
-        throw new Error("Not authenticated");
-      }
-
-      const [bookingsRes, guestData] = await Promise.all([
-        axios.get("/api/gymmaster/v2/member/bookings", {
-          params: {
-            api_key: GYMMASTER_API_KEY,
-            token,
-          },
-        }),
-        fetchGuestData(token),
-      ]);
-
-      const { guestBookingIds, guests } = guestData;
-
+      // Build guest map with explicit string key
       const guestMap: Record<
         string,
         { name: string; email: string; date?: string }[]
@@ -163,42 +83,81 @@ export default function MyTeeTimes() {
       guestBookingIds.forEach((id: number, index: number) => {
         const guest = guests[index];
         const date = guest?.date ?? "";
-        const key = `${id}_${date}`;
+        const key: string = `${id}_${date}`;
         guestMap[key] = guestMap[key] || [];
-        guestMap[key].push(guest);
+        guestMap[key].push(guest || { name: "", email: "", date: "" });
       });
+
+      const clubs = await fetchClubs();
+      const clubMap = Object.fromEntries(
+        clubs.map((club) => [club.name, club.id])
+      );
+
+      const uniqueClubs: string[] = Array.from(
+        new Set(
+          bookingsRes.data.result?.servicebookings?.map(
+            (b: ServiceBooking) => b.location || "Simcognito's Golf 2/47 Club"
+          )
+        )
+      );
+
+      const serviceMaps: Record<string, Record<number, string>> = {};
+
+      for (const clubName of uniqueClubs) {
+        const companyid = clubMap[clubName];
+        if (companyid) {
+          const services = await fetchServices(token, undefined, companyid);
+          serviceMaps[clubName] = Object.fromEntries(
+            services
+              .filter((s) => s.servicename.includes("Member Golf Bay"))
+              .map((s) => [s.serviceid, s.servicename.trim()])
+          );
+        }
+      }
 
       const fetchedBookings: Booking[] =
         bookingsRes.data.result?.servicebookings?.map((b: ServiceBooking) => {
           let time = b.starttime?.slice(0, 5) || "00:00";
           if (b.start_str) {
-            const [hours, minutes, period] = b.start_str
-              .match(/(\d+):(\d+)\s*(am|pm)/i)
-              ?.slice(1) || ["0", "00", "am"];
-            let hourNum = parseInt(hours);
-            if (period.toLowerCase() === "pm" && hourNum !== 12) hourNum += 12;
-            if (period.toLowerCase() === "am" && hourNum === 12) hourNum = 0;
-            time = `${hourNum.toString().padStart(2, "0")}:${minutes}`;
+            const match = b.start_str.match(/(\d+):(\d+)\s*(am|pm)/i);
+            if (match) {
+              const [, hours, minutes, period] = match;
+              let hourNum = parseInt(hours);
+              if (period.toLowerCase() === "pm" && hourNum !== 12)
+                hourNum += 12;
+              if (period.toLowerCase() === "am" && hourNum === 12) hourNum = 0;
+              time = `${hourNum.toString().padStart(2, "0")}:${minutes}`;
+            }
           }
+          const [hour, minute] = time.split(":").map(Number);
+          const period = hour >= 12 ? "PM" : "AM";
+          const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
+          const displayTime = `${displayHour}:${minute.toString().padStart(2, "0")} ${period}`;
+
+          const [year, month, day] = b.day.split("-").map(Number);
+          const formattedDate = `${month.toString().padStart(2, "0")}/${day
+            .toString()
+            .padStart(2, "0")}/${year.toString().slice(-2)}`;
+
+          const clubName = b.location || "Simcognito's Golf 2/47 Club";
+
+          const servicename =
+            b.type?.trim() ||
+            (typeof b.serviceid === "number" &&
+            serviceMaps[clubName]?.[b.serviceid]
+              ? serviceMaps[clubName][b.serviceid]
+              : b.servicename || "Unknown Service");
 
           const guestKey = `${b.id}_${b.day}`;
-          const bookingGuests = guestMap[guestKey] || [];
           return {
             id: b.id,
-            date: b.day,
-            time,
-            location: b.location || "Simcoquitos 24/7 Golf Club",
+            date: formattedDate,
+            time: displayTime,
+            location: clubName,
             bay: b.name || "Unknown",
-            servicename: b.servicename || "Golf Simulator",
-            guests: bookingGuests,
-            guestPassUsage: {
-              free: bookingGuests.length
-                ? Math.min(bookingGuests.length, 2)
-                : 0,
-              charged: bookingGuests.length
-                ? Math.max(bookingGuests.length - 2, 0)
-                : 0,
-            },
+            servicename,
+            guests: guestMap[guestKey] || [],
+            guestPassUsage: { free: 0, charged: 0 },
             day: new Date(b.day).toLocaleDateString("en-US", {
               weekday: "long",
             }),
@@ -206,19 +165,17 @@ export default function MyTeeTimes() {
           };
         }) || [];
 
-      // Explicitly type prev as Booking[]
-      setBookings((prev: Booking[]) => {
-        const merged: Booking[] = [...prev];
-        fetchedBookings.forEach((newBooking: Booking) => {
-          const index = merged.findIndex((b) => b.id === newBooking.id);
-          if (index >= 0) {
-            merged[index] = { ...merged[index], ...newBooking };
-          } else {
-            merged.push(newBooking);
-          }
-        });
-        return merged;
-      });
+      setBookings((prev) =>
+        fetchedBookings.map((newBooking) => {
+          const existing = prev.find((b) => b.id === newBooking.id);
+          return existing
+            ? {
+                ...newBooking,
+                servicename: existing.servicename || newBooking.servicename,
+              }
+            : newBooking;
+        })
+      );
 
       if (fetchedBookings.length === 0) {
         toast.info("No bookings found");
@@ -246,7 +203,6 @@ export default function MyTeeTimes() {
       const token = localStorage.getItem("authToken");
       if (!token) throw new Error("Not authenticated");
 
-      // Cancel booking via GymMaster API
       await axios.post(
         "/api/gymmaster/v1/member/cancelbooking",
         new URLSearchParams({
@@ -262,7 +218,6 @@ export default function MyTeeTimes() {
         }
       );
 
-      // Update guest data in customtext1
       const guestData = await fetchGuestData(token);
       const updatedGuestBookingIds = guestData.guestBookingIds.filter(
         (bookingId: number) => bookingId !== id
@@ -343,37 +298,32 @@ export default function MyTeeTimes() {
           </Button>
         </div>
 
-        {bookings.length === 0 ? (
+        {sortedBookings.length === 0 ? (
           <p className="text-center text-gray-500">
             You have no booked tee times.
           </p>
         ) : (
           <div className="overflow-x-auto">
-            <Table className="hidden sm:table">
+            {/* Desktop Table */}
+            <Table className="hidden sm:table w-full">
               <TableHeader>
-                <TableRow>
-                  <TableHead className="text-xs sm:text-sm text-black">
+                <TableRow className="bg-gray-100">
+                  <TableHead className="text-sm font-semibold text-black">
                     Date
                   </TableHead>
-                  <TableHead className="text-xs sm:text-sm text-black">
+                  <TableHead className="text-sm font-semibold text-black">
                     Time
                   </TableHead>
-                  <TableHead className="text-xs sm:text-sm text-black">
+                  <TableHead className="text-sm font-semibold text-black">
                     Service
                   </TableHead>
-                  <TableHead className="text-xs sm:text-sm text-black">
-                    Location
-                  </TableHead>
-                  <TableHead className="text-xs sm:text-sm text-black">
+                  <TableHead className="text-sm font-semibold text-black">
                     Bay
                   </TableHead>
-                  <TableHead className="text-xs sm:text-sm text-black">
+                  {/* <TableHead className="text-sm font-semibold text-black">
                     Guests
-                  </TableHead>
-                  <TableHead className="text-xs sm:text-sm text-black">
-                    Guest Pass Usage
-                  </TableHead>
-                  <TableHead className="text-xs sm:text-sm text-black">
+                  </TableHead> */}
+                  <TableHead className="text-sm font-semibold text-black">
                     Actions
                   </TableHead>
                 </TableRow>
@@ -385,32 +335,25 @@ export default function MyTeeTimes() {
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.3, delay: index * 0.1 }}
+                    className="border-b"
                   >
-                    <TableCell className="text-xs sm:text-sm text-black">
+                    <TableCell className="text-sm text-black">
                       {booking.date}
                     </TableCell>
-                    <TableCell className="text-xs sm:text-sm text-black">
+                    <TableCell className="text-sm text-black">
                       {booking.time}
                     </TableCell>
-                    <TableCell className="text-xs sm:text-sm text-black">
+                    <TableCell className="text-sm text-black">
                       {booking.servicename}
                     </TableCell>
-                    <TableCell className="text-xs sm:text-sm text-black">
-                      {booking.location}
-                    </TableCell>
-                    <TableCell className="text-xs sm:text-sm text-black">
+                    <TableCell className="text-sm text-black">
                       {booking.bay}
                     </TableCell>
-                    <TableCell className="text-xs sm:text-sm text-black">
+                    {/* <TableCell className="text-sm text-black">
                       {booking.guests.length > 0
-                        ? booking.guests.map((guest) => guest.name).join(", ")
+                        ? booking.guests.map((g) => g.name).join(", ")
                         : "None"}
-                    </TableCell>
-                    <TableCell className="text-xs sm:text-sm text-black">
-                      {booking.guestPassUsage
-                        ? `${booking.guestPassUsage.free} free pass(es), ${booking.guestPassUsage.charged} charged`
-                        : "N/A"}
-                    </TableCell>
+                    </TableCell> */}
                     <TableCell>
                       <Dialog
                         open={deleteBookingId === booking.id}
@@ -469,7 +412,7 @@ export default function MyTeeTimes() {
               </TableBody>
             </Table>
 
-            {/* Mobile Layout: Stacked Card-like View */}
+            {/* Mobile Cards */}
             <div className="sm:hidden space-y-4">
               {sortedBookings.map((booking, index) => (
                 <motion.div
@@ -477,19 +420,46 @@ export default function MyTeeTimes() {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3, delay: index * 0.1 }}
-                  className="border rounded-lg p-4 shadow-sm bg-white"
+                  className="border rounded-lg p-4 shadow-md bg-white hover:shadow-lg transition-shadow duration-200"
                 >
-                  <div className="space-y-2">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <p className="text-sm font-semibold text-black">
-                          {booking.date} at {booking.time}
-                        </p>
-                        <p className="text-xs text-gray-600">
-                          {booking.servicename} at {booking.location} (
-                          {booking.bay})
-                        </p>
-                      </div>
+                  <div className="grid grid-cols-1 gap-2">
+                    <div className="flex flex-col items-start justify-start gap-0">
+                      <span className="text-sm font-semibold text-gray-700">
+                        Date
+                      </span>
+                      <span className="text-sm text-black">{booking.date}</span>
+                    </div>
+                    <div className="flex flex-col items-start justify-start gap-0">
+                      <span className="text-sm font-semibold text-gray-700">
+                        Time
+                      </span>
+                      <span className="text-sm text-black">{booking.time}</span>
+                    </div>
+                    <div className="flex flex-col items-start justify-start gap-0">
+                      <span className="text-sm font-semibold text-gray-700">
+                        Service
+                      </span>
+                      <span className="text-sm text-black">
+                        {booking.servicename}
+                      </span>
+                    </div>
+                    <div className="flex flex-col items-start justify-start gap-0">
+                      <span className="text-sm font-semibold text-gray-700">
+                        Bay
+                      </span>
+                      <span className="text-sm text-black">{booking.bay}</span>
+                    </div>
+                    {/* <div className="flex flex-col items-start justify-start gap-0">
+                      <span className="text-sm font-semibold text-gray-700">
+                        Guests
+                      </span>
+                      <span className="text-sm text-black">
+                        {booking.guests.length > 0
+                          ? booking.guests.map((g) => g.name).join(", ")
+                          : "None"}
+                      </span>
+                    </div> */}
+                    <div className="flex justify-end mt-2">
                       <Dialog
                         open={deleteBookingId === booking.id}
                         onOpenChange={(open) =>
@@ -542,18 +512,6 @@ export default function MyTeeTimes() {
                         </DialogContent>
                       </Dialog>
                     </div>
-                    <p className="text-xs text-black">
-                      <strong>Guests:</strong>{" "}
-                      {booking.guests.length > 0
-                        ? booking.guests.map((guest) => guest.name).join(", ")
-                        : "None"}
-                    </p>
-                    <p className="text-xs text-black">
-                      <strong>Guest Pass Usage:</strong>{" "}
-                      {booking.guestPassUsage
-                        ? `${booking.guestPassUsage.free} free pass(es), ${booking.guestPassUsage.charged} charged`
-                        : "N/A"}
-                    </p>
                   </div>
                 </motion.div>
               ))}

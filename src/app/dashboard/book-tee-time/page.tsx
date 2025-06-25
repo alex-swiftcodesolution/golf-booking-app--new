@@ -78,7 +78,7 @@ const teeTimeSchema = z.object({
     .optional(),
 });
 
-const freeGuestPassesPerMonth = 2;
+const freeGuestPassesPerMonth = 4;
 const guestPassCharge = 10;
 
 export default function BookTeeTime() {
@@ -390,12 +390,12 @@ export default function BookTeeTime() {
         : [...selectedSlots, { time, bay }];
     setSelectedSlots(updatedSlots);
     form.setValue("timeSlots", updatedSlots);
-    toast.info(slotIndex >= 0 ? "Time slot deselected" : "Time slot chosen", {
-      description:
-        slotIndex >= 0
-          ? `Removed ${time} at ${bay}.`
-          : `Added ${time} at ${bay}.`,
-    });
+    // toast.info(slotIndex >= 0 ? "Time slot deselected" : "Time slot chosen", {
+    //   description:
+    //     slotIndex >= 0
+    //       ? `Removed ${time} at ${bay}.`
+    //       : `Added ${time} at ${bay}.`,
+    // });
   };
 
   const handleGuestCountChange = (count: number) => {

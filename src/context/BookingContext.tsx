@@ -1,11 +1,5 @@
 "use client";
-import {
-  createContext,
-  useContext,
-  useState,
-  useEffect,
-  ReactNode,
-} from "react";
+import { createContext, useContext, useState, ReactNode } from "react";
 import axios from "axios";
 import { fetchGuestData, updateGuestData } from "@/api/gymmaster";
 
@@ -16,7 +10,7 @@ export interface Booking {
   location: string;
   bay: string;
   servicename: string;
-  guests: { name: string; email: string }[];
+  guests: { name: string; email: string; date?: string }[];
   guestPassUsage: { free: number; charged: number };
   day: string;
   starttime: string;
@@ -34,147 +28,15 @@ interface BookingContextType {
   ) => Promise<number>;
   deleteBooking: (id: number) => void;
   updateBooking: (id: number, updatedBooking: Partial<Booking>) => void;
-  // setBookings: (bookings: Booking[]) => void;
-  setBookings: React.Dispatch<React.SetStateAction<Booking[]>>; // Updated type
+  setBookings: React.Dispatch<React.SetStateAction<Booking[]>>;
 }
 
 const BookingContext = createContext<BookingContextType | undefined>(undefined);
 
 const GYMMASTER_API_KEY = process.env.NEXT_PUBLIC_GYMMASTER_API_KEY;
 
-// Interface for GymMaster service booking response
-interface ServiceBooking {
-  id: number;
-  day: string;
-  starttime: string;
-  start_str?: string;
-  location?: string;
-  name?: string;
-  servicename?: string;
-}
-
 export const BookingProvider = ({ children }: { children: ReactNode }) => {
   const [bookings, setBookings] = useState<Booking[]>([]);
-
-  useEffect(() => {
-    const fetchBookings = async () => {
-      try {
-        const token = localStorage.getItem("authToken");
-        if (!token) {
-          console.log("No token, skipping fetch");
-          return;
-        }
-
-        const [bookingsRes, guestData] = await Promise.all([
-          axios.get("/api/gymmaster/v2/member/bookings", {
-            params: {
-              api_key: GYMMASTER_API_KEY,
-              token,
-            },
-          }),
-          fetchGuestData(token),
-        ]);
-
-        console.log("Bookings Response:", bookingsRes.data);
-        console.log("Guest Data:", guestData);
-
-        const { guestBookingIds, guests } = guestData;
-
-        // Map guest data to bookings
-        // const guestMap: Record<number, { name: string; email: string }[]> = {};
-        // let guestIndex = 0;
-        // guestBookingIds.forEach((id: number) => {
-        //   guestMap[id] = guestMap[id] || [];
-        //   if (guestIndex < guests.length) {
-        //     guestMap[id].push(guests[guestIndex]);
-        //     guestIndex++;
-        //   } else {
-        //     guestMap[id].push({
-        //       name: `Guest ${guestIndex + 1}`,
-        //       email: `guest${guestIndex + 1}@example.com`,
-        //     });
-        //   }
-        // });
-
-        const guestMap: Record<
-          string,
-          { name: string; email: string; date?: string }[]
-        > = {};
-        guestBookingIds.forEach((id: number, index: number) => {
-          const guest = guests[index];
-          const date = guest?.date ?? "";
-          const key = `${id}_${date}`;
-          guestMap[key] = guestMap[key] || [];
-          guestMap[key].push(
-            guest || {
-              name: `Guest ${index + 1}`,
-              email: `guest${index + 1}@example.com`,
-            }
-          );
-        });
-        console.log("Guest Map:", guestMap);
-
-        const fetchedBookings =
-          bookingsRes.data.result?.servicebookings?.map((b: ServiceBooking) => {
-            let time = b.starttime.slice(0, 5);
-            if (b.start_str) {
-              const [hours, minutes, period] = b.start_str
-                .match(/(\d+):(\d+)\s*(am|pm)/i)
-                ?.slice(1) || ["0", "00", "am"];
-              let hourNum = parseInt(hours);
-              if (period.toLowerCase() === "pm" && hourNum !== 12)
-                hourNum += 12;
-              if (period.toLowerCase() === "am" && hourNum === 12) hourNum = 0;
-              time = `${hourNum.toString().padStart(2, "0")}:${minutes}`;
-            }
-
-            const bookingGuests = guestMap[b.id] || [];
-            return {
-              id: b.id,
-              date: b.day,
-              time,
-              location: b.location || "Simcoquitos 24/7 Golf Club",
-              bay: b.name || "Unknown",
-              servicename: b.servicename || "Golf Simulator",
-              guests: bookingGuests,
-              guestPassUsage: {
-                free: bookingGuests.length
-                  ? Math.min(bookingGuests.length, 2)
-                  : 0,
-                charged: bookingGuests.length
-                  ? Math.max(bookingGuests.length - 2, 0)
-                  : 0,
-              },
-              day: new Date(b.day).toLocaleDateString("en-US", {
-                weekday: "long",
-              }),
-              starttime: time,
-            };
-          }) || [];
-
-        console.log("Mapped Bookings:", fetchedBookings);
-
-        // Merge with existing bookings to preserve new bookings
-        setBookings((prev) => {
-          const merged = [...prev];
-          fetchedBookings.forEach((newBooking: Booking) => {
-            const index = merged.findIndex((b) => b.id === newBooking.id);
-            if (index >= 0) {
-              merged[index] = { ...merged[index], ...newBooking };
-            } else {
-              merged.push(newBooking);
-            }
-          });
-          return merged;
-        });
-      } catch (err) {
-        console.error("Failed to fetch bookings:", err);
-        setBookings([]);
-      }
-    };
-
-    fetchBookings();
-  }, []);
 
   const addBooking = async (
     booking: Omit<Booking, "id">,
@@ -185,12 +47,12 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
     benefitId?: number
   ): Promise<number> => {
     try {
-      const { date, time, location, guests } = booking;
+      const { date, time, servicename, guests } = booking;
       const { hour, minute } = parseTimeSlot(time);
       const bookingstart = `${hour.toString().padStart(2, "0")}:${minute
         .toString()
         .padStart(2, "0")}:00`;
-      const duration = location.includes("1/2 hr") ? 30 : 60;
+      const duration = servicename.includes("1/2 hr") ? 30 : 60;
       const endHour = Math.floor((hour * 60 + minute + duration) / 60);
       const endMinute = (minute + duration) % 60;
       const bookingend = `${endHour.toString().padStart(2, "0")}:${endMinute
@@ -227,7 +89,22 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
 
       const newId = response.data.result.bookingid;
 
-      // Update guest data in customtext1
+      // Normalize time to AM/PM for consistency
+      const [hourNum, minuteNum] = bookingstart.split(":").map(Number);
+      const period = hourNum >= 12 ? "PM" : "AM";
+      const displayHour =
+        hourNum > 12 ? hourNum - 12 : hourNum === 0 ? 12 : hourNum;
+      const displayTime = `${displayHour}:${minuteNum
+        .toString()
+        .padStart(2, "0")} ${period}`;
+
+      // Format date to mm/dd/yy
+      const [year, month, day] = date.split("-").map(Number);
+      const formattedDate = `${month.toString().padStart(2, "0")}/${day
+        .toString()
+        .padStart(2, "0")}/${year.toString().slice(-2)}`;
+
+      // Update guest data
       if (guests.length > 0) {
         const guestData = await fetchGuestData(token);
         const updatedGuestBookingIds = [
@@ -244,14 +121,29 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
           updatedGuestBookingIds,
           updatedGuests
         );
-        console.log("Updated guest data:", {
-          guestPassesUsed: updatedGuestPassesUsed,
-          guestBookingIds: updatedGuestBookingIds,
-          guests: updatedGuests,
-        });
       }
 
-      setBookings((prev) => [...prev, { ...booking, id: newId }]);
+      // Add booking, preserving servicename
+      setBookings((prev) => {
+        const exists = prev.find((b) => b.id === newId);
+        if (exists) {
+          return prev.map((b) =>
+            b.id === newId
+              ? {
+                  ...booking,
+                  id: newId,
+                  time: displayTime,
+                  date: formattedDate,
+                }
+              : b
+          );
+        }
+        return [
+          ...prev,
+          { ...booking, id: newId, time: displayTime, date: formattedDate },
+        ];
+      });
+
       return newId;
     } catch (error) {
       console.error("Add booking error:", error);
