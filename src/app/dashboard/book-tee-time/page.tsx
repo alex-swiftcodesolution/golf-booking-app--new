@@ -574,13 +574,7 @@ export default function BookTeeTime() {
             Math.max(freeGuestPassesPerMonth - guestPassesUsed, 0),
           0
         ) * guestPassCharge;
-      toast.success("Tee times booked!", {
-        description: `Booked ${data.timeSlots.length} time slot(s) at ${
-          data.location
-        } on ${data.date} with ${data.service}${
-          data.guests?.length ? ` with ${data.guests.length} guest(s)` : ""
-        }${extraCharge > 0 ? ` (Extra charge: $${extraCharge})` : ""}`,
-      });
+      toast.success("Tee times booked!");
 
       form.reset({
         location: "",
@@ -1066,16 +1060,7 @@ export default function BookTeeTime() {
                               ),
                             0
                           ) > 0
-                            ? `Extra charge: $${
-                                Math.max(
-                                  (form.getValues("guests") || []).length -
-                                    Math.max(
-                                      freeGuestPassesPerMonth - guestPassesUsed,
-                                      0
-                                    ),
-                                  0
-                                ) * guestPassCharge
-                              }`
+                            ? ""
                             : ""}
                         </p>
                       )}
