@@ -225,7 +225,7 @@ export default function OpenDoor() {
       );
       setDistanceToClub(distance);
 
-      if (distance > 100) {
+      if (distance > 1000) {
         toast.error("Failed to check in", {
           description: `You are ${distance.toFixed(0)} meters from the club. Must be within 100 meters.`,
         });
