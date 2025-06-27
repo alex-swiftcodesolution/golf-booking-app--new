@@ -508,6 +508,16 @@ export const login = async (
 
     localStorage.setItem("deviceFingerprint", fingerprint);
 
+    localStorage.setItem("authToken", res.data.result.token);
+    localStorage.setItem("memberId", res.data.result.memberid.toString());
+    localStorage.setItem(
+      "tokenExpires",
+      (Date.now() + res.data.result.expires * 1000).toString()
+    );
+    document.cookie = `tokenExpires=${
+      Date.now() + res.data.result.expires * 1000
+    }; path=/; SameSite=Strict`;
+
     return res.data.result;
   } catch (error) {
     console.error("Login error:", error);
@@ -572,6 +582,16 @@ export const signup = async (data: {
     // Store fingerprint in customtext7
     await storeSessionFingerprint(res.data.token, fingerprint);
     localStorage.setItem("deviceIdentifier", fingerprint);
+
+    localStorage.setItem("authToken", res.data.token);
+    localStorage.setItem("memberId", res.data.memberid);
+    localStorage.setItem(
+      "tokenExpires",
+      (Date.now() + res.data.expires * 1000).toString()
+    );
+    document.cookie = `tokenExpires=${
+      Date.now() + res.data.expires * 1000
+    }; path=/; SameSite=Strict`;
 
     return res.data;
   } catch (error) {
