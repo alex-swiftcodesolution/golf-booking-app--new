@@ -244,8 +244,8 @@ export default function DashboardLayout({
             </header>
 
             <main
-              className="space-y-4 flex-1 p-6 sm:p-4 mt-0 md:ml-64"
-              style={{ paddingTop: "64px" }}
+              className="space-y-4 flex-1 p-6 sm:p-4 mt-0 sm:mt-6 md:ml-64"
+              style={{ paddingTop: "90px" }}
             >
               <motion.div
                 initial={{ opacity: 0 }}

@@ -616,7 +616,7 @@ export default function BookTeeTime() {
   };
 
   return (
-    <div className="">
+    <div className="space-y-4">
       <motion.h1
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}

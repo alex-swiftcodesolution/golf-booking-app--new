@@ -510,9 +510,12 @@ export const login = async (
 
     localStorage.setItem("authToken", res.data.result.token);
     localStorage.setItem("memberId", res.data.result.memberid.toString());
-    localStorage.setItem("tokenExpires", (Date.now() + 12 * 1000).toString());
+    localStorage.setItem(
+      "tokenExpires",
+      (Date.now() + res.data.result.expires * 1000).toString()
+    );
     document.cookie = `tokenExpires=${
-      Date.now() + 12 * 1000
+      Date.now() + res.data.result.expires * 1000
     }; path=/; SameSite=Strict`;
 
     return res.data.result;
