@@ -114,7 +114,7 @@ export default function Dashboard() {
   }, [router]);
 
   return (
-    <div className="space-y-6 sm:space-y-8 p-4 sm:p-6">
+    <div className="">
       <Suspense fallback={<div>Loading...</div>}>
         <SignupDialog memberName={memberName} />
       </Suspense>
