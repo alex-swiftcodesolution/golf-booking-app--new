@@ -12,7 +12,7 @@ const CLUB_COORDINATES: Record<
   { latitude: number; longitude: number }
 > = {
   // club data
-  1: { latitude: 38.967649, longitude: -119.936365 },
+  1: { latitude: 38.968933, longitude: -119.92855 },
 };
 
 export interface Club {
@@ -1305,19 +1305,26 @@ export const getBrowserGeolocation = (): Promise<{
     );
   });
 
-// Improved IP-based geolocation using ipapi.co
 export const getIPGeolocation = async (): Promise<{
   latitude: number;
   longitude: number;
 }> => {
   try {
-    const res = await axios.get("https://ipapi.co/json/", {
-      params: { fields: "latitude,longitude" },
+    const res = await axios.get("https://api.locationiq.com/v1/reverse", {
+      params: {
+        key: "pk.eab60eb12b9ee67087005ac83be5f4f5",
+        lat: 38.968933,
+        lon: -119.92855,
+        format: "json",
+      },
     });
-    if (!res.data.latitude || !res.data.longitude) {
+    if (!res.data.lat || !res.data.lon) {
       throw new Error("Invalid geolocation data received.");
     }
-    return { latitude: res.data.latitude, longitude: res.data.longitude };
+    return {
+      latitude: parseFloat(res.data.lat),
+      longitude: parseFloat(res.data.lon),
+    };
   } catch (error) {
     console.error("IP geolocation error:", error);
     throw new Error("Failed to fetch IP-based geolocation. Please try again.");

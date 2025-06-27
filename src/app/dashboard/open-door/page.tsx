@@ -23,6 +23,7 @@ import {
 import { toast } from "sonner";
 import { Loader2, Bluetooth, MapPin } from "lucide-react";
 import { motion } from "framer-motion";
+import axios from "axios";
 import {
   fetchOutstandingBalance,
   kioskCheckin,
@@ -34,12 +35,37 @@ import {
   calculateDistance,
   watchUserLocation,
   stopWatchingLocation,
-  getCachedLocation,
+  // getCachedLocation,
 } from "@/api/gymmaster";
 
 const openDoorSchema = z.object({
   door: z.string().min(1, "Please select an entry point"),
 });
+
+// Function to reverse geocode coordinates to location name using LocationIQ
+const getLocationName = async (
+  latitude: number,
+  longitude: number
+): Promise<string> => {
+  try {
+    const res = await axios.get("https://api.locationiq.com/v1/reverse", {
+      params: {
+        key: "pk.eab60eb12b9ee67087005ac83be5f4f5", // Replace with your LocationIQ API key
+        lat: latitude,
+        lon: longitude,
+        format: "json",
+      },
+    });
+    const { address } = res.data;
+    if (address && (address.city || address.town || address.village)) {
+      return `${address.city || address.town || address.village}, ${address.state || address.region}, ${address.country}`;
+    }
+    return "Unknown location";
+  } catch (error) {
+    console.error("Reverse geocoding error:", error);
+    return "Unknown location";
+  }
+};
 
 export default function OpenDoor() {
   const [isLoading, setIsLoading] = useState(false);
@@ -56,6 +82,7 @@ export default function OpenDoor() {
     latitude: number;
     longitude: number;
   } | null>(null);
+  const [locationName, setLocationName] = useState<string>("");
   const [distanceToClub, setDistanceToClub] = useState<number | null>(null);
   const [watchId, setWatchId] = useState<number | null>(null);
   const router = useRouter();
@@ -96,13 +123,8 @@ export default function OpenDoor() {
         const owingAmount = parseFloat(balanceData.owingamount);
         setAccountStatus(owingAmount > 0 ? "Bad" : "Good");
 
-        // Check for cached location
-        const cachedLocation = getCachedLocation();
-        if (cachedLocation) {
-          setUserLocation(cachedLocation);
-          setLocationStatus("Retrieved");
-          updateDistance(cachedLocation, accessible[0]?.companyid);
-        }
+        // Automatically fetch location on page load
+        handleLocationRequest();
       } catch (error) {
         console.error("Initialization error:", error);
         toast.error("Initialization failed", {
@@ -146,16 +168,23 @@ export default function OpenDoor() {
     try {
       const location = await getUserLocation();
       setUserLocation(location);
+      const name = await getLocationName(location.latitude, location.longitude);
+      setLocationName(name);
       setLocationStatus("Retrieved");
       updateDistance(location, accessibleDoors[0]?.companyid);
       toast.success("Location retrieved!", {
-        description: `Latitude: ${location.latitude.toFixed(4)}, Longitude: ${location.longitude.toFixed(4)}`,
+        description: `Location: ${name}`,
       });
 
       // Start watching for real-time updates
       if (watchId === null) {
-        const id = watchUserLocation((newLocation) => {
+        const id = watchUserLocation(async (newLocation) => {
           setUserLocation(newLocation);
+          const updatedName = await getLocationName(
+            newLocation.latitude,
+            newLocation.longitude
+          );
+          setLocationName(updatedName);
           updateDistance(newLocation, accessibleDoors[0]?.companyid);
         });
         setWatchId(id);
@@ -286,28 +315,36 @@ export default function OpenDoor() {
           </p>
         </div>
 
-        <div className="flex items-center justify-center space-x-2">
-          <MapPin
-            className={`h-5 w-5 sm:h-6 sm:w-6 ${
-              locationStatus === "Retrieved"
-                ? "text-green-600"
-                : locationStatus === "Failed"
-                  ? "text-red-600"
-                  : "text-gray-600"
-            }`}
-            aria-hidden="true"
-          />
-          <p className="text-sm sm:text-base">
-            {locationStatus === "Retrieved"
-              ? distanceToClub !== null
-                ? `Location retrieved (${distanceToClub.toFixed(0)} meters from club)`
-                : "Location retrieved"
-              : locationStatus === "Fetching"
-                ? "Fetching location..."
-                : locationStatus === "Failed"
-                  ? "Location unavailable"
-                  : "Location not fetched"}
-          </p>
+        <div className="flex flex-col items-center justify-center space-y-2">
+          <div className="flex items-center space-x-2">
+            <MapPin
+              className={`h-5 w-5 sm:h-6 sm:w-6 ${
+                locationStatus === "Retrieved"
+                  ? "text-green-600"
+                  : locationStatus === "Failed"
+                    ? "text-red-600"
+                    : "text-gray-600"
+              }`}
+              aria-hidden="true"
+            />
+            <p className="text-sm sm:text-base">
+              {locationStatus === "Retrieved"
+                ? "Location retrieved"
+                : locationStatus === "Fetching"
+                  ? "Fetching location..."
+                  : locationStatus === "Failed"
+                    ? "Location unavailable"
+                    : "Fetching location..."}
+            </p>
+          </div>
+          {locationStatus === "Retrieved" && (
+            <div className="text-sm sm:text-base text-gray-600 text-center">
+              <p>Location: {locationName || "Unknown location"}</p>
+              {distanceToClub !== null && (
+                <p>Distance to club: {distanceToClub.toFixed(0)} meters</p>
+              )}
+            </div>
+          )}
         </div>
 
         <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
@@ -317,7 +354,7 @@ export default function OpenDoor() {
             disabled={
               locationStatus === "Fetching" || isCheckingIn || isLoading
             }
-            aria-label="Fetch your current location"
+            aria-label="Refresh your current location"
           >
             {locationStatus === "Fetching" ? (
               <>
@@ -327,7 +364,7 @@ export default function OpenDoor() {
             ) : (
               <>
                 <MapPin className="mr-2 h-4 w-4" />
-                Get My Location
+                Refresh Location
               </>
             )}
           </Button>
