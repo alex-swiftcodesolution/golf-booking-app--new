@@ -35,6 +35,7 @@ import {
   calculateDistance,
   watchUserLocation,
   stopWatchingLocation,
+  locationDetail,
   // getCachedLocation,
 } from "@/api/gymmaster";
 
@@ -201,6 +202,8 @@ export default function OpenDoor() {
 
   const validateGeolocation = async (companyId: number): Promise<boolean> => {
     const clubCoords = getClubCoordinates(companyId);
+    console.log("comp location: ", locationDetail(companyId));
+    console.log("company id: ", companyId);
     if (!clubCoords) {
       console.warn("Club coordinates not found for companyId:", companyId);
       toast.error("Location Error", {
@@ -227,7 +230,7 @@ export default function OpenDoor() {
 
       if (distance > 1000) {
         toast.error("Failed to check in", {
-          description: `You are ${distance.toFixed(0)} meters from the club. Must be within 100 meters.`,
+          description: `You are ${distance.toFixed(0)} meters from the club. Must be within 1000 meters.`,
         });
         return false;
       }

@@ -13,6 +13,7 @@ const CLUB_COORDINATES: Record<
 > = {
   // club data
   1: { latitude: 38.968933, longitude: -119.92855 },
+  2: { latitude: 38.968933, longitude: -119.92855 },
 };
 
 export interface Club {
@@ -1425,6 +1426,14 @@ export const calculateDistance = (
 // Export CLUB_COORDINATES for use in validation
 export const getClubCoordinates = (companyId: number) =>
   CLUB_COORDINATES[companyId];
+
+export const locationDetail = (companyId: number) => {
+  const cord = CLUB_COORDINATES[companyId];
+
+  console.log("Checking coordinates for companyId:", companyId);
+  console.log("Available club coordinates:", CLUB_COORDINATES);
+  console.log("Available club coordinates corddd:", cord);
+};
 
 /*
 export const logMembershipAgreement = async (
