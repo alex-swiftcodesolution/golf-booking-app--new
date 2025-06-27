@@ -1019,7 +1019,7 @@ function HomeContent() {
                           </SelectContent>
                         </Select>
                         {field.value && (
-                          <div className="mt-2 p-3 bg-gray-100 rounded-md text-sm">
+                          <div className="mt-2 p-3 bg-gray-100 rounded-md text-sm w-full">
                             {[
                               "name",
                               "description",
