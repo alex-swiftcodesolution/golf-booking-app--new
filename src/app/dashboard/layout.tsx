@@ -10,7 +10,6 @@ import Link from "next/link";
 import { BookingProvider } from "@/context/BookingContext";
 import { useRouter } from "next/navigation";
 import SessionChecker from "../SessionChecker";
-// import { clearSessionFingerprint } from "@/api/gymmaster";
 
 export default function DashboardLayout({
   children,
@@ -22,13 +21,21 @@ export default function DashboardLayout({
 
   // Authentication check
   useEffect(() => {
-    const token = localStorage.getItem("authToken");
-    const expires = localStorage.getItem("tokenExpires");
+    const checkAuth = () => {
+      console.log("clear check run");
 
-    if (!token || (expires && Date.now() > parseInt(expires))) {
-      localStorage.clear();
-      router.push("/");
-    }
+      const token = localStorage.getItem("authToken");
+      const expires = localStorage.getItem("tokenExpires");
+      if (!token || (expires && Date.now() > parseInt(expires))) {
+        localStorage.clear();
+        router.push("/");
+      }
+    };
+
+    checkAuth();
+    const interval = setInterval(checkAuth, 10000); // Check every 10 seconds
+
+    return () => clearInterval(interval);
   }, [router]);
 
   const handleLogout = async () => {
