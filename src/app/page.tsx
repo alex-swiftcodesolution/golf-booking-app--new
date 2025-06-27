@@ -46,6 +46,7 @@ import {
   type Membership,
   logMembershipAgreement,
   fetchMembershipAgreements,
+  resetMemberPassword,
 } from "@/api/gymmaster";
 
 const signUpSchema = z
@@ -100,8 +101,13 @@ const loginSchema = z.object({
   password: z.string().min(1, "Password is required"),
 });
 
+const resetPasswordSchema = z.object({
+  email: z.string().email("Invalid email"),
+});
+
 type SignUpFormData = z.infer<typeof signUpSchema>;
 type LoginFormData = z.infer<typeof loginSchema>;
+type ResetPasswordFormData = z.infer<typeof resetPasswordSchema>;
 
 function HomeContent() {
   const [loading, setLoading] = useState({ signup: false, login: false });
@@ -117,6 +123,29 @@ function HomeContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const sigCanvas = useRef<SignatureCanvas>(null);
+
+  const [isResetting, setIsResetting] = useState(false);
+
+  const resetPasswordForm = useForm<ResetPasswordFormData>({
+    resolver: zodResolver(resetPasswordSchema),
+    defaultValues: { email: "" },
+  });
+
+  const onResetPasswordSubmit = async (data: ResetPasswordFormData) => {
+    setIsResetting(true);
+    try {
+      await resetMemberPassword(data.email);
+      toast.success("Password reset email sent!", { duration: 30000 });
+      resetPasswordForm.reset();
+    } catch (error) {
+      toast.error("Failed to send reset email", {
+        description: String(error),
+        duration: 30000,
+      });
+    } finally {
+      setIsResetting(false);
+    }
+  };
 
   const referralCode = searchParams.get("referral");
 
@@ -662,11 +691,14 @@ function HomeContent() {
           <TabsTrigger value="signup">Sign Up</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="login">
+        <TabsContent
+          value="login"
+          className="space-y-4 bg-white/90 p-6 rounded-lg shadow-lg"
+        >
           <Form {...loginForm}>
             <form
+              className="space-y-4"
               onSubmit={loginForm.handleSubmit(onLoginSubmit)}
-              className="space-y-4 bg-white/90 p-6 rounded-lg shadow-lg"
             >
               <FormField
                 control={loginForm.control}
@@ -730,6 +762,57 @@ function HomeContent() {
               </Button>
             </form>
           </Form>
+          <div className="flex justify-end">
+            <Dialog>
+              <DialogTrigger asChild>
+                <Button type="button" variant="link" className="text-sm">
+                  Forgot Password?
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Reset Password</DialogTitle>
+                </DialogHeader>
+                <Form {...resetPasswordForm}>
+                  <form
+                    onSubmit={resetPasswordForm.handleSubmit(
+                      onResetPasswordSubmit
+                    )}
+                    className="space-y-4"
+                  >
+                    <FormField
+                      control={resetPasswordForm.control}
+                      name="email"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Email</FormLabel>
+                          <FormControl>
+                            <Input
+                              placeholder="john@example.com"
+                              type="email"
+                              {...field}
+                            />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <Button
+                      type="submit"
+                      className="w-full"
+                      disabled={isResetting}
+                    >
+                      {isResetting ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        "Reset Password"
+                      )}
+                    </Button>
+                  </form>
+                </Form>
+              </DialogContent>
+            </Dialog>
+          </div>
         </TabsContent>
 
         <TabsContent value="signup">

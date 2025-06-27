@@ -194,6 +194,7 @@ export default function MyTeeTimes() {
     fetchBookings();
   }, [fetchBookings]);
 
+  /*
   const handleDelete = async (id: number) => {
     setIsLoading(true);
     try {
@@ -251,6 +252,116 @@ export default function MyTeeTimes() {
       console.error("Delete Booking Error:", error);
       toast.error("Failed to cancel tee time", {
         description: "Please try again later.",
+      });
+    } finally {
+      setIsLoading(false);
+      setDeleteBookingId(null);
+    }
+  };
+  */
+
+  const handleDelete = async (id: number) => {
+    setIsLoading(true);
+    try {
+      const booking = bookings.find((b) => b.id === id);
+      if (!booking) throw new Error("Booking not found");
+
+      const token = localStorage.getItem("authToken");
+      if (!token) throw new Error("Not authenticated");
+
+      // Cancel booking
+      const response = await axios.post(
+        "/api/gymmaster/v1/member/cancelbooking",
+        new URLSearchParams({
+          api_key: GYMMASTER_API_KEY || "",
+          token,
+          bookingid: id.toString(),
+          waitlist: "0",
+        }),
+        {
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+        }
+      );
+
+      // Check response for success
+      if (response.data.error) {
+        throw new Error(response.data.error);
+      }
+
+      // Update guest data
+      try {
+        const guestData = await fetchGuestData(token);
+        const updatedGuestBookingIds = guestData.guestBookingIds.filter(
+          (bookingId: number) => bookingId !== id
+        );
+        const updatedGuestPassesUsed = Math.max(
+          guestData.guestPassesUsed - (booking.guests.length || 0),
+          0
+        );
+        const guestIndices = guestData.guestBookingIds
+          .map((bookingId: number, index: number) =>
+            bookingId === id ? index : -1
+          )
+          .filter((index: number) => index !== -1);
+        const updatedGuests = guestData.guests.filter(
+          (_: { name: string; email: string }, index: number) =>
+            !guestIndices.includes(index)
+        );
+        await updateGuestData(
+          token,
+          updatedGuestPassesUsed,
+          guestData.referralCodes,
+          updatedGuestBookingIds,
+          updatedGuests
+        );
+      } catch (guestError) {
+        console.warn(
+          "Guest data update failed, but booking was cancelled:",
+          guestError
+        );
+        // Proceed with UI update even if guest data fails
+      }
+
+      // Update UI
+      deleteBooking(id);
+      toast.success("Tee time canceled", {
+        description: `Your tee time on ${booking.date} at ${booking.time} has been canceled.`,
+      });
+
+      // Optional: Verify cancellation due to GymMaster caching
+      setTimeout(async () => {
+        try {
+          const updatedBookings = await axios.get(
+            "/api/gymmaster/v2/member/bookings",
+            {
+              params: {
+                api_key: GYMMASTER_API_KEY,
+                token,
+              },
+            }
+          );
+          if (
+            !updatedBookings.data.result?.servicebookings?.find(
+              (b: ServiceBooking) => b.id === id
+            )
+          ) {
+            console.log("Cancellation confirmed via API");
+          } else {
+            console.warn(
+              "Booking still appears in API response, possible caching delay"
+            );
+          }
+        } catch (verifyError) {
+          console.warn("Failed to verify cancellation:", verifyError);
+        }
+      }, 5000); // Wait 5 seconds to account for cache
+    } catch (error) {
+      console.error("Delete Booking Error:", error);
+      toast.error("Failed to cancel tee time", {
+        description:
+          "The booking may have been cancelled. Please refresh to confirm.",
       });
     } finally {
       setIsLoading(false);
