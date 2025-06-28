@@ -227,7 +227,7 @@ export default function MyAccount() {
                     label: "Cell",
                     placeholder: "1234567890",
                   },
-                  { name: "dob", label: "Date of Birth", type: "date" },
+
                   {
                     name: "addressstreet",
                     label: "Address",
