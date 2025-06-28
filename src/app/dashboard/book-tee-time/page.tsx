@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 "use client";
 import { useState, useEffect } from "react";
@@ -48,6 +49,7 @@ import {
   fetchGuestData,
   updateGuestData,
   fetchMemberDetails,
+  updateMemberProfile,
 } from "@/api/gymmaster";
 import { useRouter } from "next/navigation";
 
@@ -463,7 +465,7 @@ export default function BookTeeTime() {
       // Generate referral codes and collect booking IDs
       const newReferralCodes: string[] = [];
       const newBookingIds: number[] = [];
-      const guestAssignments: number[] = []; // Tracks which booking ID each guest is assigned to
+      const guestAssignments: number[] = [];
 
       if (data.guests?.length) {
         data.guests.forEach(() => {
@@ -474,41 +476,45 @@ export default function BookTeeTime() {
 
       // Book slots
       for (const slot of data.timeSlots) {
-        const bookingId = await addBooking(
-          {
-            date: data.date,
-            day: new Date(data.date).toLocaleDateString("en-US", {
-              weekday: "long",
-            }),
-            time: slot.time,
-            starttime: slot.time,
-            location: data.location,
-            bay: slot.bay,
-            servicename: data.service,
-            guests: (data.guests || []) as { name: string; email: string }[],
-            guestPassUsage: {
-              free: Math.min(
-                (data.guests || []).length,
-                Math.max(freeGuestPassesPerMonth - guestPassesUsed, 0)
-              ),
-              charged: Math.max(
-                (data.guests || []).length -
-                  Math.max(freeGuestPassesPerMonth - guestPassesUsed, 0),
-                0
-              ),
+        try {
+          const bookingId = await addBooking(
+            {
+              date: data.date,
+              day: new Date(data.date).toLocaleDateString("en-US", {
+                weekday: "long",
+              }),
+              time: slot.time,
+              starttime: slot.time,
+              location: data.location,
+              bay: slot.bay, // Ensure this is "PLAYERS BAY" or "MASTERS BAY"
+              servicename: data.service,
+              guests: (data.guests || []) as { name: string; email: string }[],
+              guestPassUsage: {
+                free: Math.min(
+                  (data.guests || []).length,
+                  Math.max(freeGuestPassesPerMonth - guestPassesUsed, 0)
+                ),
+                charged: Math.max(
+                  (data.guests || []).length -
+                    Math.max(freeGuestPassesPerMonth - guestPassesUsed, 0),
+                  0
+                ),
+              },
             },
-          },
-          token,
-          selectedServiceId,
-          resourceMap[slot.bay],
-          membership.id,
-          selectedBenefitId || undefined
-        );
-        console.log("Generated booking ID:", bookingId); // Debug log
-        newBookingIds.push(bookingId);
-        // Assign each guest to this booking ID
-        if (data.guests?.length) {
-          data.guests.forEach(() => guestAssignments.push(bookingId));
+            token,
+            selectedServiceId,
+            resourceMap[slot.bay],
+            membership.id,
+            selectedBenefitId || undefined
+          );
+          console.log("Generated booking ID:", bookingId);
+          newBookingIds.push(bookingId);
+          if (data.guests?.length) {
+            data.guests.forEach(() => guestAssignments.push(bookingId));
+          }
+        } catch (error) {
+          console.error("Booking error for slot:", slot, error);
+          throw new Error(`Booking failed: ${error.message}`);
         }
       }
 
@@ -516,44 +522,42 @@ export default function BookTeeTime() {
       if (data.guests?.length) {
         const newGuestPassesUsed = guestPassesUsed + data.guests.length;
         const updatedReferralCodes = [...referralCodes, ...newReferralCodes];
-        const updatedBookingIds = [...guestBookingIds, ...guestAssignments];
-        await updateGuestData(
-          token,
-          newGuestPassesUsed,
-          updatedReferralCodes,
-          updatedBookingIds,
-          // data.guests
-          (data.guests || []) as {
-            name: string;
-            email: string;
-            date?: string;
-          }[]
-        );
+        const updatedBookingIds = [
+          ...guestBookingIds,
+          ...guestAssignments,
+        ].filter((id) => Number.isInteger(id) && id > 0);
+        let retryCount = 0;
+        const maxRetries = 3;
+        while (retryCount < maxRetries) {
+          try {
+            await updateMemberProfile(token, {
+              customtext5: JSON.stringify(updatedBookingIds),
+            });
+            await updateGuestData(
+              token,
+              newGuestPassesUsed,
+              updatedReferralCodes,
+              [], // Skip customtext5
+              (data.guests || []) as {
+                name: string;
+                email: string;
+                date?: string;
+              }[]
+            );
+            break;
+          } catch (error: any) {
+            if (error.response?.status === 413 && retryCount < maxRetries - 1) {
+              console.warn(`Retry ${retryCount + 1} due to 413 error`);
+              retryCount++;
+              await new Promise((resolve) => setTimeout(resolve, 1000));
+              continue;
+            }
+            throw error;
+          }
+        }
         setGuestPassesUsed(newGuestPassesUsed);
         setReferralCodes(updatedReferralCodes);
         setGuestBookingIds(updatedBookingIds);
-
-        // Send email invites to guests
-        for (let i = 0; i < data.guests.length; i++) {
-          const guest = data.guests[i];
-          const referralCode = newReferralCodes[i];
-          const referralLink = `${APP_URL}`;
-          const res = await fetch("/api/send-email", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              emailType: "invite",
-              to: guest.email,
-              name: guest.name,
-              referralCode,
-              referralLink,
-            }),
-          });
-          if (!res.ok) throw new Error(`Email failed for ${guest.name}`);
-          toast.info("Email sent to guest", {
-            description: `An invite with referral code ${referralCode} was sent to ${guest.name} (${guest.email})`,
-          });
-        }
       }
 
       // Send confirmation email to member

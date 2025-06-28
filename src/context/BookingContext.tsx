@@ -1,7 +1,12 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 import { createContext, useContext, useState, ReactNode } from "react";
 import axios from "axios";
-import { fetchGuestData, updateGuestData } from "@/api/gymmaster";
+import {
+  fetchGuestData,
+  updateGuestData,
+  updateMemberProfile,
+} from "@/api/gymmaster";
 
 export interface Booking {
   id?: number;
@@ -26,7 +31,7 @@ interface BookingContextType {
     membershipId: number,
     benefitId?: number
   ) => Promise<number>;
-  deleteBooking: (id: number) => void;
+  deleteBooking: (id: number, token: string) => void;
   updateBooking: (id: number, updatedBooking: Partial<Booking>) => void;
   setBookings: React.Dispatch<React.SetStateAction<Booking[]>>;
 }
@@ -47,7 +52,7 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
     benefitId?: number
   ): Promise<number> => {
     try {
-      const { date, time, servicename, guests } = booking;
+      const { date, time, servicename, guests, bay } = booking;
       const { hour, minute } = parseTimeSlot(time);
       const bookingstart = `${hour.toString().padStart(2, "0")}:${minute
         .toString()
@@ -83,11 +88,57 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
         }
       );
 
-      if (response.data.error || !response.data.result) {
+      console.log("Booking API response:", response.data);
+
+      if (response.data.error) {
         throw new Error(response.data.error || "Booking failed");
       }
 
-      const newId = response.data.result.bookingid;
+      // Fallback: Fetch booking ID from /api/gymmaster/v2/member/bookings
+      let newId: number;
+      if (
+        !response.data.result?.bookingid &&
+        response.data.result === "success"
+      ) {
+        const bookingsResponse = await axios.get(
+          "/api/gymmaster/v2/member/bookings",
+          {
+            params: {
+              api_key: GYMMASTER_API_KEY || "",
+              token,
+            },
+          }
+        );
+        console.log("Member bookings response:", bookingsResponse.data);
+
+        const latestBooking = bookingsResponse.data.result?.servicebookings
+          ?.filter(
+            (b: any) =>
+              b.day === date &&
+              b.starttime === bookingstart &&
+              b.name.toUpperCase() === bay.toUpperCase() // Match bay (e.g., "PLAYERS BAY")
+          )
+          .sort((a: any, b: any) => b.id - a.id)[0];
+
+        if (!latestBooking) {
+          throw new Error(
+            `No matching booking found for date: ${date}, starttime: ${bookingstart}, bay: ${bay}`
+          );
+        }
+
+        newId = Number(latestBooking.id);
+        if (!Number.isInteger(newId) || newId <= 0) {
+          throw new Error(
+            `Invalid booking ID: ${newId} for date: ${date}, starttime: ${bookingstart}, bay: ${bay}`
+          );
+        }
+      } else {
+        newId = Number(response.data.result.bookingid);
+        if (!Number.isInteger(newId) || newId <= 0) {
+          throw new Error(`Invalid booking ID: ${newId}`);
+        }
+      }
+      console.log("Generated booking ID:", newId);
 
       // Normalize time to AM/PM for consistency
       const [hourNum, minuteNum] = bookingstart.split(":").map(Number);
@@ -104,23 +155,58 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
         .toString()
         .padStart(2, "0")}/${year.toString().slice(-2)}`;
 
-      // Update guest data
+      // Update guest data with retry logic
       if (guests.length > 0) {
         const guestData = await fetchGuestData(token);
         const updatedGuestBookingIds = [
           ...guestData.guestBookingIds,
           ...Array(guests.length).fill(newId),
+        ].filter((id) => Number.isInteger(id) && id > 0);
+        const updatedGuests = [
+          ...guestData.guests,
+          ...guests.filter(
+            (newGuest) =>
+              !guestData.guests.some(
+                (existingGuest) =>
+                  existingGuest.email === newGuest.email &&
+                  existingGuest.name === newGuest.name &&
+                  existingGuest.date === newGuest.date
+              )
+          ),
         ];
-        const updatedGuests = [...(guestData.guests || []), ...guests];
         const updatedGuestPassesUsed =
           guestData.guestPassesUsed + guests.length;
-        await updateGuestData(
-          token,
-          updatedGuestPassesUsed,
-          guestData.referralCodes,
-          updatedGuestBookingIds,
-          updatedGuests
-        );
+
+        let retryCount = 0;
+        const maxRetries = 3;
+        while (retryCount < maxRetries) {
+          try {
+            // Update customtext5 separately
+            await updateMemberProfile(token, {
+              customtext5: JSON.stringify(updatedGuestBookingIds),
+            });
+            // Update other fields
+            await updateGuestData(
+              token,
+              updatedGuestPassesUsed,
+              guestData.referralCodes,
+              [], // Skip customtext5
+              updatedGuests
+            );
+            console.log("Updated guest data fields:", {
+              customtext5: updatedGuestBookingIds,
+            });
+            break;
+          } catch (error: any) {
+            if (error.response?.status === 413 && retryCount < maxRetries - 1) {
+              console.warn(`Retry ${retryCount + 1} due to 413 error`);
+              retryCount++;
+              await new Promise((resolve) => setTimeout(resolve, 1000));
+              continue;
+            }
+            throw error;
+          }
+        }
       }
 
       // Add booking, preserving servicename
@@ -151,8 +237,58 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const deleteBooking = (id: number) => {
-    setBookings((prev) => prev.filter((booking) => booking.id !== id));
+  const deleteBooking = async (id: number, token: string): Promise<void> => {
+    try {
+      // Cancel booking via GymMaster API
+      const response = await axios.post(
+        "/api/gymmaster/v1/member/cancelbooking",
+        new URLSearchParams({
+          api_key: GYMMASTER_API_KEY || "",
+          token,
+          bookingid: id.toString(),
+          waitlist: "0",
+        }),
+        {
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        }
+      );
+
+      if (response.data.error) {
+        throw new Error(response.data.error || "Failed to cancel booking");
+      }
+      console.log("Cancellation confirmed via API for booking ID:", id);
+
+      // Update customtext5 to remove the booking ID
+      const guestData = await fetchGuestData(token);
+      const updatedGuestBookingIds = guestData.guestBookingIds.filter(
+        (bookingId) => bookingId !== id
+      );
+      let retryCount = 0;
+      const maxRetries = 3;
+      while (retryCount < maxRetries) {
+        try {
+          await updateMemberProfile(token, {
+            customtext5: JSON.stringify(updatedGuestBookingIds),
+          });
+          break;
+        } catch (error: any) {
+          if (error.response?.status === 413 && retryCount < maxRetries - 1) {
+            console.warn(`Retry ${retryCount + 1} due to 413 error`);
+            retryCount++;
+            await new Promise((resolve) => setTimeout(resolve, 1000));
+            continue;
+          }
+          throw error;
+        }
+      }
+
+      // Remove from local state
+      setBookings((prev) => prev.filter((booking) => booking.id !== id));
+    } catch (error) {
+      console.error("Delete booking error:", error);
+      setBookings((prev) => prev.filter((booking) => booking.id !== id));
+      throw new Error("Failed to delete booking");
+    }
   };
 
   const updateBooking = (id: number, updatedBooking: Partial<Booking>) => {
