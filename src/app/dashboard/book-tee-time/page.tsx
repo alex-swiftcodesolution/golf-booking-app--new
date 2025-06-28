@@ -572,6 +572,79 @@ export default function BookTeeTime() {
         guestPassCharge
       );
 
+      // Inside onSubmit, after sending member email
+      if (data.guests?.length) {
+        const newGuestPassesUsed = guestPassesUsed + data.guests.length;
+        const updatedReferralCodes = [...referralCodes, ...newReferralCodes];
+        const updatedBookingIds = [
+          ...guestBookingIds,
+          ...guestAssignments,
+        ].filter((id) => Number.isInteger(id) && id > 0);
+
+        // Update guest data
+        let retryCount = 0;
+        const maxRetries = 3;
+        while (retryCount < maxRetries) {
+          try {
+            await updateMemberProfile(token, {
+              customtext5: JSON.stringify(updatedBookingIds),
+            });
+            await updateGuestData(
+              token,
+              newGuestPassesUsed,
+              updatedReferralCodes,
+              [],
+              (data.guests || []) as {
+                name: string;
+                email: string;
+                date?: string;
+              }[]
+            );
+            break;
+          } catch (error: any) {
+            if (error.response?.status === 413 && retryCount < maxRetries - 1) {
+              console.warn(`Retry ${retryCount + 1} due to 413 error`);
+              retryCount++;
+              await new Promise((resolve) => setTimeout(resolve, 1000));
+              continue;
+            }
+            throw error;
+          }
+        }
+        setGuestPassesUsed(newGuestPassesUsed);
+        setReferralCodes(updatedReferralCodes);
+        setGuestBookingIds(updatedBookingIds);
+
+        // Send invite emails to guests
+        for (let i = 0; i < data.guests.length; i++) {
+          const guest = data.guests[i];
+          const referralCode = newReferralCodes[i];
+          const referralLink = `${APP_URL}`; // Adjust URL as needed
+
+          try {
+            await fetch("/api/send-email", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                emailType: "invite",
+                to: guest.email,
+                name: guest.name || "Guest",
+                referralCode,
+                referralLink,
+              }),
+            });
+            console.log(`Invite email sent to ${guest.email}`);
+            toast.success(`Invite email sent to ${guest.email}`);
+          } catch (error) {
+            console.error(
+              `Failed to send invite email to ${guest.email}:`,
+              error
+            );
+            toast.error(`Failed to send invite email to ${guest.email}`);
+          }
+        }
+      }
+
       const extraCharge =
         Math.max(
           (data.guests || []).length -
