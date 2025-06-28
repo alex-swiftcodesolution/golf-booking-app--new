@@ -325,7 +325,7 @@ export default function MyTeeTimes() {
       }
 
       // Update UI
-      deleteBooking(id);
+      deleteBooking(id, token);
       toast.success("Tee time canceled", {
         description: `Your tee time on ${booking.date} at ${booking.time} has been canceled.`,
       });
