@@ -965,7 +965,7 @@ function HomeContent() {
                     control={signUpForm.control}
                     name="location"
                     render={({ field }) => (
-                      <FormItem>
+                      <FormItem className="block w-full">
                         <FormLabel>Location</FormLabel>
                         <Select
                           onValueChange={field.onChange}
@@ -995,7 +995,7 @@ function HomeContent() {
                     control={signUpForm.control}
                     name="membershipType"
                     render={({ field }) => (
-                      <FormItem>
+                      <FormItem className="block w-full">
                         <FormLabel>Membership Type</FormLabel>
                         <Select
                           onValueChange={field.onChange}
@@ -1012,7 +1012,7 @@ function HomeContent() {
                                 key={type.id}
                                 value={type.id.toString()}
                               >
-                                {type.name} - {type.price} (
+                                {type.name}- {type.price}(
                                 {type.promotional_period || "N/A"})
                               </SelectItem>
                             ))}
