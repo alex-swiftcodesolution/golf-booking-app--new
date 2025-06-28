@@ -1078,6 +1078,7 @@ export const fetchGuestData = async (
 
 // 24 JUNE
 // src/api/gymmaster.ts
+/*
 export const fetchGuestData = async (
   token: string
 ): Promise<{
@@ -1142,7 +1143,80 @@ export const fetchGuestData = async (
     };
   }
 };
+*/
 // 24 JUNE
+
+export const fetchGuestData = async (
+  token: string
+): Promise<{
+  guestPassesUsed: number;
+  referralCodes: string[];
+  guestBookingIds: number[];
+  guests: { name: string; email: string; date?: string }[];
+}> => {
+  try {
+    const profile = await fetchMemberDetails(token);
+
+    let guestPassesUsed = 0;
+    let referralCodes: string[] = [];
+    let guestBookingIds: number[] = [];
+    let guests: { name: string; email: string; date?: string }[] = [];
+
+    try {
+      guestPassesUsed = profile.customtext3
+        ? Number(JSON.parse(profile.customtext3))
+        : 0;
+    } catch (e) {
+      console.error("Error parsing customtext3 (guestPassesUsed):", e);
+    }
+
+    try {
+      if (profile.customtext4) {
+        const parsed = JSON.parse(profile.customtext4);
+        referralCodes = Array.isArray(parsed) ? parsed : [profile.customtext4];
+      }
+    } catch (e) {
+      console.error("Error parsing customtext4 (referralCodes):", e);
+      referralCodes = profile.customtext4 ? [profile.customtext4] : [];
+    }
+
+    try {
+      if (profile.customtext5) {
+        const parsed = JSON.parse(profile.customtext5);
+        guestBookingIds = Array.isArray(parsed)
+          ? parsed
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              .filter((id: any) => Number.isInteger(id) && id > 0)
+              .map(Number)
+          : [];
+      }
+    } catch (e) {
+      console.error("Error parsing customtext5 (guestBookingIds):", e);
+      guestBookingIds = [];
+    }
+
+    try {
+      guests = profile.customtext6 ? JSON.parse(profile.customtext6) : [];
+    } catch (e) {
+      console.error("Error parsing customtext6 (guests):", e);
+    }
+
+    return {
+      guestPassesUsed,
+      referralCodes,
+      guestBookingIds,
+      guests,
+    };
+  } catch (error) {
+    console.error("Fetch guest data error:", error);
+    return {
+      guestPassesUsed: 0,
+      referralCodes: [],
+      guestBookingIds: [],
+      guests: [],
+    };
+  }
+};
 
 // export const updateGuestData = async (
 //   token: string,
@@ -1214,6 +1288,8 @@ export const fetchGuestData = async (
 //   }
 // };
 
+/*
+// workign last version
 export const updateGuestData = async (
   token: string,
   guestPassesUsed: number,
@@ -1227,20 +1303,29 @@ export const updateGuestData = async (
 
     const updatedGuestPassesUsed =
       guestPassesUsed ?? existingData.guestPassesUsed;
-
     const updatedReferralCodes =
       referralCodes.length > 0
         ? [...new Set([...existingData.referralCodes, ...referralCodes])]
         : existingData.referralCodes;
-
     const updatedBookingIds =
       guestBookingIds.length > 0
-        ? [...existingData.guestBookingIds, ...guestBookingIds]
+        ? [...new Set([...existingData.guestBookingIds, ...guestBookingIds])]
         : existingData.guestBookingIds;
-
+    // Only append new guests, avoid duplicating existing ones
     const updatedGuests =
       guests.length > 0
-        ? [...existingData.guests, ...guests]
+        ? [
+            ...existingData.guests,
+            ...guests.filter(
+              (newGuest) =>
+                !existingData.guests.some(
+                  (existingGuest) =>
+                    existingGuest.email === newGuest.email &&
+                    existingGuest.name === newGuest.name &&
+                    existingGuest.date === newGuest.date
+                )
+            ),
+          ]
         : existingData.guests;
 
     // Send separate fields to updateMemberProfile
@@ -1259,6 +1344,87 @@ export const updateGuestData = async (
     });
   } catch (error) {
     console.error("Update guest data error:", error);
+    throw new Error("Failed to update guest data");
+  }
+};
+*/
+
+export const updateGuestData = async (
+  token: string,
+  guestPassesUsed: number,
+  referralCodes: string[],
+  guestBookingIds: number[],
+  guests: { name: string; email: string; date?: string }[]
+): Promise<void> => {
+  try {
+    // Fetch existing guest data to merge
+    const existingData = await fetchGuestData(token);
+
+    const updatedGuestPassesUsed =
+      guestPassesUsed ?? existingData.guestPassesUsed;
+    const updatedReferralCodes =
+      referralCodes.length > 0
+        ? [...new Set([...existingData.referralCodes, ...referralCodes])]
+        : existingData.referralCodes;
+    // Filter out invalid booking IDs (null, 0, or non-positive)
+    const validGuestBookingIds = guestBookingIds.filter(
+      (id) => Number.isInteger(id) && id > 0
+    );
+    const updatedBookingIds =
+      validGuestBookingIds.length > 0
+        ? [
+            ...new Set([
+              ...existingData.guestBookingIds,
+              ...validGuestBookingIds,
+            ]),
+          ]
+        : existingData.guestBookingIds;
+    const updatedGuests =
+      guests.length > 0
+        ? [
+            ...existingData.guests,
+            ...guests.filter(
+              (newGuest) =>
+                !existingData.guests.some(
+                  (existingGuest) =>
+                    existingGuest.email === newGuest.email &&
+                    existingGuest.name === newGuest.name &&
+                    existingGuest.date === newGuest.date
+                )
+            ),
+          ]
+        : existingData.guests;
+
+    // Optimize payload
+    const formData = new FormData();
+    formData.append("api_key", GYMMASTER_API_KEY || "");
+    formData.append("token", token);
+    formData.append("customtext3", JSON.stringify(updatedGuestPassesUsed));
+    formData.append("customtext4", JSON.stringify(updatedReferralCodes));
+    formData.append("customtext5", JSON.stringify(updatedBookingIds));
+    formData.append("customtext6", JSON.stringify(updatedGuests));
+
+    // Log payload size for debugging
+    const payloadSize = JSON.stringify(Object.fromEntries(formData)).length;
+    console.log("Payload size:", payloadSize);
+
+    // Update profile
+    await axios.post("/api/gymmaster/v1/member/profile", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+
+    console.log("Updated guest data fields:", {
+      customtext3: updatedGuestPassesUsed,
+      customtext4: updatedReferralCodes,
+      customtext5: updatedBookingIds,
+      customtext6: updatedGuests,
+    });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  } catch (error: any) {
+    console.error("Update guest data error:", error);
+    if (error.response?.status === 413) {
+      console.error("Payload too large. Consider reducing data size.");
+    }
     throw new Error("Failed to update guest data");
   }
 };

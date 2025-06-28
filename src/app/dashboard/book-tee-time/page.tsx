@@ -484,7 +484,7 @@ export default function BookTeeTime() {
             starttime: slot.time,
             location: data.location,
             bay: slot.bay,
-            servicename: data.service, // Added service name
+            servicename: data.service,
             guests: (data.guests || []) as { name: string; email: string }[],
             guestPassUsage: {
               free: Math.min(
@@ -504,7 +504,7 @@ export default function BookTeeTime() {
           membership.id,
           selectedBenefitId || undefined
         );
-
+        console.log("Generated booking ID:", bookingId); // Debug log
         newBookingIds.push(bookingId);
         // Assign each guest to this booking ID
         if (data.guests?.length) {
