@@ -1019,14 +1019,8 @@ function HomeContent() {
                           </SelectContent>
                         </Select>
                         {field.value && (
-                          <div className="mt-2 p-3 bg-gray-100 rounded-md text-sm w-full">
-                            {[
-                              "name",
-                              "description",
-                              "price",
-                              "startdate",
-                              "promotional_period",
-                            ].map((key) => (
+                          <div className="mt-2 p-3 bg-gray-100 rounded-md text-sm w-full text-wrap">
+                            {["name", "description", "price"].map((key) => (
                               <p key={key}>
                                 <strong>
                                   {key.replace(/([A-Z])/g, " $1").trim()}:
