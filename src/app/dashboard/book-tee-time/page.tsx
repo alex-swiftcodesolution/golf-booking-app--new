@@ -935,7 +935,7 @@ export default function BookTeeTime() {
                 render={() => (
                   <FormItem>
                     <FormLabel className="text-sm sm:text-base text-black">
-                      Available Times
+                      Time Slots
                     </FormLabel>
                     <div className="mt-2 max-h-96 overflow-y-auto border rounded-md">
                       {isFetchingSlots ? (
