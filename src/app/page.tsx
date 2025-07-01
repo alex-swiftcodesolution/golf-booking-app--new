@@ -42,12 +42,11 @@ import {
   login,
   fetchWaiver,
   validateReferral,
-  type Club,
-  type Membership,
   logMembershipAgreement,
   fetchMembershipAgreements,
   resetMemberPassword,
 } from "@/api/gymmaster";
+import { Club, Membership } from "@/lib/types";
 
 const signUpSchema = z
   .object({

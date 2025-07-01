@@ -29,15 +29,14 @@ import {
   kioskCheckin,
   fetchMemberMemberships,
   fetchDoors,
-  Door,
   getClubCoordinates,
   getUserLocation,
   calculateDistance,
   watchUserLocation,
   stopWatchingLocation,
   locationDetail,
-  // getCachedLocation,
 } from "@/api/gymmaster";
+import { Door } from "@/lib/types";
 
 const openDoorSchema = z.object({
   door: z.string().min(1, "Please select an entry point"),

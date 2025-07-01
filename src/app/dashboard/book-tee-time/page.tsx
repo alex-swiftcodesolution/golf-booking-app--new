@@ -5,7 +5,6 @@ import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-// import { v4 as uuidv4 } from "uuid";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -37,23 +36,27 @@ import {
 import { motion } from "framer-motion";
 import { useBookings } from "@/context/BookingContext";
 import {
-  Club,
-  Resource,
-  Session,
-  Service,
   fetchClubs,
   fetchResourcesAndSessions,
   fetchServices,
   fetchMemberMemberships,
-  MemberMembership,
   fetchGuestData,
   updateGuestData,
   fetchMemberDetails,
   updateMemberProfile,
 } from "@/api/gymmaster";
+import {
+  Club,
+  Resource,
+  Session,
+  Service,
+  MemberMembership,
+} from "@/lib/types";
 import { useRouter } from "next/navigation";
+import { generateReferralCode } from "@/lib/utils";
 
 const GYMMASTER_API_KEY = process.env.NEXT_PUBLIC_GYMMASTER_API_KEY;
+
 const APP_URL =
   process.env.NEXT_PUBLIC_APP_URL || "https://test-swiftcode.vercel.app/";
 
@@ -72,8 +75,6 @@ const teeTimeSchema = z.object({
   guests: z
     .array(
       z.object({
-        // name: z.string().min(1, "Guest name is required"),
-        // email: z.string().email("Please enter a valid email"),
         name: z.string().optional(),
         email: z.string().email("Please enter a valid email").optional(),
       })
@@ -126,29 +127,6 @@ export default function BookTeeTime() {
   const location = form.watch("location");
   const service = form.watch("service");
   const date = form.watch("date");
-
-  // Generate unique referral code
-  /*
-  const generateReferralCode = () => {
-    return `GUEST_${localStorage.getItem("memberId") || "123"}_${uuidv4().slice(
-      0,
-      6
-    )}`;
-  };
-  */
-
-  const generateReferralCode = () => {
-    const start = 102000;
-    const key = "referralCounter";
-
-    // Get the current counter or start at 102000
-    const current = parseInt(localStorage.getItem(key) || start.toString(), 10);
-
-    // Save the next value back to localStorage
-    localStorage.setItem(key, (current + 1).toString());
-
-    return current.toString();
-  };
 
   // Send booking confirmation email to member
   const sendBookingConfirmationEmail = async (
@@ -348,31 +326,6 @@ export default function BookTeeTime() {
     );
   };
 
-  /*
-  const checkTimeSlotConflict = (time: string, bay: string) => {
-    const { hour: startHour, minute: startMinute } = parseTimeSlot(time);
-    const startMinutes = startHour * 60 + startMinute;
-    const slotDuration = getSlotDuration();
-    const slotMinutes = startMinutes + slotDuration;
-    const slotHour = Math.floor(slotMinutes / 60);
-    const slotMinute = slotMinutes % 60;
-    const period = slotHour >= 12 ? "PM" : "AM";
-    const displayHour =
-      slotHour > 12 ? slotHour - 12 : slotHour === 0 ? 12 : slotHour;
-    const slotTime = `${displayHour}:${
-      slotMinute === 0 ? "00" : "30"
-    } ${period}`;
-
-    return bookings.some(
-      (booking) =>
-        booking.date === date &&
-        booking.location === location &&
-        booking.bay === bay &&
-        (booking.time === time || booking.time === slotTime)
-    );
-  };
-  */
-
   const handleTimeSelect = (time: string, bay: string) => {
     if (!location || !service || !date) {
       toast.error("Select location, service, and date first");
@@ -383,11 +336,6 @@ export default function BookTeeTime() {
       return;
     }
 
-    // if (checkTimeSlotConflict(time, bay)) {
-    //   toast.error("Time slot conflict");
-    //   return;
-    // }
-
     const slotIndex = selectedSlots.findIndex(
       (slot) => slot.time === time && slot.bay === bay
     );
@@ -397,12 +345,6 @@ export default function BookTeeTime() {
         : [...selectedSlots, { time, bay }];
     setSelectedSlots(updatedSlots);
     form.setValue("timeSlots", updatedSlots);
-    // toast.info(slotIndex >= 0 ? "Time slot deselected" : "Time slot chosen", {
-    //   description:
-    //     slotIndex >= 0
-    //       ? `Removed ${time} at ${bay}.`
-    //       : `Added ${time} at ${bay}.`,
-    // });
   };
 
   const handleGuestCountChange = (count: number) => {

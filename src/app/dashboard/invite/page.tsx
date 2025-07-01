@@ -1,12 +1,8 @@
 "use client";
-import {
-  useState,
-  // useEffect
-} from "react";
+import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
-// import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -21,7 +17,7 @@ import { toast } from "sonner";
 import { Loader2, Copy } from "lucide-react";
 import { motion } from "framer-motion";
 import { storeReferralCode, updateGuestData } from "@/api/gymmaster";
-// import { v4 as uuidv4 } from "uuid";
+import { generateReferralCode } from "@/lib/utils";
 
 const inviteSchema = z.object({
   name: z.string().min(1, "Name is required"),
@@ -31,55 +27,16 @@ const inviteSchema = z.object({
 export default function Invite() {
   const [isLoading, setIsLoading] = useState(false);
   const [referralCode, setReferralCode] = useState<string | null>(null);
-  // const [isAuthenticated, setIsAuthenticated] = useState(false);
-  // const router = useRouter();
 
   const form = useForm<z.infer<typeof inviteSchema>>({
     resolver: zodResolver(inviteSchema),
     defaultValues: { name: "", email: "" },
   });
 
-  // Check authentication status
-  // useEffect(() => {
-  //   const token = localStorage.getItem("authToken");
-  //   const memberId = localStorage.getItem("memberId");
-  //   const tokenExpires = localStorage.getItem("tokenExpires");
-  //   const isValid =
-  //     token && memberId && tokenExpires && Number(tokenExpires) > Date.now();
-  //   setIsAuthenticated(isValid);
-  //   if (!isValid) {
-  //     toast.error("Please log in to send invites");
-  //     router.push("/");
-  //   }
-  // }, [router]);
-
   const onSubmit = async (data: z.infer<typeof inviteSchema>) => {
-    // if (!isAuthenticated) {
-    //   toast.error("Please log in to send invites");
-    //   router.push("/");
-    //   return;
-    // }
-
     setIsLoading(true);
     try {
-      // Generate unique referral code
-      // const newReferralCode = `REF-${uuidv4().slice(0, 8).toUpperCase()}`;
-      // setReferralCode(newReferralCode);
-
-      const getNextReferralCode = () => {
-        const start = 102000;
-        const key = "referralCounter";
-
-        const current = parseInt(
-          localStorage.getItem(key) || start.toString(),
-          10
-        );
-        localStorage.setItem(key, (current + 1).toString());
-
-        return `${current}`;
-      };
-
-      const newReferralCode = getNextReferralCode();
+      const newReferralCode = generateReferralCode();
       setReferralCode(newReferralCode);
 
       // Store referral code
@@ -140,10 +97,6 @@ export default function Invite() {
         toast.error("Failed to copy referral code");
       });
   };
-
-  // if (!isAuthenticated) {
-  //   return null; // Redirect handled in useEffect
-  // }
 
   return (
     <div className="space-y-4">

@@ -75,7 +75,6 @@ export default function MyTeeTimes() {
 
       const { guestBookingIds, guests } = guestData;
 
-      // Build guest map with explicit string key
       const guestMap: Record<
         string,
         { name: string; email: string; date?: string }[]
@@ -194,7 +193,6 @@ export default function MyTeeTimes() {
     fetchBookings();
   }, [fetchBookings]);
 
-  /*
   const handleDelete = async (id: number) => {
     setIsLoading(true);
     try {
@@ -204,72 +202,6 @@ export default function MyTeeTimes() {
       const token = localStorage.getItem("authToken");
       if (!token) throw new Error("Not authenticated");
 
-      await axios.post(
-        "/api/gymmaster/v1/member/cancelbooking",
-        new URLSearchParams({
-          api_key: GYMMASTER_API_KEY || "",
-          token,
-          bookingid: id.toString(),
-          waitlist: "0",
-        }),
-        {
-          headers: {
-            "Content-Type": "application/x-www-form-urlencoded",
-          },
-        }
-      );
-
-      const guestData = await fetchGuestData(token);
-      const updatedGuestBookingIds = guestData.guestBookingIds.filter(
-        (bookingId: number) => bookingId !== id
-      );
-      const updatedGuestPassesUsed = Math.max(
-        guestData.guestPassesUsed - (booking.guests.length || 0),
-        0
-      );
-      const guestIndices = guestData.guestBookingIds
-        .map((bookingId: number, index: number) =>
-          bookingId === id ? index : -1
-        )
-        .filter((index: number) => index !== -1);
-      const updatedGuests = guestData.guests.filter(
-        (_: { name: string; email: string }, index: number) =>
-          !guestIndices.includes(index)
-      );
-      await updateGuestData(
-        token,
-        updatedGuestPassesUsed,
-        guestData.referralCodes,
-        updatedGuestBookingIds,
-        updatedGuests
-      );
-
-      deleteBooking(id);
-      toast.success("Tee time canceled", {
-        description: `Your tee time on ${booking.date} at ${booking.time} has been canceled.`,
-      });
-    } catch (error) {
-      console.error("Delete Booking Error:", error);
-      toast.error("Failed to cancel tee time", {
-        description: "Please try again later.",
-      });
-    } finally {
-      setIsLoading(false);
-      setDeleteBookingId(null);
-    }
-  };
-  */
-
-  const handleDelete = async (id: number) => {
-    setIsLoading(true);
-    try {
-      const booking = bookings.find((b) => b.id === id);
-      if (!booking) throw new Error("Booking not found");
-
-      const token = localStorage.getItem("authToken");
-      if (!token) throw new Error("Not authenticated");
-
-      // Cancel booking
       const response = await axios.post(
         "/api/gymmaster/v1/member/cancelbooking",
         new URLSearchParams({
@@ -285,12 +217,10 @@ export default function MyTeeTimes() {
         }
       );
 
-      // Check response for success
       if (response.data.error) {
         throw new Error(response.data.error);
       }
 
-      // Update guest data
       try {
         const guestData = await fetchGuestData(token);
         const updatedGuestBookingIds = guestData.guestBookingIds.filter(
@@ -321,16 +251,13 @@ export default function MyTeeTimes() {
           "Guest data update failed, but booking was cancelled:",
           guestError
         );
-        // Proceed with UI update even if guest data fails
       }
 
-      // Update UI
       deleteBooking(id, token);
       toast.success("Tee time canceled", {
         description: `Your tee time on ${booking.date} at ${booking.time} has been canceled.`,
       });
 
-      // Optional: Verify cancellation due to GymMaster caching
       setTimeout(async () => {
         try {
           const updatedBookings = await axios.get(
@@ -356,7 +283,7 @@ export default function MyTeeTimes() {
         } catch (verifyError) {
           console.warn("Failed to verify cancellation:", verifyError);
         }
-      }, 5000); // Wait 5 seconds to account for cache
+      }, 5000);
     } catch (error) {
       console.error("Delete Booking Error:", error);
       toast.error("Failed to cancel tee time", {
