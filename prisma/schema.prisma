@@ -36,7 +36,7 @@ model Member {
   dob            DateTime?
   phonecell      String?
   phonehome      String?
-  gender         String?  // M, F, O
+  gender         String?  
   addressstreet  String?
   addresssuburb  String?
   addresscity    String?
