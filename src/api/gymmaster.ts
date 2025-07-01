@@ -1,4 +1,5 @@
 import axios from "axios";
+import { Prisma } from "@prisma/client";
 import { getConfig, postConfig } from "@/lib/utils";
 import {
   Club,
@@ -16,6 +17,7 @@ import {
   SignatureResponse,
   SignupResponse,
 } from "@/lib/types";
+import prisma from "@/lib/prisma";
 
 // Server-side env vars
 const GYMMASTER_API_KEY = process.env.NEXT_PUBLIC_GYMMASTER_API_KEY;
@@ -502,6 +504,7 @@ export const fetchResourcesAndSessions = async (
   }
 };
 
+/*
 export const fetchMemberBookings = async (
   token: string
 ): Promise<MemberServiceBooking[]> => {
@@ -517,7 +520,9 @@ export const fetchMemberBookings = async (
     throw error;
   }
 };
+*/
 
+/*
 export const storeReferralCode = async (
   code: string,
   memberId: string,
@@ -552,6 +557,7 @@ export const storeReferralCode = async (
     throw new Error(`Failed to store referral code: ${String(error)}`);
   }
 };
+*/
 
 export const validateReferral = async (
   referralCode: string | undefined,
@@ -575,6 +581,7 @@ export const validateReferral = async (
   return hasCode;
 };
 
+/*
 export const fetchGuestData = async (
   token: string
 ): Promise<{
@@ -646,7 +653,9 @@ export const fetchGuestData = async (
     };
   }
 };
+*/
 
+/*
 export const updateGuestData = async (
   token: string,
   guestPassesUsed: number,
@@ -726,6 +735,7 @@ export const updateGuestData = async (
     throw new Error("Failed to update guest data");
   }
 };
+*/
 
 // Enhanced getBrowserGeolocation with retry logic
 export const getBrowserGeolocation = (): Promise<{
@@ -1045,3 +1055,478 @@ export const resetMemberPassword = async (email: string): Promise<string> => {
     throw error;
   }
 };
+
+// MONGO DB
+export const fetchGuestData = async (
+  token: string
+): Promise<{
+  guestPassesUsed: number;
+  referralCodes: string[];
+  guestBookingIds: number[];
+  guests: { name: string; email: string; date?: string }[];
+}> => {
+  try {
+    // Fetch from GymMaster API (single source of truth)
+    const profile = await fetchMemberDetails(token);
+    let guestPassesUsed = 0;
+    let referralCodes: string[] = [];
+    let guestBookingIds: number[] = [];
+    let guests: { name: string; email: string; date?: string }[] = [];
+
+    try {
+      guestPassesUsed = profile.customtext3
+        ? Number(JSON.parse(profile.customtext3))
+        : 0;
+    } catch (e) {
+      console.error("Error parsing customtext3:", e);
+    }
+    try {
+      referralCodes = profile.customtext4
+        ? JSON.parse(profile.customtext4)
+        : [];
+    } catch (e) {
+      console.error("Error parsing customtext4:", e);
+      referralCodes = profile.customtext4 ? [profile.customtext4] : [];
+    }
+    try {
+      guestBookingIds = profile.customtext5
+        ? JSON.parse(profile.customtext5).filter(
+            (id: number) => Number.isInteger(id) && id > 0
+          )
+        : [];
+    } catch (e) {
+      console.error("Error parsing customtext5:", e);
+    }
+    try {
+      guests = profile.customtext6 ? JSON.parse(profile.customtext6) : [];
+    } catch (e) {
+      console.error("Error parsing customtext6:", e);
+    }
+
+    // Sync to Prisma for local caching
+    const member = await prisma.member.upsert({
+      where: { id: profile.id.toString() },
+      update: {
+        email: profile.email || "",
+        firstname: profile.firstname,
+        surname: profile.surname,
+        dob: profile.dob ? new Date(profile.dob) : undefined,
+        phonecell: profile.phonecell,
+        phonehome: profile.phonehome,
+        gender: profile.gender,
+        addressstreet: profile.addressstreet,
+        addresssuburb: profile.addresssuburb,
+        addresscity: profile.addresscity,
+        addresscountry: profile.addresscountry,
+        addressareacode: profile.addressareacode,
+        guestPassesUsed,
+        referralCodes,
+        guestBookingIds,
+        totalvisits: profile.totalvisits,
+        totalpts: profile.totalpts,
+        totalclasses: profile.totalclasses,
+        linkedMembers: {
+          deleteMany: {},
+          create:
+            profile.linked_members?.map((lm) => ({
+              id: lm.id.toString(),
+              firstname: lm.firstname,
+              surname: lm.surname,
+              relationship: lm.relationship,
+            })) || [],
+        },
+        guests: {
+          deleteMany: {},
+          create: guests.map(
+            (g) =>
+              ({
+                name: g.name,
+                email: g.email,
+                date: g.date ? new Date(g.date) : undefined,
+              }) as Prisma.GuestUncheckedCreateWithoutMemberInput
+          ), // Explicit type
+        },
+      },
+      create: {
+        id: profile.id.toString(),
+        email: profile.email || "",
+        firstname: profile.firstname,
+        surname: profile.surname,
+        dob: profile.dob ? new Date(profile.dob) : undefined,
+        phonecell: profile.phonecell,
+        phonehome: profile.phonehome,
+        gender: profile.gender,
+        addressstreet: profile.addressstreet,
+        addresssuburb: profile.addresssuburb,
+        addresscity: profile.addresscity,
+        addresscountry: profile.addresscountry,
+        addressareacode: profile.addressareacode,
+        fingerprint: await fetchSessionFingerprint(token),
+        guestPassesUsed,
+        referralCodes,
+        guestBookingIds,
+        totalvisits: profile.totalvisits,
+        totalpts: profile.totalpts,
+        totalclasses: profile.totalclasses,
+        linkedMembers: {
+          create:
+            profile.linked_members?.map((lm) => ({
+              id: lm.id.toString(),
+              firstname: lm.firstname,
+              surname: lm.surname,
+              relationship: lm.relationship,
+            })) || [],
+        },
+        guests: {
+          create: guests.map(
+            (g) =>
+              ({
+                name: g.name,
+                email: g.email,
+                date: g.date ? new Date(g.date) : undefined,
+              }) as Prisma.GuestUncheckedCreateWithoutMemberInput
+          ), // Explicit type
+        },
+      },
+      include: { guests: true, linkedMembers: true }, // Include relations
+    });
+
+    return {
+      guestPassesUsed: member.guestPassesUsed,
+      referralCodes: member.referralCodes,
+      guestBookingIds: member.guestBookingIds,
+      guests: member.guests.map((g) => ({
+        name: g.name,
+        email: g.email,
+        date: g.date?.toISOString(),
+      })),
+    };
+  } catch (error) {
+    console.error("Fetch guest data error:", error);
+    return {
+      guestPassesUsed: 0,
+      referralCodes: [],
+      guestBookingIds: [],
+      guests: [],
+    };
+  }
+};
+
+export const updateGuestData = async (
+  token: string,
+  guestPassesUsed: number,
+  referralCodes: string[],
+  guestBookingIds: number[],
+  guests: { name: string; email: string; date?: string }[]
+): Promise<void> => {
+  try {
+    // Fetch existing data from GymMaster
+    const existingData = await fetchGuestData(token);
+
+    const updatedGuestPassesUsed =
+      guestPassesUsed ?? existingData.guestPassesUsed;
+    const updatedReferralCodes =
+      referralCodes.length > 0
+        ? [...new Set([...existingData.referralCodes, ...referralCodes])]
+        : existingData.referralCodes;
+    const validGuestBookingIds = guestBookingIds.filter(
+      (id) => Number.isInteger(id) && id > 0
+    );
+    const updatedBookingIds =
+      validGuestBookingIds.length > 0
+        ? [
+            ...new Set([
+              ...existingData.guestBookingIds,
+              ...validGuestBookingIds,
+            ]),
+          ]
+        : existingData.guestBookingIds;
+    const updatedGuests =
+      guests.length > 0
+        ? [
+            ...existingData.guests,
+            ...guests.filter(
+              (newGuest) =>
+                !existingData.guests.some(
+                  (g) =>
+                    g.email === newGuest.email &&
+                    g.name === newGuest.name &&
+                    g.date === newGuest.date
+                )
+            ),
+          ]
+        : existingData.guests;
+
+    // Update GymMaster (single source of truth)
+    const formData = new FormData();
+    formData.append("api_key", GYMMASTER_API_KEY || "");
+    formData.append("token", token);
+    formData.append("customtext3", JSON.stringify(updatedGuestPassesUsed));
+    formData.append("customtext4", JSON.stringify(updatedReferralCodes));
+    formData.append("customtext5", JSON.stringify(updatedBookingIds));
+    formData.append("customtext6", JSON.stringify(updatedGuests));
+    await axios.post("/api/gymmaster/v1/member/profile", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    });
+
+    // Sync to Prisma
+    const member = await prisma.member.findFirst({
+      where: { fingerprint: await fetchSessionFingerprint(token) },
+      include: { guests: true }, // Include guests
+    });
+    if (!member) throw new Error("Member not found");
+
+    await prisma.member.update({
+      where: { id: member.id },
+      data: {
+        guestPassesUsed: updatedGuestPassesUsed,
+        referralCodes: updatedReferralCodes,
+        guestBookingIds: updatedBookingIds,
+        guests: {
+          deleteMany: {},
+          create: updatedGuests.map(
+            (g) =>
+              ({
+                name: g.name,
+                email: g.email,
+                date: g.date ? new Date(g.date) : undefined,
+              }) as Prisma.GuestUncheckedCreateWithoutMemberInput
+          ), // Explicit type
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Update guest data error:", error);
+    throw new Error("Failed to update guest data");
+  }
+};
+
+export const storeReferralCode = async (
+  code: string,
+  memberId: string,
+  token: string
+): Promise<void> => {
+  try {
+    if (!code || !memberId || !token) {
+      throw new Error("Missing required parameters: code, memberId, or token");
+    }
+
+    // Fetch existing codes from GymMaster
+    const profile = await fetchMemberDetails(token);
+    let existingCodes: string[] = [];
+    try {
+      if (profile.customtext4) {
+        existingCodes = Array.isArray(JSON.parse(profile.customtext4))
+          ? JSON.parse(profile.customtext4)
+          : [profile.customtext4];
+      }
+    } catch (e) {
+      console.error("Error parsing customtext4:", e);
+      existingCodes = profile.customtext4 ? [profile.customtext4] : [];
+    }
+
+    const updatedCodes = Array.from(new Set([...existingCodes, code]));
+
+    // Update GymMaster
+    await updateMemberProfile(token, {
+      id: parseInt(memberId),
+      customtext4: JSON.stringify(updatedCodes),
+    });
+
+    // Sync to Prisma
+    await prisma.member.update({
+      where: { id: memberId },
+      data: { referralCodes: updatedCodes },
+    });
+  } catch (error) {
+    console.error("Store referral code error:", error);
+    throw new Error(`Failed to store referral code: ${String(error)}`);
+  }
+};
+
+export const fetchMemberBookings = async (
+  token: string
+): Promise<MemberServiceBooking[]> => {
+  try {
+    // Fetch from GymMaster (single source of truth)
+    const gymMasterBookings = await axios.get<{
+      servicebookings: MemberServiceBooking[];
+      error: string | null;
+    }>("/api/gymmaster/v2/member/bookings", getConfig({ token }));
+    if (gymMasterBookings.data.error)
+      throw new Error(gymMasterBookings.data.error);
+
+    const member = await prisma.member.findFirst({
+      where: { fingerprint: await fetchSessionFingerprint(token) },
+    });
+    if (!member) throw new Error("Member not found");
+
+    // Sync to Prisma
+    await prisma.booking.deleteMany({ where: { memberId: member.id } });
+    await prisma.booking.createMany({
+      data: gymMasterBookings.data.servicebookings.map((b) => ({
+        id: b.servicebookingid.toString(),
+        memberId: member.id,
+        teeTime: new Date(b.day + "T" + b.starttime),
+        endTime: b.endtime ? new Date(b.day + "T" + b.endtime) : undefined,
+        course: b.name,
+        companyId: b.companyid,
+        serviceId: b.serviceid,
+        resourceId: b.resourceid,
+        status: b.status,
+        room: b.room,
+        equipment: b.equipment,
+      })),
+    });
+
+    // Return from Prisma for consistency
+    const bookings = await prisma.booking.findMany({
+      where: { memberId: member.id },
+    });
+    return bookings.map((b) => ({
+      servicebookingid: parseInt(b.id),
+      serviceid: b.serviceId,
+      resourceid: b.resourceId,
+      companyid: b.companyId,
+      day: b.teeTime.toISOString().split("T")[0], // Added day
+      starttime: b.teeTime.toISOString().slice(11, 19),
+      endtime: b.endTime?.toISOString().slice(11, 19) || "",
+      start_str: b.teeTime.toLocaleTimeString("en-US", {
+        hour: "numeric",
+        minute: "numeric",
+        hour12: true,
+      }),
+      end_str: b.endTime
+        ? b.endTime.toLocaleTimeString("en-US", {
+            hour: "numeric",
+            minute: "numeric",
+            hour12: true,
+          })
+        : "",
+      name: b.course,
+      type: b.status === "confirmed" ? "service" : b.status,
+      status: b.status,
+      room: b.room,
+      equipment: b.equipment,
+    }));
+  } catch (error) {
+    console.error("Fetch member bookings error:", error);
+    throw error;
+  }
+};
+
+export const createBooking = async (
+  token: string,
+  data: {
+    memberId: string;
+    teeTime: Date;
+    course: string;
+    companyId: string;
+    serviceId: number;
+    resourceId?: number;
+    benefitId?: number;
+    membershipId?: number;
+    bookingEnd?: Date;
+  }
+): Promise<MemberServiceBooking> => {
+  try {
+    // Format dates for GymMaster API
+    const day = data.teeTime.toISOString().split("T")[0]; // YYYY-MM-DD
+    const bookingStart = data.teeTime.toISOString().slice(11, 19); // HH:MM:SS
+    const bookingEnd = data.bookingEnd
+      ? data.bookingEnd.toISOString().slice(11, 19)
+      : new Date(data.teeTime.getTime() + 60 * 60 * 1000)
+          .toISOString()
+          .slice(11, 19); // Default 1-hour duration
+
+    // Create booking in GymMaster (single source of truth)
+    const res = await axios.post<{
+      result: string;
+      error?: string;
+    }>(
+      "/portal/api/v1/booking/servicebookings",
+      {
+        api_key: GYMMASTER_API_KEY,
+        token,
+        resourceid: data.resourceId,
+        serviceid: data.serviceId,
+        benefitid: data.benefitId,
+        membershipid: data.membershipId,
+        day,
+        bookingstart: bookingStart,
+        bookingend: bookingEnd,
+      },
+      postConfig
+    );
+    if (res.data.error) throw new Error(res.data.error);
+
+    // Fetch the created booking from GymMaster to get its ID
+    const bookings = await axios.get<{
+      servicebookings: MemberServiceBooking[];
+      error?: string;
+    }>("/portal/api/v2/member/bookings", getConfig({ token }));
+    if (bookings.data.error) throw new Error(bookings.data.error);
+
+    const newBooking = bookings.data.servicebookings.find(
+      (b) =>
+        b.starttime === bookingStart &&
+        b.day === day &&
+        b.serviceid === data.serviceId
+    );
+    if (!newBooking) throw new Error("Failed to retrieve new booking details");
+
+    // Sync to Prisma
+    const booking = await prisma.booking.create({
+      data: {
+        id: newBooking.servicebookingid.toString(),
+        memberId: data.memberId,
+        teeTime: data.teeTime,
+        endTime:
+          data.bookingEnd || new Date(data.teeTime.getTime() + 60 * 60 * 1000),
+        course: data.course,
+        companyId: parseInt(data.companyId),
+        serviceId: data.serviceId,
+        resourceId: data.resourceId,
+        benefitId: data.benefitId,
+        membershipId: data.membershipId,
+        status: newBooking.status || "confirmed",
+        room: newBooking.room,
+        equipment: newBooking.equipment,
+      },
+    });
+
+    return {
+      servicebookingid: parseInt(booking.id),
+      serviceid: booking.serviceId,
+      resourceid: booking.resourceId,
+      companyid: booking.companyId,
+      day: booking.teeTime.toISOString().split("T")[0],
+      starttime: bookingStart,
+      endtime: bookingEnd,
+      start_str: new Date(booking.teeTime).toLocaleTimeString("en-US", {
+        hour: "numeric",
+        minute: "numeric",
+        hour12: true,
+      }),
+      end_str: new Date(
+        booking.teeTime.getTime() +
+          (data.bookingEnd
+            ? data.bookingEnd.getTime() - data.teeTime.getTime()
+            : 60 * 60 * 1000)
+      ).toLocaleTimeString("en-US", {
+        hour: "numeric",
+        minute: "numeric",
+        hour12: true,
+      }),
+      name: newBooking.name || data.course,
+      type: newBooking.type || "service",
+      status: booking.status,
+      room: newBooking.room,
+      equipment: newBooking.equipment,
+    };
+  } catch (error) {
+    console.error("Create booking error:", error);
+    throw new Error("Failed to create booking");
+  }
+};
+// MONGO DB

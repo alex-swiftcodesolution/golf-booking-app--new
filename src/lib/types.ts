@@ -2,14 +2,15 @@ export interface Club {
   id: number;
   name: string;
   billingprovider: string;
+  companyids?: number[]; // Added from GymMaster schema
 }
 
 export interface Door {
   id: number;
   name: string;
   companyid: number;
-  siteid: number;
-  status: number;
+  siteid?: number; // Keep if used in Gatekeeper integration
+  status?: number; // Keep if used in Gatekeeper integration
 }
 
 export interface Membership {
@@ -17,8 +18,32 @@ export interface Membership {
   name: string;
   description: string;
   price: string;
+  price_tax: string;
+  signupfee: string;
+  signupfee_tax: string;
+  signupfee_label: string;
+  onlinecash: boolean;
+  programme_ref: string;
+  programmegroupid: string;
   startdate: string;
+  divisionid: number;
+  divisionname: string;
+  bgcolour: string;
+  hide_signupfee: boolean;
+  maintenance_fee: string | null;
+  maintenance_interval: string | null;
   promotional_period: string | null;
+  promotional_price: string | null;
+  promotion_period_description: string | null;
+  freeuntil: string | null;
+  freeuntil_available: boolean;
+  promotion_freeuntil_description: string | null;
+  show_pricedescription: boolean;
+  account_credit: string | null;
+  zero_signupfee: boolean;
+  discountdescription: string | null;
+  sortorder: number;
+  companyids: number[];
 }
 
 export interface MemberMembership {
@@ -29,11 +54,9 @@ export interface MemberMembership {
   enddate: string;
   visitsused: number;
   visitlimit: number;
-  companyid?: number;
 }
 
 export interface SignupResponse {
-  result: string;
   token: string;
   memberid: string;
   membershipid: string;
@@ -42,7 +65,7 @@ export interface SignupResponse {
 }
 
 export interface LoginResponse {
-  result: { token: string; memberid: number; expires: number };
+  result: { token: string; memberid: string | number; expires: number };
   error?: string;
 }
 
@@ -53,12 +76,14 @@ export interface SignatureResponse {
 
 export interface MemberChargeResponse {
   result: {
-    postingid: number;
-    occurred: string;
-    note: string;
-    total: string;
-  }[];
-  owingamount: string;
+    owingamount: string;
+    charges: {
+      postingid: number;
+      occurred: string;
+      note: string;
+      total: string;
+    }[];
+  };
   error?: string;
 }
 
@@ -73,13 +98,20 @@ export interface KioskCheckinResponse {
   error?: string;
 }
 
+export interface LinkedMember {
+  id: number;
+  firstname: string;
+  surname: string;
+  relationship: string;
+}
+
 export interface Member {
-  memberid: string;
+  id: number; // Changed to number to match GymMaster
   firstname: string;
   surname: string;
   email?: string;
   dob?: string;
-  gender?: string;
+  gender?: "M" | "F" | "O";
   phonecell?: string;
   phonehome?: string;
   addressstreet?: string;
@@ -96,9 +128,9 @@ export interface Member {
   totalvisits?: number;
   totalpts?: number;
   totalclasses?: number;
-  linked_members?: object[];
-  "Referral Code"?: string;
-  "Referral Code Generated"?: string;
+  linked_members?: LinkedMember[];
+  ReferralCode?: string; // Custom field
+  ReferralCodeGenerated?: string; // Custom field
   customtext1?: string;
   customtext2?: string;
   customtext3?: string;
@@ -112,13 +144,21 @@ export interface Resource {
   id: number;
   name: string;
   companyid: number;
+  companyname: string;
+  resourceimage: string;
 }
 
 export interface Session {
   day: string;
-  rid: number;
+  dayofweek: string;
   bookingstart: string;
   bookingend: string;
+  start_str: string;
+  end_str: string;
+  price: string;
+  rid: number;
+  btname: string;
+  resourceimage: string;
 }
 
 export interface Service {
@@ -126,14 +166,23 @@ export interface Service {
   servicename: string;
   membershipid?: number;
   benefitid?: number;
+  status: string;
+  price: string;
 }
 
 export interface MemberServiceBooking {
-  id: number;
+  servicebookingid: number; // Changed to match createBooking
   day: string;
   starttime: string;
   start_str: string;
   endtime: string;
+  end_str: string;
   name: string;
   type: string;
+  room?: string;
+  equipment?: string;
+  serviceid: number;
+  resourceid?: number;
+  companyid: number;
+  status: string;
 }

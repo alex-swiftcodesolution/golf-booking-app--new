@@ -6,3 +6,104 @@ datasource db {
 generator client {
   provider = "prisma-client-js"
 }
+
+// Booking model for tee times
+model Booking {
+  id             String   @id @map("_id") @db.ObjectId
+  memberId       String   @db.ObjectId
+  teeTime        DateTime
+  endTime        DateTime?
+  course         String
+  companyId      Int
+  serviceId      Int
+  resourceId     Int?
+  benefitId      Int?
+  membershipId   Int?
+  status         String   @default("confirmed")
+  room           String?  // Added for GymMaster room
+  equipment      String?  // Added for GymMaster equipment
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  member         Member?  @relation(fields: [memberId], references: [id])
+}
+
+// Member model for user profiles
+model Member {
+  id             String   @id @map("_id") @db.ObjectId
+  email          String   @unique
+  firstname      String
+  surname        String
+  dob            DateTime?
+  phonecell      String?
+  phonehome      String?
+  gender         String?  // M, F, O
+  addressstreet  String?
+  addresssuburb  String?
+  addresscity    String?
+  addresscountry String?
+  addressareacode String?
+  fingerprint    String?  // Stores device fingerprint
+  referralCodes  String[] @default([]) // Replaces customtext4
+  guestPassesUsed Int     @default(0) // Replaces customtext3
+  guestBookingIds Int[]   @default([]) // Replaces customtext5
+  guests         Guest[] // Replaces customtext6
+  totalvisits    Int?     // Maps to GymMaster totalvisits
+  totalpts       Int?     // Maps to GymMaster totalpts
+  totalclasses   Int?     // Maps to GymMaster totalclasses
+  linkedMembers  LinkedMember[] // Maps to GymMaster linked_members
+  bookings       Booking[] @relation
+  memberships    MemberMembership[] @relation
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+// Guest model for guest data
+model Guest {
+  id             String   @id @map("_id") @db.ObjectId
+  memberId       String   @db.ObjectId // References Member
+  name           String
+  email          String
+  date           DateTime?
+  member         Member?  @relation(fields: [memberId], references: [id])
+  createdAt      DateTime @default(now())
+}
+
+// LinkedMember model for linked members
+model LinkedMember {
+  id             String   @id @map("_id") @db.ObjectId
+  memberId       String   @db.ObjectId // References Member
+  firstname      String
+  surname        String
+  relationship   String
+  member         Member?  @relation(fields: [memberId], references: [id])
+  createdAt      DateTime @default(now())
+}
+
+// Membership model for membership types
+model Membership {
+  id             String   @id @map("_id") @db.ObjectId
+  name           String
+  description    String?
+  price          String?  // Maps to GymMaster price
+  signupfee      String?  // Maps to GymMaster signupfee
+  companyId      Int      // Maps to GymMaster companyid
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  members        MemberMembership[] @relation
+}
+
+// MemberMembership model for member-membership relationships
+model MemberMembership {
+  id             String   @id @map("_id") @db.ObjectId
+  memberId       String   @db.ObjectId // References Member
+  membershipId   String   @db.ObjectId // References Membership
+  startDate      DateTime
+  endDate        DateTime? // Maps to GymMaster enddate
+  visitsUsed     Int?      // Maps to GymMaster visitsused
+  visitLimit     Int?      // Maps to GymMaster visitlimit
+  status         String   @default("active") // e.g., active, expired
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  member         Member?  @relation(fields: [memberId], references: [id])
+  membership     Membership? @relation(fields: [membershipId], references: [id])
+}
