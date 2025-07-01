@@ -58,7 +58,6 @@
     "@types/react-signature-canvas": "^1.0.7",
     "eslint": "^9",
     "eslint-config-next": "15.2.1",
-    "prisma": "^6.11.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
