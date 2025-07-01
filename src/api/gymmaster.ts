@@ -1,5 +1,6 @@
+"use server";
+
 import axios from "axios";
-import { Prisma } from "@prisma/client";
 import { getConfig, postConfig } from "@/lib/utils";
 import {
   Club,
@@ -17,13 +18,17 @@ import {
   SignatureResponse,
   SignupResponse,
 } from "@/lib/types";
-import prisma from "@/lib/prisma";
+import { connectToDatabase } from "@/lib/mongodb";
 
 // Server-side env vars
 const GYMMASTER_API_KEY = process.env.NEXT_PUBLIC_GYMMASTER_API_KEY;
 const GYMMASTER_STAFF_API_KEY = process.env.NEXT_PUBLIC_GYMMASTER_STAFF_API_KEY;
 const GATEKEEPER_USERNAME = process.env.NEXT_PUBLIC_GATEKEEPER_USERNAME;
 const GATEKEEPER_API_KEY = process.env.NEXT_PUBLIC_GATEKEEPER_API_KEY;
+
+// Initialize MongoDB collection
+const { db } = await connectToDatabase();
+const membersCollection = db.collection("members");
 
 // Static mapping of club coordinates
 const CLUB_COORDINATES: Record<
@@ -738,6 +743,7 @@ export const updateGuestData = async (
 */
 
 // Enhanced getBrowserGeolocation with retry logic
+/*
 export const getBrowserGeolocation = (): Promise<{
   latitude: number;
   longitude: number;
@@ -779,6 +785,58 @@ export const getBrowserGeolocation = (): Promise<{
       { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
     );
   });
+*/
+export const getBrowserGeolocation = async (): Promise<{
+  latitude: number;
+  longitude: number;
+}> => {
+  if (!navigator.geolocation) {
+    throw new Error("Geolocation is not supported by this browser");
+  }
+
+  const getPosition = (
+    options?: PositionOptions
+  ): Promise<GeolocationPosition> => {
+    return new Promise((resolve, reject) => {
+      navigator.geolocation.getCurrentPosition(resolve, reject, options);
+    });
+  };
+
+  try {
+    const position = await getPosition({
+      enableHighAccuracy: true,
+      timeout: 5000,
+      maximumAge: 0,
+    });
+    return {
+      latitude: position.coords.latitude,
+      longitude: position.coords.longitude,
+    };
+  } catch (error: any) {
+    if (error.code === error.PERMISSION_DENIED) {
+      throw new Error("Please enable location services to proceed.");
+    } else if (error.code === error.POSITION_UNAVAILABLE) {
+      throw new Error("Location information is unavailable.");
+    } else if (error.code === error.TIMEOUT) {
+      // Retry with reduced accuracy and longer timeout
+      try {
+        const retryPosition = await getPosition({
+          enableHighAccuracy: false,
+          timeout: 10000,
+          maximumAge: 0,
+        });
+        return {
+          latitude: retryPosition.coords.latitude,
+          longitude: retryPosition.coords.longitude,
+        };
+      } catch {
+        throw new Error("Failed to retrieve location after retry.");
+      }
+    } else {
+      throw new Error("An error occurred while fetching location.");
+    }
+  }
+};
 
 export const getIPGeolocation = async (): Promise<{
   latitude: number;
@@ -807,6 +865,7 @@ export const getIPGeolocation = async (): Promise<{
 };
 
 // Combined geolocation function with caching
+/*
 export const getCachedLocation = (): {
   latitude: number;
   longitude: number;
@@ -819,11 +878,41 @@ export const getCachedLocation = (): {
   if (age > 5 * 60 * 1000) return null; // Expire after 5 minutes
   return parsed;
 };
+*/
+export const getCachedLocation = async (): Promise<{
+  latitude: number;
+  longitude: number;
+  timestamp: number;
+} | null> => {
+  const cached = localStorage.getItem("userLocation");
+  if (!cached) return null;
 
+  try {
+    const parsed = JSON.parse(cached);
+    const age = Date.now() - parsed.timestamp;
+    if (age > 5 * 60 * 1000) return null; // Expire after 5 minutes
+
+    return parsed;
+  } catch {
+    return null; // In case of JSON parsing error
+  }
+};
+
+/*
 export const cacheLocation = (location: {
   latitude: number;
   longitude: number;
 }): void => {
+  localStorage.setItem(
+    "userLocation",
+    JSON.stringify({ ...location, timestamp: Date.now() })
+  );
+};
+*/
+export const cacheLocation = async (location: {
+  latitude: number;
+  longitude: number;
+}): Promise<void> => {
   localStorage.setItem(
     "userLocation",
     JSON.stringify({ ...location, timestamp: Date.now() })
@@ -852,6 +941,7 @@ export const getUserLocation = async (): Promise<{
 };
 
 // Real-time location watching
+/*
 export const watchUserLocation = (
   onUpdate: (location: { latitude: number; longitude: number }) => void
 ): number => {
@@ -871,12 +961,43 @@ export const watchUserLocation = (
     { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
   );
 };
+*/
+export const watchUserLocation = async (
+  onUpdate: (location: { latitude: number; longitude: number }) => void
+): Promise<number> => {
+  if (!navigator.geolocation) {
+    throw new Error("Geolocation is not supported by this browser");
+  }
 
+  const watchId = navigator.geolocation.watchPosition(
+    async (position) => {
+      const location = {
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude,
+      };
+      await cacheLocation(location); // Cache real-time updates with await for consistency
+      onUpdate(location);
+    },
+    (error) => {
+      console.error("Location watch error:", error);
+    },
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+  );
+
+  return watchId;
+};
+
+/*
 export const stopWatchingLocation = (watchId: number): void => {
+  navigator.geolocation.clearWatch(watchId);
+};
+*/
+export const stopWatchingLocation = async (watchId: number): Promise<void> => {
   navigator.geolocation.clearWatch(watchId);
 };
 
 // Haversine formula to calculate distance (in meters)
+/*
 export const calculateDistance = (
   lat1: number,
   lon1: number,
@@ -896,12 +1017,54 @@ export const calculateDistance = (
 
   return R * c; // Distance in meters
 };
+*/
+export const calculateDistance = async (
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number
+): Promise<number> => {
+  const R = 6371e3; // Earth's radius in meters
+  const φ1 = (lat1 * Math.PI) / 180;
+  const φ2 = (lat2 * Math.PI) / 180;
+  const Δφ = ((lat2 - lat1) * Math.PI) / 180;
+  const Δλ = ((lon2 - lon1) * Math.PI) / 180;
+
+  const a =
+    Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+    Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+  return R * c; // Distance in meters
+};
 
 // Export CLUB_COORDINATES for use in validation
+/*
 export const getClubCoordinates = (companyId: number) =>
   CLUB_COORDINATES[companyId];
+*/
+export const getClubCoordinates = async (
+  companyId: number
+): Promise<
+  | {
+      latitude: number;
+      longitude: number;
+    }
+  | undefined
+> => {
+  return CLUB_COORDINATES[companyId];
+};
 
+/*
 export const locationDetail = (companyId: number) => {
+  const cord = CLUB_COORDINATES[companyId];
+
+  console.log("Checking coordinates for companyId:", companyId);
+  console.log("Available club coordinates:", CLUB_COORDINATES);
+  console.log("Available club coordinates corddd:", cord);
+};
+*/
+export const locationDetail = async (companyId: number): Promise<void> => {
   const cord = CLUB_COORDINATES[companyId];
 
   console.log("Checking coordinates for companyId:", companyId);
@@ -1103,103 +1266,62 @@ export const fetchGuestData = async (
       console.error("Error parsing customtext6:", e);
     }
 
-    // Sync to Prisma for local caching
-    const member = await prisma.member.upsert({
-      where: { id: profile.id.toString() },
-      update: {
-        email: profile.email || "",
-        firstname: profile.firstname,
-        surname: profile.surname,
-        dob: profile.dob ? new Date(profile.dob) : undefined,
-        phonecell: profile.phonecell,
-        phonehome: profile.phonehome,
-        gender: profile.gender,
-        addressstreet: profile.addressstreet,
-        addresssuburb: profile.addresssuburb,
-        addresscity: profile.addresscity,
-        addresscountry: profile.addresscountry,
-        addressareacode: profile.addressareacode,
-        guestPassesUsed,
-        referralCodes,
-        guestBookingIds,
-        totalvisits: profile.totalvisits,
-        totalpts: profile.totalpts,
-        totalclasses: profile.totalclasses,
-        linkedMembers: {
-          deleteMany: {},
-          create:
-            profile.linked_members?.map((lm) => ({
-              id: lm.id.toString(),
-              firstname: lm.firstname,
-              surname: lm.surname,
-              relationship: lm.relationship,
-            })) || [],
-        },
-        guests: {
-          deleteMany: {},
-          create: guests.map(
-            (g) =>
-              ({
-                name: g.name,
-                email: g.email,
-                date: g.date ? new Date(g.date) : undefined,
-              }) as Prisma.GuestUncheckedCreateWithoutMemberInput
-          ), // Explicit type
-        },
-      },
-      create: {
-        id: profile.id.toString(),
-        email: profile.email || "",
-        firstname: profile.firstname,
-        surname: profile.surname,
-        dob: profile.dob ? new Date(profile.dob) : undefined,
-        phonecell: profile.phonecell,
-        phonehome: profile.phonehome,
-        gender: profile.gender,
-        addressstreet: profile.addressstreet,
-        addresssuburb: profile.addresssuburb,
-        addresscity: profile.addresscity,
-        addresscountry: profile.addresscountry,
-        addressareacode: profile.addressareacode,
-        fingerprint: await fetchSessionFingerprint(token),
-        guestPassesUsed,
-        referralCodes,
-        guestBookingIds,
-        totalvisits: profile.totalvisits,
-        totalpts: profile.totalpts,
-        totalclasses: profile.totalclasses,
-        linkedMembers: {
-          create:
-            profile.linked_members?.map((lm) => ({
-              id: lm.id.toString(),
-              firstname: lm.firstname,
-              surname: lm.surname,
-              relationship: lm.relationship,
-            })) || [],
-        },
-        guests: {
-          create: guests.map(
-            (g) =>
-              ({
-                name: g.name,
-                email: g.email,
-                date: g.date ? new Date(g.date) : undefined,
-              }) as Prisma.GuestUncheckedCreateWithoutMemberInput
-          ), // Explicit type
-        },
-      },
-      include: { guests: true, linkedMembers: true }, // Include relations
+    // Sync to MongoDB for local caching
+    const memberData = {
+      id: profile.id.toString(),
+      email: profile.email || "",
+      firstname: profile.firstname,
+      surname: profile.surname,
+      dob: profile.dob ? new Date(profile.dob) : undefined,
+      phonecell: profile.phonecell,
+      phonehome: profile.phonehome,
+      gender: profile.gender,
+      addressstreet: profile.addressstreet,
+      addresssuburb: profile.addresssuburb,
+      addresscity: profile.addresscity,
+      addresscountry: profile.addresscountry,
+      addressareacode: profile.addressareacode,
+      guestPassesUsed,
+      referralCodes,
+      guestBookingIds,
+      totalvisits: profile.totalvisits,
+      totalpts: profile.totalpts,
+      totalclasses: profile.totalclasses,
+      linkedMembers:
+        profile.linked_members?.map((lm) => ({
+          id: lm.id.toString(),
+          firstname: lm.firstname,
+          surname: lm.surname,
+          relationship: lm.relationship,
+        })) || [],
+      guests: guests.map((g) => ({
+        name: g.name,
+        email: g.email,
+        date: g.date ? new Date(g.date) : undefined,
+      })),
+      fingerprint: await fetchSessionFingerprint(token),
+    };
+
+    await membersCollection.updateOne(
+      { id: profile.id.toString() },
+      { $set: memberData },
+      { upsert: true }
+    );
+
+    const member = await membersCollection.findOne({
+      id: profile.id.toString(),
     });
 
     return {
-      guestPassesUsed: member.guestPassesUsed,
-      referralCodes: member.referralCodes,
-      guestBookingIds: member.guestBookingIds,
-      guests: member.guests.map((g) => ({
-        name: g.name,
-        email: g.email,
-        date: g.date?.toISOString(),
-      })),
+      guestPassesUsed: member?.guestPassesUsed || 0,
+      referralCodes: member?.referralCodes || [],
+      guestBookingIds: member?.guestBookingIds || [],
+      guests:
+        member?.guests?.map((g) => ({
+          name: g.name,
+          email: g.email,
+          date: g.date?.toISOString(),
+        })) || [],
     };
   } catch (error) {
     console.error("Fetch guest data error:", error);
@@ -1269,32 +1391,27 @@ export const updateGuestData = async (
       headers: { "Content-Type": "multipart/form-data" },
     });
 
-    // Sync to Prisma
-    const member = await prisma.member.findFirst({
-      where: { fingerprint: await fetchSessionFingerprint(token) },
-      include: { guests: true }, // Include guests
+    // Sync to MongoDB
+    const member = await membersCollection.findOne({
+      fingerprint: await fetchSessionFingerprint(token),
     });
     if (!member) throw new Error("Member not found");
 
-    await prisma.member.update({
-      where: { id: member.id },
-      data: {
-        guestPassesUsed: updatedGuestPassesUsed,
-        referralCodes: updatedReferralCodes,
-        guestBookingIds: updatedBookingIds,
-        guests: {
-          deleteMany: {},
-          create: updatedGuests.map(
-            (g) =>
-              ({
-                name: g.name,
-                email: g.email,
-                date: g.date ? new Date(g.date) : undefined,
-              }) as Prisma.GuestUncheckedCreateWithoutMemberInput
-          ), // Explicit type
+    await membersCollection.updateOne(
+      { id: member.id },
+      {
+        $set: {
+          guestPassesUsed: updatedGuestPassesUsed,
+          referralCodes: updatedReferralCodes,
+          guestBookingIds: updatedBookingIds,
+          guests: updatedGuests.map((guest) => ({
+            name: guest.name,
+            email: guest.email,
+            date: guest.date ? new Date(guest.date) : undefined,
+          })),
         },
-      },
-    });
+      }
+    );
   } catch (error) {
     console.error("Update guest data error:", error);
     throw new Error("Failed to update guest data");
@@ -1333,11 +1450,11 @@ export const storeReferralCode = async (
       customtext4: JSON.stringify(updatedCodes),
     });
 
-    // Sync to Prisma
-    await prisma.member.update({
-      where: { id: memberId },
-      data: { referralCodes: updatedCodes },
-    });
+    // Sync to MongoDB
+    await membersCollection.updateOne(
+      { id: memberId },
+      { $set: { referralCodes: updatedCodes } }
+    );
   } catch (error) {
     console.error("Store referral code error:", error);
     throw new Error(`Failed to store referral code: ${String(error)}`);
@@ -1356,39 +1473,40 @@ export const fetchMemberBookings = async (
     if (gymMasterBookings.data.error)
       throw new Error(gymMasterBookings.data.error);
 
-    const member = await prisma.member.findFirst({
-      where: { fingerprint: await fetchSessionFingerprint(token) },
-    });
+    const fingerprint = await fetchSessionFingerprint(token);
+    const member = await membersCollection.findOne({ fingerprint });
     if (!member) throw new Error("Member not found");
 
-    // Sync to Prisma
-    await prisma.booking.deleteMany({ where: { memberId: member.id } });
-    await prisma.booking.createMany({
-      data: gymMasterBookings.data.servicebookings.map((b) => ({
-        id: b.servicebookingid.toString(),
-        memberId: member.id,
-        teeTime: new Date(b.day + "T" + b.starttime),
-        endTime: b.endtime ? new Date(b.day + "T" + b.endtime) : undefined,
-        course: b.name,
-        companyId: b.companyid,
-        serviceId: b.serviceid,
-        resourceId: b.resourceid,
-        status: b.status,
-        room: b.room,
-        equipment: b.equipment,
-      })),
-    });
+    // Sync to MongoDB
+    await membersCollection.updateOne(
+      { id: member.id },
+      {
+        $set: {
+          bookings: gymMasterBookings.data.servicebookings.map((b) => ({
+            id: b.servicebookingid.toString(),
+            memberId: member.id,
+            teeTime: new Date(b.day + "T" + b.starttime),
+            endTime: b.endtime ? new Date(b.day + "T" + b.endtime) : undefined,
+            course: b.name,
+            companyId: b.companyid,
+            serviceId: b.serviceid,
+            resourceId: b.resourceid,
+            status: b.status,
+            room: b.room,
+            equipment: b.equipment,
+          })),
+        },
+      }
+    );
 
-    // Return from Prisma for consistency
-    const bookings = await prisma.booking.findMany({
-      where: { memberId: member.id },
-    });
-    return bookings.map((b) => ({
+    // Fetch from MongoDB for consistency
+    const updatedMember = await membersCollection.findOne({ id: member.id });
+    return updatedMember.bookings.map((b) => ({
       servicebookingid: parseInt(b.id),
       serviceid: b.serviceId,
       resourceid: b.resourceId,
       companyid: b.companyId,
-      day: b.teeTime.toISOString().split("T")[0], // Added day
+      day: b.teeTime.toISOString().split("T")[0],
       starttime: b.teeTime.toISOString().slice(11, 19),
       endtime: b.endTime?.toISOString().slice(11, 19) || "",
       start_str: b.teeTime.toLocaleTimeString("en-US", {
@@ -1475,41 +1593,44 @@ export const createBooking = async (
     );
     if (!newBooking) throw new Error("Failed to retrieve new booking details");
 
-    // Sync to Prisma
-    const booking = await prisma.booking.create({
-      data: {
-        id: newBooking.servicebookingid.toString(),
-        memberId: data.memberId,
-        teeTime: data.teeTime,
-        endTime:
-          data.bookingEnd || new Date(data.teeTime.getTime() + 60 * 60 * 1000),
-        course: data.course,
-        companyId: parseInt(data.companyId),
-        serviceId: data.serviceId,
-        resourceId: data.resourceId,
-        benefitId: data.benefitId,
-        membershipId: data.membershipId,
-        status: newBooking.status || "confirmed",
-        room: newBooking.room,
-        equipment: newBooking.equipment,
-      },
-    });
+    // Sync to MongoDB
+    const bookingData = {
+      id: newBooking.servicebookingid.toString(),
+      memberId: data.memberId,
+      teeTime: data.teeTime,
+      endTime:
+        data.bookingEnd || new Date(data.teeTime.getTime() + 60 * 60 * 1000),
+      course: data.course,
+      companyId: parseInt(data.companyId),
+      serviceId: data.serviceId,
+      resourceId: data.resourceId,
+      benefitId: data.benefitId,
+      membershipId: data.membershipId,
+      status: newBooking.status || "confirmed",
+      room: newBooking.room,
+      equipment: newBooking.equipment,
+    };
+
+    await membersCollection.updateOne(
+      { id: data.memberId },
+      { $push: { bookings: bookingData } }
+    );
 
     return {
-      servicebookingid: parseInt(booking.id),
-      serviceid: booking.serviceId,
-      resourceid: booking.resourceId,
-      companyid: booking.companyId,
-      day: booking.teeTime.toISOString().split("T")[0],
+      servicebookingid: parseInt(bookingData.id),
+      serviceid: bookingData.serviceId,
+      resourceid: bookingData.resourceId,
+      companyid: bookingData.companyId,
+      day: bookingData.teeTime.toISOString().split("T")[0],
       starttime: bookingStart,
       endtime: bookingEnd,
-      start_str: new Date(booking.teeTime).toLocaleTimeString("en-US", {
+      start_str: new Date(bookingData.teeTime).toLocaleTimeString("en-US", {
         hour: "numeric",
         minute: "numeric",
         hour12: true,
       }),
       end_str: new Date(
-        booking.teeTime.getTime() +
+        bookingData.teeTime.getTime() +
           (data.bookingEnd
             ? data.bookingEnd.getTime() - data.teeTime.getTime()
             : 60 * 60 * 1000)
@@ -1520,7 +1641,7 @@ export const createBooking = async (
       }),
       name: newBooking.name || data.course,
       type: newBooking.type || "service",
-      status: booking.status,
+      status: bookingData.status,
       room: newBooking.room,
       equipment: newBooking.equipment,
     };
