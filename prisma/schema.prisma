@@ -28,7 +28,7 @@ model Booking {
   member         Member?  @relation(fields: [memberId], references: [id])
 }
 
-// Member model for user profiles
+// Member model for user profiles-
 model Member {
   id             String   @id @map("_id") @db.ObjectId
   email          String   @unique
