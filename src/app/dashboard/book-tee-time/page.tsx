@@ -51,6 +51,7 @@ import {
   Session,
   Service,
   MemberMembership,
+  Booking,
 } from "@/lib/types";
 import { useRouter } from "next/navigation";
 import { generateReferralCode } from "@/lib/utils";
