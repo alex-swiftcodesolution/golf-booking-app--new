@@ -7,7 +7,20 @@ import {
   updateGuestData,
   updateMemberProfile,
 } from "@/api/gymmaster";
-import { Booking } from "@/lib/types";
+
+export interface Booking {
+  id?: number;
+  date: string;
+  time: string;
+  location: string;
+  bay: string;
+  servicename: string;
+  guests: { name: string; email: string; date?: string }[];
+  guestPassUsage: { free: number; charged: number };
+  day: string;
+  starttime: string;
+  referralCodes?: string[];
+}
 
 interface BookingContextType {
   bookings: Booking[];

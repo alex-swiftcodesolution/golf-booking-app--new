@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import axios from "axios";
 import { getConfig, postConfig } from "@/lib/utils";
 import {
@@ -575,6 +576,7 @@ export const validateReferral = async (
   return hasCode;
 };
 
+/*
 export const fetchGuestData = async (
   token: string
 ): Promise<{
@@ -643,6 +645,88 @@ export const fetchGuestData = async (
       referralCodes: [],
       guestBookingIds: [],
       guests: [],
+    };
+  }
+};
+*/
+
+export const fetchGuestData = async (
+  token: string
+): Promise<{
+  guestPassesUsed: number;
+  referralCodes: string[];
+  guestBookingIds: number[];
+  guests: { name: string; email: string; date?: string }[];
+  referringMemberName: string;
+}> => {
+  try {
+    const profile = await fetchMemberDetails(token);
+
+    let guestPassesUsed = 0;
+    let referralCodes: string[] = [];
+    let guestBookingIds: number[] = [];
+    let guests: { name: string; email: string; date?: string }[] = [];
+    let referringMemberName = "";
+
+    try {
+      guestPassesUsed = profile.customtext3
+        ? Number(JSON.parse(profile.customtext3))
+        : 0;
+    } catch (e) {
+      console.error("Error parsing customtext3 (guestPassesUsed):", e);
+    }
+
+    try {
+      if (profile.customtext4) {
+        const parsed = JSON.parse(profile.customtext4);
+        referralCodes = Array.isArray(parsed) ? parsed : [profile.customtext4];
+      }
+    } catch (e) {
+      console.error("Error parsing customtext4 (referralCodes):", e);
+      referralCodes = profile.customtext4 ? [profile.customtext4] : [];
+    }
+
+    try {
+      if (profile.customtext5) {
+        const parsed = JSON.parse(profile.customtext5);
+        guestBookingIds = Array.isArray(parsed)
+          ? parsed
+              .filter((id: any) => Number.isInteger(id) && id > 0)
+              .map(Number)
+          : [];
+      }
+    } catch (e) {
+      console.error("Error parsing customtext5 (guestBookingIds):", e);
+      guestBookingIds = [];
+    }
+
+    try {
+      guests = profile.customtext6 ? JSON.parse(profile.customtext6) : [];
+    } catch (e) {
+      console.error("Error parsing customtext6 (guests):", e);
+    }
+
+    try {
+      referringMemberName = profile.customtext2 || "";
+    } catch (e) {
+      console.error("Error parsing customtext2 (referringMemberName):", e);
+    }
+
+    return {
+      guestPassesUsed,
+      referralCodes,
+      guestBookingIds,
+      guests,
+      referringMemberName,
+    };
+  } catch (error) {
+    console.error("Fetch guest data error:", error);
+    return {
+      guestPassesUsed: 0,
+      referralCodes: [],
+      guestBookingIds: [],
+      guests: [],
+      referringMemberName: "",
     };
   }
 };
