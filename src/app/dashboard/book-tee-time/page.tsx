@@ -83,8 +83,9 @@ const teeTimeSchema = z.object({
     .optional(),
 });
 
-const freeGuestPassesPerMonth = 4;
-const guestPassCharge = 10;
+const freeGuestPassesPerMonth =
+  Number(process.env.NEXT_PUBLIC_FREE_GUEST_PASSES_PER_MONTH) || 3;
+const guestPassCharge = Number(process.env.NEXT_PUBLIC_GUEST_PASS_CHARGE) || 10;
 
 export default function BookTeeTime() {
   const [selectedSlots, setSelectedSlots] = useState<
@@ -399,6 +400,7 @@ export default function BookTeeTime() {
     setSelectedBenefitId(null);
   };
 
+  /*
   const onSubmit = async (data: z.infer<typeof teeTimeSchema>) => {
     setIsLoading(true);
     try {
@@ -607,6 +609,384 @@ export default function BookTeeTime() {
           0
         ) * guestPassCharge;
       toast.success("Tee times booked!");
+
+      form.reset({
+        location: "",
+        service: "",
+        date: "",
+        timeSlots: [],
+        guests: [],
+      });
+      setSelectedSlots([]);
+      setGuestCount(0);
+      setShowItinerary(false);
+      setTimeout(() => {
+        router.push("/dashboard/my-tee-times");
+      }, 1000);
+    } catch (err) {
+      console.error("Booking Error:", err);
+      toast.error("Failed to book tee times", {
+        description: (err as Error).message,
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  */
+
+  /*
+  const onSubmit = async (data: z.infer<typeof teeTimeSchema>) => {
+    setIsLoading(true);
+    try {
+      const token = localStorage.getItem("authToken");
+      if (!token) throw new Error("Not authenticated - no token");
+
+      if (!selectedServiceId) throw new Error("Service ID not loaded");
+
+      if (!GYMMASTER_API_KEY) throw new Error("API key missing in environment");
+
+      if (!membership) throw new Error("No active membership found");
+
+      const resourceMap = Object.fromEntries(
+        resources.map((r) => [r.name, r.id])
+      );
+      const club = clubs.find((c) => c.name === data.location);
+      if (!club) throw new Error("Selected club not found");
+
+      // Calculate guest pass usage
+      const guestData = await fetchGuestData(token);
+      const guestPassesUsed = guestData.guestPassesUsed || 0;
+      const freePassesAvailable = Math.max(
+        freeGuestPassesPerMonth - guestPassesUsed,
+        0
+      );
+      const guestPassUsage = {
+        free: Math.min((data.guests || []).length, freePassesAvailable),
+        charged: Math.max((data.guests || []).length - freePassesAvailable, 0),
+      };
+
+      // Generate referral codes and collect booking IDs
+      const newReferralCodes: string[] = [];
+      const newBookingIds: number[] = [];
+      const guestAssignments: number[] = [];
+
+      if (data.guests?.length) {
+        data.guests.forEach(() => {
+          const code = generateReferralCode();
+          newReferralCodes.push(code);
+        });
+      }
+
+      // Book slots
+      for (const slot of data.timeSlots) {
+        try {
+          const bookingId = await addBooking(
+            {
+              date: data.date,
+              day: new Date(data.date).toLocaleDateString("en-US", {
+                weekday: "long",
+              }),
+              time: slot.time,
+              starttime: slot.time,
+              location: data.location,
+              bay: slot.bay,
+              servicename: data.service,
+              guests: (data.guests || []) as { name: string; email: string }[],
+              guestPassUsage,
+            },
+            token,
+            selectedServiceId,
+            resourceMap[slot.bay],
+            membership.id,
+            selectedBenefitId || undefined
+          );
+          newBookingIds.push(bookingId);
+          if (data.guests?.length) {
+            data.guests.forEach(() => guestAssignments.push(bookingId));
+          }
+        } catch (error) {
+          console.error("Booking error for slot:", slot, error);
+          throw new Error(`Booking failed: ${error.message}`);
+        }
+      }
+
+      // Update guest passes, referral codes, and booking IDs
+      if (data.guests?.length) {
+        const updatedReferralCodes = [...referralCodes, ...newReferralCodes];
+        const updatedBookingIds = [
+          ...guestBookingIds,
+          ...guestAssignments,
+        ].filter((id) => Number.isInteger(id) && id > 0);
+        let retryCount = 0;
+        const maxRetries = 3;
+        while (retryCount < maxRetries) {
+          try {
+            await updateMemberProfile(token, {
+              customtext5: JSON.stringify(updatedBookingIds),
+            });
+            await updateGuestData(
+              token,
+              guestPassesUsed + guestPassUsage.free,
+              updatedReferralCodes,
+              [],
+              (data.guests || []) as {
+                name: string;
+                email: string;
+                date?: string;
+              }[]
+            );
+            break;
+          } catch (error: any) {
+            if (error.response?.status === 413 && retryCount < maxRetries - 1) {
+              console.warn(`Retry ${retryCount + 1} due to 413 error`);
+              retryCount++;
+              await new Promise((resolve) => setTimeout(resolve, 1000));
+              continue;
+            }
+            throw error;
+          }
+        }
+        setGuestPassesUsed(guestPassesUsed + guestPassUsage.free);
+        setReferralCodes(updatedReferralCodes);
+        setGuestBookingIds(updatedBookingIds);
+      }
+
+      // Send confirmation email to member
+      const memberProfile = await fetchMemberDetails(token);
+      const memberEmail = memberProfile.email || "member@example.com";
+      await sendBookingConfirmationEmail(
+        memberEmail,
+        data,
+        newBookingIds,
+        freeGuestPassesPerMonth,
+        guestPassesUsed,
+        guestPassCharge
+      );
+
+      // Send invite emails to guests
+      if (data.guests?.length) {
+        for (let i = 0; i < data.guests.length; i++) {
+          const guest = data.guests[i];
+          const referralCode = newReferralCodes[i];
+          const referralLink = `${APP_URL}`;
+          try {
+            await fetch("/api/send-email", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                emailType: "invite",
+                to: guest.email,
+                name: guest.name || "Guest",
+                referralCode,
+                referralLink,
+              }),
+            });
+            toast.success(`Invite email sent to ${guest.email}`);
+          } catch (error) {
+            console.error(
+              `Failed to send invite email to ${guest.email}:`,
+              error
+            );
+            toast.error(`Failed to send invite email to ${guest.email}`);
+          }
+        }
+      }
+
+      toast.success("Tee times booked!", {
+        description:
+          guestPassUsage.charged > 0
+            ? `Charged $${guestPassUsage.charged * guestPassCharge} for ${guestPassUsage.charged} extra guest(s).`
+            : undefined,
+      });
+
+      form.reset({
+        location: "",
+        service: "",
+        date: "",
+        timeSlots: [],
+        guests: [],
+      });
+      setSelectedSlots([]);
+      setGuestCount(0);
+      setShowItinerary(false);
+      setTimeout(() => {
+        router.push("/dashboard/my-tee-times");
+      }, 1000);
+    } catch (err) {
+      console.error("Booking Error:", err);
+      toast.error("Failed to book tee times", {
+        description: (err as Error).message,
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  */
+
+  const onSubmit = async (data: z.infer<typeof teeTimeSchema>) => {
+    setIsLoading(true);
+    try {
+      const token = localStorage.getItem("authToken");
+      if (!token) throw new Error("Not authenticated - no token");
+
+      if (!selectedServiceId) throw new Error("Service ID not loaded");
+
+      if (!GYMMASTER_API_KEY) throw new Error("API key missing in environment");
+
+      if (!membership) throw new Error("No active membership found");
+
+      const resourceMap = Object.fromEntries(
+        resources.map((r) => [r.name, r.id])
+      );
+      const club = clubs.find((c) => c.name === data.location);
+      if (!club) throw new Error("Selected club not found");
+
+      // Calculate guest pass usage
+      const guestData = await fetchGuestData(token);
+      const guestPassesUsed = guestData.guestPassesUsed || 0;
+      const freePassesAvailable = Math.max(
+        freeGuestPassesPerMonth - guestPassesUsed,
+        0
+      );
+      const guestPassUsage = {
+        free: Math.min((data.guests || []).length, freePassesAvailable),
+        charged: Math.max((data.guests || []).length - freePassesAvailable, 0),
+      };
+
+      // Generate referral codes and collect booking IDs
+      const newReferralCodes: string[] = [];
+      const newBookingIds: number[] = [];
+      const guestAssignments: number[] = [];
+
+      if (data.guests?.length) {
+        data.guests.forEach(() => {
+          const code = generateReferralCode();
+          newReferralCodes.push(code);
+        });
+      }
+
+      // Book slots
+      for (const slot of data.timeSlots) {
+        try {
+          const bookingId = await addBooking(
+            {
+              date: data.date,
+              day: new Date(data.date).toLocaleDateString("en-US", {
+                weekday: "long",
+              }),
+              time: slot.time,
+              starttime: slot.time,
+              location: data.location,
+              bay: slot.bay,
+              servicename: data.service,
+              guests: (data.guests || []) as { name: string; email: string }[],
+              guestPassUsage,
+              referralCodes: newReferralCodes, // Pass referral codes
+            },
+            token,
+            selectedServiceId,
+            resourceMap[slot.bay],
+            membership.id,
+            selectedBenefitId || undefined
+          );
+          newBookingIds.push(bookingId);
+          if (data.guests?.length) {
+            data.guests.forEach(() => guestAssignments.push(bookingId));
+          }
+        } catch (error) {
+          console.error("Booking error for slot:", slot, error);
+          throw new Error(`Booking failed: ${error.message}`);
+        }
+      }
+
+      // Update guest passes, referral codes, and booking IDs
+      if (data.guests?.length) {
+        const updatedReferralCodes = [...referralCodes, ...newReferralCodes];
+        const updatedBookingIds = [
+          ...guestBookingIds,
+          ...guestAssignments,
+        ].filter((id) => Number.isInteger(id) && id > 0);
+        let retryCount = 0;
+        const maxRetries = 3;
+        while (retryCount < maxRetries) {
+          try {
+            await updateMemberProfile(token, {
+              customtext5: JSON.stringify(updatedBookingIds),
+            });
+            await updateGuestData(
+              token,
+              guestPassesUsed + guestPassUsage.free,
+              updatedReferralCodes,
+              [],
+              (data.guests || []) as {
+                name: string;
+                email: string;
+                date?: string;
+              }[]
+            );
+            break;
+          } catch (error: any) {
+            if (error.response?.status === 413 && retryCount < maxRetries - 1) {
+              console.warn(`Retry ${retryCount + 1} due to 413 error`);
+              retryCount++;
+              await new Promise((resolve) => setTimeout(resolve, 1000));
+              continue;
+            }
+            throw error;
+          }
+        }
+        setGuestPassesUsed(guestPassesUsed + guestPassUsage.free);
+        setReferralCodes(updatedReferralCodes);
+        setGuestBookingIds(updatedBookingIds);
+      }
+
+      // Send confirmation email to member
+      const memberProfile = await fetchMemberDetails(token);
+      const memberEmail = memberProfile.email || "member@example.com";
+      await sendBookingConfirmationEmail(
+        memberEmail,
+        data,
+        newBookingIds,
+        freeGuestPassesPerMonth,
+        guestPassesUsed,
+        guestPassCharge
+      );
+
+      // Send invite emails to guests
+      if (data.guests?.length) {
+        for (let i = 0; i < data.guests.length; i++) {
+          const guest = data.guests[i];
+          const referralCode = newReferralCodes[i];
+          const referralLink = `${APP_URL}`;
+          try {
+            await fetch("/api/send-email", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                emailType: "invite",
+                to: guest.email,
+                name: guest.name || "Guest",
+                referralCode,
+                referralLink,
+              }),
+            });
+            toast.success(`Invite email sent to ${guest.email}`);
+          } catch (error) {
+            console.error(
+              `Failed to send invite email to ${guest.email}:`,
+              error
+            );
+            toast.error(`Failed to send invite email to ${guest.email}`);
+          }
+        }
+      }
+
+      toast.success("Tee times booked!", {
+        description:
+          guestPassUsage.charged > 0
+            ? `Charged $${guestPassUsage.charged * guestPassCharge} for ${guestPassUsage.charged} extra guest(s).`
+            : undefined,
+      });
 
       form.reset({
         location: "",

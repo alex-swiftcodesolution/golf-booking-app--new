@@ -137,3 +137,17 @@ export interface MemberServiceBooking {
   name: string;
   type: string;
 }
+
+export interface Booking {
+  id?: number;
+  date: string;
+  time: string;
+  location: string;
+  bay: string;
+  servicename: string;
+  guests: { name: string; email: string; date?: string }[];
+  guestPassUsage: { free: number; charged: number };
+  day: string;
+  starttime: string;
+  referralCodes?: string[]; // Add referralCodes to interface
+}
