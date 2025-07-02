@@ -1048,7 +1048,7 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
         bay,
         location,
         day,
-        starttime,
+        // starttime,
         referralCodes,
       } = booking;
       const { hour, minute } = parseTimeSlot(time);
