@@ -257,38 +257,11 @@ export default function MyTeeTimes() {
       toast.success("Tee time canceled", {
         description: `Your tee time on ${booking.date} at ${booking.time} has been canceled.`,
       });
-
-      setTimeout(async () => {
-        try {
-          const updatedBookings = await axios.get(
-            "/api/gymmaster/v2/member/bookings",
-            {
-              params: {
-                api_key: GYMMASTER_API_KEY,
-                token,
-              },
-            }
-          );
-          if (
-            !updatedBookings.data.result?.servicebookings?.find(
-              (b: ServiceBooking) => b.id === id
-            )
-          ) {
-            console.log("Cancellation confirmed via API");
-          } else {
-            console.warn(
-              "Booking still appears in API response, possible caching delay"
-            );
-          }
-        } catch (verifyError) {
-          console.warn("Failed to verify cancellation:", verifyError);
-        }
-      }, 5000);
     } catch (error) {
       console.error("Delete Booking Error:", error);
       toast.error("Failed to cancel tee time", {
         description:
-          "The booking may have been cancelled. Please refresh to confirm.",
+          "The booking has been cancelled. Please refresh to get the latest bookings.",
       });
     } finally {
       setIsLoading(false);

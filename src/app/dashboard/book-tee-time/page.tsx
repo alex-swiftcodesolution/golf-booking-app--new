@@ -54,6 +54,7 @@ import {
 } from "@/lib/types";
 import { useRouter } from "next/navigation";
 import { generateReferralCode } from "@/lib/utils";
+import { debounce } from "lodash";
 
 const GYMMASTER_API_KEY = process.env.NEXT_PUBLIC_GYMMASTER_API_KEY;
 
@@ -112,6 +113,12 @@ export default function BookTeeTime() {
   const [guestBookingIds, setGuestBookingIds] = useState<number[]>([]);
   const { addBooking, bookings } = useBookings();
   const router = useRouter();
+
+  // 2 JULY
+  const [slotAvailability, setSlotAvailability] = useState<
+    Record<string, boolean>
+  >({});
+  // 2 JULY
 
   const form = useForm<z.infer<typeof teeTimeSchema>>({
     resolver: zodResolver(teeTimeSchema),
@@ -315,6 +322,7 @@ export default function BookTeeTime() {
     return { hour, minute };
   };
 
+  /*
   const isSlotAvailable = (time: string, bay: string) => {
     const { hour, minute } = parseTimeSlot(time);
     const slotStart = `${hour.toString().padStart(2, "0")}:${minute
@@ -324,6 +332,11 @@ export default function BookTeeTime() {
     return !sessions.some(
       (s) => s.rid === resource?.id && s.bookingstart === slotStart
     );
+  };
+  */
+
+  const isSlotAvailable = (time: string, bay: string) => {
+    return slotAvailability[`${time}-${bay}`] ?? true; // Default to available if not loaded
   };
 
   const handleTimeSelect = (time: string, bay: string) => {
@@ -628,6 +641,108 @@ export default function BookTeeTime() {
     );
   };
 
+  /*
+  useEffect(() => {
+    if (!date || !location || !service) return;
+
+    const checkAvailability = async () => {
+      try {
+        const response = await fetch("/api/check-slots", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            date,
+            location,
+            bays: resources.map((r) => r.name),
+            timeSlots: timeSlots.map((time) => {
+              const { hour, minute } = parseTimeSlot(time);
+              return `${hour.toString().padStart(2, "0")}:${minute
+                .toString()
+                .padStart(2, "0")}:00`;
+            }),
+          }),
+        });
+        const { unavailableSlots } = await response.json();
+        const availability: Record<string, boolean> = {};
+        timeSlots.forEach((time) => {
+          resources.forEach((r) => {
+            const slotKey = `${time}-${r.name}`;
+            const formattedTime = `${parseTimeSlot(time)
+              .hour.toString()
+              .padStart(
+                2,
+                "0"
+              )}:${parseTimeSlot(time).minute.toString().padStart(2, "0")}:00`;
+            availability[slotKey] = !unavailableSlots.some(
+              (slot: { time: string; bay: string }) =>
+                slot.time === formattedTime && slot.bay === r.name
+            );
+          });
+        });
+        setSlotAvailability(availability);
+      } catch (error) {
+        console.error("Error fetching slot availability:", error);
+        setSlotAvailability({});
+      }
+    };
+    checkAvailability();
+  }, [date, location, service, resources, timeSlots]);
+  */
+
+  const checkAvailability = debounce(async () => {
+    if (
+      !date ||
+      !location ||
+      !service ||
+      !resources.length ||
+      !timeSlots.length
+    )
+      return;
+    try {
+      const response = await fetch("/api/check-slots", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          date,
+          location,
+          bays: resources.map((r) => r.name),
+          timeSlots: timeSlots.map((time) => {
+            const { hour, minute } = parseTimeSlot(time);
+            return `${hour.toString().padStart(2, "0")}:${minute
+              .toString()
+              .padStart(2, "0")}:00`;
+          }),
+        }),
+      });
+      const { unavailableSlots } = await response.json();
+      const availability: Record<string, boolean> = {};
+      timeSlots.forEach((time) => {
+        resources.forEach((r) => {
+          const slotKey = `${time}-${r.name}`;
+          const formattedTime = `${parseTimeSlot(time)
+            .hour.toString()
+            .padStart(
+              2,
+              "0"
+            )}:${parseTimeSlot(time).minute.toString().padStart(2, "0")}:00`;
+          availability[slotKey] = !unavailableSlots.some(
+            (slot: { time: string; bay: string }) =>
+              slot.time === formattedTime && slot.bay === r.name
+          );
+        });
+      });
+      setSlotAvailability(availability);
+    } catch (error) {
+      console.error("Error fetching slot availability:", error);
+      setSlotAvailability({});
+    }
+  }, 500); // 500ms debounce delay
+
+  useEffect(() => {
+    checkAvailability();
+    return () => checkAvailability.cancel(); // Cleanup debounce on unmount
+  }, [date, location, service, resources, timeSlots]);
+
   return (
     <div className="space-y-4">
       <motion.h1
@@ -909,7 +1024,8 @@ export default function BookTeeTime() {
                               ))}
                             </TableRow>
                           </TableHeader>
-                          <TableBody>
+
+                          {/* <TableBody>
                             {timeSlots.map((time) => (
                               <TableRow key={time}>
                                 <TableCell className="font-medium text-xs text-black">
@@ -962,6 +1078,71 @@ export default function BookTeeTime() {
                                           ? "Selected"
                                           : isUnavailable
                                             ? "N/A"
+                                            : "Select"}
+                                      </Button>
+                                    </TableCell>
+                                  );
+                                })}
+                              </TableRow>
+                            ))}
+                          </TableBody> */}
+
+                          <TableBody>
+                            {timeSlots.map((time) => (
+                              <TableRow key={time}>
+                                <TableCell className="font-medium text-xs text-black">
+                                  {time}
+                                </TableCell>
+                                {resources.map((r) => {
+                                  const isSelected = selectedSlots.some(
+                                    (s) => s.time === time && s.bay === r.name
+                                  );
+                                  const isUnavailable = !isSlotAvailable(
+                                    time,
+                                    r.name
+                                  );
+                                  return (
+                                    <TableCell
+                                      key={`${r.id}-${time}`}
+                                      className="text-center"
+                                    >
+                                      <Button
+                                        type="button"
+                                        variant={
+                                          isSelected
+                                            ? "default"
+                                            : isUnavailable
+                                              ? "destructive"
+                                              : "outline"
+                                        }
+                                        onClick={() =>
+                                          handleTimeSelect(time, r.name)
+                                        }
+                                        className={`w-full text-[10px] sm:text-xs py-0.5 sm:py-1 px-1 sm:px-2 ${
+                                          isSelected
+                                            ? "bg-black text-white"
+                                            : isUnavailable
+                                              ? "bg-red-500 text-white"
+                                              : "border-gray-300 text-black hover:bg-gray-100"
+                                        }`}
+                                        disabled={
+                                          isUnavailable ||
+                                          !location ||
+                                          !service ||
+                                          isFetchingSlots
+                                        }
+                                        aria-label={
+                                          isSelected
+                                            ? `Selected: ${time} at ${r.name}`
+                                            : isUnavailable
+                                              ? `Booked: ${time} at ${r.name}`
+                                              : `Choose ${time} at ${r.name}`
+                                        }
+                                      >
+                                        {isSelected
+                                          ? "Selected"
+                                          : isUnavailable
+                                            ? "Booked"
                                             : "Select"}
                                       </Button>
                                     </TableCell>
