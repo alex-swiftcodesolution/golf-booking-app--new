@@ -240,7 +240,7 @@ export default function BookTeeTime() {
           club.id
         );
         const memberServices = fetchedServices
-          .filter((s) => s.servicename.includes(""))
+          .filter((s) => s.servicename.includes("Member Golf Bay"))
           .map((s) => ({
             ...s,
             servicename: s.servicename.trim(),
