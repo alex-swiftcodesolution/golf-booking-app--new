@@ -485,7 +485,8 @@ export const fetchResourcesAndSessions = async (
   token: string,
   serviceid: number,
   day: string,
-  companyid: number
+  companyid: number,
+  auto_benefit_selection: boolean
 ): Promise<{ dates: Session[]; resources: Resource[] }> => {
   try {
     const res = await axios.get<{
@@ -493,7 +494,7 @@ export const fetchResourcesAndSessions = async (
       error: string | null;
     }>(
       "/api/gymmaster/v1/booking/resources_and_sessions",
-      getConfig({ token, serviceid, day, companyid })
+      getConfig({ token, serviceid, day, companyid, auto_benefit_selection })
     );
     if (res.data.error) throw new Error(res.data.error);
     return res.data.result;

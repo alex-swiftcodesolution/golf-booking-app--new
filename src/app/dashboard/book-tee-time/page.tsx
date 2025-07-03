@@ -280,7 +280,8 @@ export default function BookTeeTime() {
           localStorage.getItem("authToken")!,
           selectedService.serviceid,
           date,
-          club.id
+          club.id,
+          true
         );
         setResources(resources);
         setSessions(dates);
