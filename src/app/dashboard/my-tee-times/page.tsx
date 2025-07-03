@@ -37,6 +37,7 @@ interface ServiceBooking {
   day: string;
   starttime: string;
   start_str?: string;
+  endtime: string;
   location?: string;
   name?: string;
   servicename?: string;
@@ -49,6 +50,34 @@ export default function MyTeeTimes() {
   const [isLoading, setIsLoading] = useState(false);
   const [deleteBookingId, setDeleteBookingId] = useState<number | null>(null);
   const [isFetching, setIsFetching] = useState(false);
+
+  const formatTime = (time: string, str?: string): string => {
+    let formattedTime = time?.slice(0, 5) || "00:00";
+    if (str) {
+      const match = str.match(/(\d+):(\d+)\s*(am|pm)/i);
+      if (match) {
+        const [, hours, minutes, period] = match;
+        let hourNum = parseInt(hours);
+        if (period.toLowerCase() === "pm" && hourNum !== 12) hourNum += 12;
+        if (period.toLowerCase() === "am" && hourNum === 12) hourNum = 0;
+        formattedTime = `${hourNum.toString().padStart(2, "0")}:${minutes}`;
+      }
+    }
+    const [hour, minute] = formattedTime.split(":").map(Number);
+    const period = hour >= 12 ? "PM" : "AM";
+    const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
+    return `${displayHour}:${minute.toString().padStart(2, "0")} ${period}`;
+  };
+
+  const formatTimeRange = (
+    starttime: string,
+    endtime: string,
+    startStr?: string
+  ): string => {
+    const start = formatTime(starttime, startStr);
+    const end = formatTime(endtime);
+    return `${start} - ${end}`;
+  };
 
   const fetchBookings = useCallback(async () => {
     setIsFetching(true);
@@ -68,23 +97,16 @@ export default function MyTeeTimes() {
         fetchGuestData(token),
       ]);
 
-      console.log(
-        "Raw API Bookings:",
-        bookingsRes.data.result?.servicebookings
-      );
-
       const { guestBookingIds, guests } = guestData;
 
-      const guestMap: Record<
+      const guestMap = new Map<
         string,
         { name: string; email: string; date?: string }[]
-      > = {};
+      >();
       guestBookingIds.forEach((id: number, index: number) => {
-        const guest = guests[index];
-        const date = guest?.date ?? "";
-        const key: string = `${id}_${date}`;
-        guestMap[key] = guestMap[key] || [];
-        guestMap[key].push(guest || { name: "", email: "", date: "" });
+        const guest = guests[index] || { name: "", email: "", date: "" };
+        const key = `${id}_${guest.date ?? ""}`;
+        guestMap.set(key, [...(guestMap.get(key) || []), guest]);
       });
 
       const clubs = await fetchClubs();
@@ -101,7 +123,6 @@ export default function MyTeeTimes() {
       );
 
       const serviceMaps: Record<string, Record<number, string>> = {};
-
       for (const clubName of uniqueClubs) {
         const companyid = clubMap[clubName];
         if (companyid) {
@@ -116,51 +137,35 @@ export default function MyTeeTimes() {
 
       const fetchedBookings: Booking[] =
         bookingsRes.data.result?.servicebookings?.map((b: ServiceBooking) => {
-          let time = b.starttime?.slice(0, 5) || "00:00";
-          if (b.start_str) {
-            const match = b.start_str.match(/(\d+):(\d+)\s*(am|pm)/i);
-            if (match) {
-              const [, hours, minutes, period] = match;
-              let hourNum = parseInt(hours);
-              if (period.toLowerCase() === "pm" && hourNum !== 12)
-                hourNum += 12;
-              if (period.toLowerCase() === "am" && hourNum === 12) hourNum = 0;
-              time = `${hourNum.toString().padStart(2, "0")}:${minutes}`;
-            }
-          }
-          const [hour, minute] = time.split(":").map(Number);
-          const period = hour >= 12 ? "PM" : "AM";
-          const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
-          const displayTime = `${displayHour}:${minute.toString().padStart(2, "0")} ${period}`;
-
+          const time = formatTimeRange(b.starttime, b.endtime, b.start_str);
           const [year, month, day] = b.day.split("-").map(Number);
           const formattedDate = `${month.toString().padStart(2, "0")}/${day
             .toString()
             .padStart(2, "0")}/${year.toString().slice(-2)}`;
-
           const clubName = b.location || "Simcognito's Golf 2/47 Club";
-
           const servicename =
             b.type?.trim() ||
             (typeof b.serviceid === "number" &&
             serviceMaps[clubName]?.[b.serviceid]
               ? serviceMaps[clubName][b.serviceid]
               : b.servicename || "Unknown Service");
-
           const guestKey = `${b.id}_${b.day}`;
           return {
             id: b.id,
             date: formattedDate,
-            time: displayTime,
+            time,
             location: clubName,
             bay: b.name || "Unknown",
             servicename,
-            guests: guestMap[guestKey] || [],
-            guestPassUsage: { free: 0, charged: 0 },
+            guests: guestMap.get(guestKey) || [],
+            guestPassUsage: { free: 0, charged: 0 }, // Requires sync with MongoDB
             day: new Date(b.day).toLocaleDateString("en-US", {
               weekday: "long",
             }),
-            starttime: time,
+            starttime: b.starttime,
+            rid: b.id, // Placeholder, adjust if needed
+            bookingstart: b.starttime,
+            bookingend: b.endtime,
           };
         }) || [];
 
@@ -171,6 +176,8 @@ export default function MyTeeTimes() {
             ? {
                 ...newBooking,
                 servicename: existing.servicename || newBooking.servicename,
+                guestPassUsage:
+                  existing.guestPassUsage || newBooking.guestPassUsage,
               }
             : newBooking;
         })
@@ -261,7 +268,7 @@ export default function MyTeeTimes() {
       console.error("Delete Booking Error:", error);
       toast.error("Failed to cancel tee time", {
         description:
-          "The booking has been cancelled. Please refresh to get the latest bookings.",
+          "The booking may have been cancelled. Please refresh to update.",
       });
     } finally {
       setIsLoading(false);
@@ -270,8 +277,8 @@ export default function MyTeeTimes() {
   };
 
   const sortedBookings = [...bookings].sort((a, b) => {
-    const dateA = new Date(`${a.date} ${a.time}`);
-    const dateB = new Date(`${b.date} ${b.time}`);
+    const dateA = new Date(`${a.date} ${a.time.split(" - ")[0]}`);
+    const dateB = new Date(`${b.date} ${b.time.split(" - ")[0]}`);
     return dateA.getTime() - dateB.getTime();
   });
 
@@ -290,7 +297,7 @@ export default function MyTeeTimes() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, delay: 0.2 }}
-        className="w-full max-w-4xl mx-auto"
+        className="w-full max-w-5xl mx-auto"
       >
         <div className="flex justify-end mb-4">
           <Button
@@ -309,7 +316,18 @@ export default function MyTeeTimes() {
           </Button>
         </div>
 
-        {sortedBookings.length === 0 ? (
+        {isFetching ? (
+          <div className="space-y-2">
+            {Array(3)
+              .fill(null)
+              .map((_, i) => (
+                <div
+                  key={i}
+                  className="h-12 bg-gray-200 animate-pulse rounded"
+                />
+              ))}
+          </div>
+        ) : sortedBookings.length === 0 ? (
           <p className="text-center text-gray-500">
             You have no booked tee times.
           </p>
@@ -323,7 +341,13 @@ export default function MyTeeTimes() {
                     Date
                   </TableHead>
                   <TableHead className="text-sm font-semibold text-black">
+                    Day
+                  </TableHead>
+                  <TableHead className="text-sm font-semibold text-black">
                     Time
+                  </TableHead>
+                  <TableHead className="text-sm font-semibold text-black">
+                    Location
                   </TableHead>
                   <TableHead className="text-sm font-semibold text-black">
                     Service
@@ -331,9 +355,12 @@ export default function MyTeeTimes() {
                   <TableHead className="text-sm font-semibold text-black">
                     Bay
                   </TableHead>
-                  {/* <TableHead className="text-sm font-semibold text-black">
+                  <TableHead className="text-sm font-semibold text-black">
                     Guests
-                  </TableHead> */}
+                  </TableHead>
+                  <TableHead className="text-sm font-semibold text-black">
+                    Guest Passes
+                  </TableHead>
                   <TableHead className="text-sm font-semibold text-black">
                     Actions
                   </TableHead>
@@ -352,7 +379,13 @@ export default function MyTeeTimes() {
                       {booking.date}
                     </TableCell>
                     <TableCell className="text-sm text-black">
+                      {booking.day}
+                    </TableCell>
+                    <TableCell className="text-sm text-black">
                       {booking.time}
+                    </TableCell>
+                    <TableCell className="text-sm text-black">
+                      {booking.location}
                     </TableCell>
                     <TableCell className="text-sm text-black">
                       {booking.servicename}
@@ -360,11 +393,19 @@ export default function MyTeeTimes() {
                     <TableCell className="text-sm text-black">
                       {booking.bay}
                     </TableCell>
-                    {/* <TableCell className="text-sm text-black">
+                    <TableCell className="text-sm text-black">
                       {booking.guests.length > 0
-                        ? booking.guests.map((g) => g.name).join(", ")
+                        ? booking.guests
+                            .map((g) => g.name || g.email)
+                            .join(", ")
                         : "None"}
-                    </TableCell> */}
+                    </TableCell>
+                    <TableCell className="text-sm text-black">
+                      {booking.guestPassUsage.free > 0 ||
+                      booking.guestPassUsage.charged > 0
+                        ? `${booking.guestPassUsage.free} free, ${booking.guestPassUsage.charged} charged`
+                        : "None"}
+                    </TableCell>
                     <TableCell>
                       <Dialog
                         open={deleteBookingId === booking.id}
@@ -442,9 +483,23 @@ export default function MyTeeTimes() {
                     </div>
                     <div className="flex flex-col items-start justify-start gap-0">
                       <span className="text-sm font-semibold text-gray-700">
+                        Day
+                      </span>
+                      <span className="text-sm text-black">{booking.day}</span>
+                    </div>
+                    <div className="flex flex-col items-start justify-start gap-0">
+                      <span className="text-sm font-semibold text-gray-700">
                         Time
                       </span>
                       <span className="text-sm text-black">{booking.time}</span>
+                    </div>
+                    <div className="flex flex-col items-start justify-start gap-0">
+                      <span className="text-sm font-semibold text-gray-700">
+                        Location
+                      </span>
+                      <span className="text-sm text-black">
+                        {booking.location}
+                      </span>
                     </div>
                     <div className="flex flex-col items-start justify-start gap-0">
                       <span className="text-sm font-semibold text-gray-700">
@@ -460,16 +515,29 @@ export default function MyTeeTimes() {
                       </span>
                       <span className="text-sm text-black">{booking.bay}</span>
                     </div>
-                    {/* <div className="flex flex-col items-start justify-start gap-0">
+                    <div className="flex flex-col items-start justify-start gap-0">
                       <span className="text-sm font-semibold text-gray-700">
                         Guests
                       </span>
                       <span className="text-sm text-black">
                         {booking.guests.length > 0
-                          ? booking.guests.map((g) => g.name).join(", ")
+                          ? booking.guests
+                              .map((g) => g.name || g.email)
+                              .join(", ")
                           : "None"}
                       </span>
-                    </div> */}
+                    </div>
+                    <div className="flex flex-col items-start justify-start gap-0">
+                      <span className="text-sm font-semibold text-gray-700">
+                        Guest Passes
+                      </span>
+                      <span className="text-sm text-black">
+                        {booking.guestPassUsage.free > 0 ||
+                        booking.guestPassUsage.charged > 0
+                          ? `${booking.guestPassUsage.free} free, ${booking.guestPassUsage.charged} charged`
+                          : "None"}
+                      </span>
+                    </div>
                     <div className="flex justify-end mt-2">
                       <Dialog
                         open={deleteBookingId === booking.id}
