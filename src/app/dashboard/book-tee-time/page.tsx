@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable @typescript-eslint/no-unused-vars */
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -18,21 +18,20 @@ import {
 import { toast } from "sonner";
 import { Loader2, Calendar, Users, MapPin } from "lucide-react";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { motion } from "framer-motion";
 import { useBookings } from "@/context/BookingContext";
 import {
@@ -45,35 +44,32 @@ import {
   fetchMemberDetails,
   updateMemberProfile,
 } from "@/api/gymmaster";
-import {
-  Club,
-  Resource,
-  Session,
-  Service,
-  MemberMembership,
-  Booking,
-} from "@/lib/types";
+import { Club, Resource, Service, MemberMembership } from "@/lib/types";
 import { useRouter } from "next/navigation";
 import { generateReferralCode } from "@/lib/utils";
 import { debounce } from "lodash";
 
 const GYMMASTER_API_KEY = process.env.NEXT_PUBLIC_GYMMASTER_API_KEY;
-
 const APP_URL =
   process.env.NEXT_PUBLIC_APP_URL || "https://test-swiftcode.vercel.app/";
+const freeGuestPassesPerMonth =
+  Number(process.env.NEXT_PUBLIC_FREE_GUEST_PASSES_PER_MONTH) || 3;
+const guestPassCharge = Number(process.env.NEXT_PUBLIC_GUEST_PASS_CHARGE) || 10;
 
 const teeTimeSchema = z.object({
   location: z.string().min(1, "Please select a location"),
   service: z.string().min(1, "Please select a service"),
   date: z.string().min(1, "Please select a date"),
-  timeSlots: z
-    .array(
-      z.object({
-        time: z.string().min(1, "Time is required"),
-        bay: z.string().min(1, "Bay is required"),
-      })
-    )
-    .min(1, "Please select at least one time slot"),
+  timeSlot: z
+    .object({
+      rid: z.number(),
+      bookingstart: z.string(),
+      bookingend: z.string(),
+      start_str: z.string(),
+      end_str: z.string(),
+      rname: z.string(),
+    })
+    .nullable(),
   guests: z
     .array(
       z.object({
@@ -84,21 +80,14 @@ const teeTimeSchema = z.object({
     .optional(),
 });
 
-const freeGuestPassesPerMonth =
-  Number(process.env.NEXT_PUBLIC_FREE_GUEST_PASSES_PER_MONTH) || 3;
-const guestPassCharge = Number(process.env.NEXT_PUBLIC_GUEST_PASS_CHARGE) || 10;
-
 export default function BookTeeTime() {
-  const [selectedSlots, setSelectedSlots] = useState<
-    { time: string; bay: string }[]
-  >([]);
   const [isLoading, setIsLoading] = useState(false);
   const [showItinerary, setShowItinerary] = useState(false);
   const [guestCount, setGuestCount] = useState(0);
   const [clubs, setClubs] = useState<Club[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [resources, setResources] = useState<Resource[]>([]);
-  const [sessions, setSessions] = useState<Session[]>([]);
+  const [timeSlots, setTimeSlots] = useState<any[]>([]);
   const [selectedServiceId, setSelectedServiceId] = useState<number | null>(
     null
   );
@@ -113,14 +102,8 @@ export default function BookTeeTime() {
   const [guestPassesUsed, setGuestPassesUsed] = useState(0);
   const [referralCodes, setReferralCodes] = useState<string[]>([]);
   const [guestBookingIds, setGuestBookingIds] = useState<number[]>([]);
-  const { addBooking, bookings } = useBookings();
+  const { addBooking } = useBookings();
   const router = useRouter();
-
-  // 2 JULY
-  const [slotAvailability, setSlotAvailability] = useState<
-    Record<string, boolean>
-  >({});
-  // 2 JULY
 
   const form = useForm<z.infer<typeof teeTimeSchema>>({
     resolver: zodResolver(teeTimeSchema),
@@ -128,16 +111,13 @@ export default function BookTeeTime() {
       location: "",
       service: "",
       date: "",
-      timeSlots: [],
+      timeSlot: null,
       guests: [],
     },
   });
 
-  const location = form.watch("location");
-  const service = form.watch("service");
-  const date = form.watch("date");
+  const { location, service, date } = form.watch();
 
-  // Send booking confirmation email to member
   const sendBookingConfirmationEmail = async (
     email: string,
     data: z.infer<typeof teeTimeSchema>,
@@ -156,7 +136,9 @@ export default function BookTeeTime() {
           date: data.date,
           location: data.location,
           service: data.service,
-          timeSlots: data.timeSlots,
+          timeSlots: data.timeSlot
+            ? [{ time: data.timeSlot.start_str, bay: data.timeSlot.rname }]
+            : [],
           guests: data.guests || [],
           bookingIds,
           freeGuestPassesPerMonth,
@@ -165,7 +147,6 @@ export default function BookTeeTime() {
         }),
       });
       if (!response.ok) throw new Error("Failed to send confirmation email");
-      console.log("Confirmation email sent to:", email);
       toast.info("Confirmation email sent", {
         description: `A confirmation email was sent to ${email}`,
       });
@@ -175,7 +156,6 @@ export default function BookTeeTime() {
     }
   };
 
-  // Initial fetch for clubs, memberships, and guest data
   useEffect(() => {
     const fetchInitialData = async () => {
       const token = localStorage.getItem("authToken");
@@ -224,7 +204,6 @@ export default function BookTeeTime() {
     fetchInitialData();
   }, [router, hasFetchedClubs]);
 
-  // Fetch services when location changes
   useEffect(() => {
     if (!location || !membership) return;
 
@@ -241,10 +220,7 @@ export default function BookTeeTime() {
         );
         const memberServices = fetchedServices
           .filter((s) => s.servicename.includes("Member Golf Bay"))
-          .map((s) => ({
-            ...s,
-            servicename: s.servicename.trim(),
-          }));
+          .map((s) => ({ ...s, servicename: s.servicename.trim() }));
         setServices(memberServices);
       } catch (err) {
         console.error("Services Fetch Error:", err);
@@ -259,7 +235,6 @@ export default function BookTeeTime() {
     fetchServicesData();
   }, [location, clubs, membership]);
 
-  // Fetch slots when service or date changes
   useEffect(() => {
     if (!service || !date || !membership) return;
 
@@ -284,7 +259,13 @@ export default function BookTeeTime() {
           true
         );
         setResources(resources);
-        setSessions(dates);
+        const dateData = dates.find((d: any) => Object.keys(d)[0] === date);
+        if (dateData) {
+          const slots = dateData[date].filter((slot: any) => !slot.bookingid);
+          setTimeSlots(slots);
+        } else {
+          setTimeSlots([]);
+        }
       } catch (err) {
         console.error("Slots Fetch Error:", err);
         toast.error("Failed to load time slots", {
@@ -298,70 +279,40 @@ export default function BookTeeTime() {
     fetchSlotsData();
   }, [service, date, services, location, clubs, membership]);
 
-  const getSlotDuration = () => {
-    if (service.includes("1/2 hr")) return 30;
-    if (service.includes("1 hr")) return 60;
-    return 30;
-  };
+  const debouncedCheckAvailability = useCallback(
+    debounce(async () => {
+      if (!date || !location || !service || !resources.length) return;
+      try {
+        const club = clubs.find((c) => c.name === location);
+        const selectedService = services.find((s) => s.servicename === service);
+        if (!club || !selectedService) return;
 
-  const timeSlots = Array.from(
-    { length: getSlotDuration() === 30 ? 48 : 24 },
-    (_, i) => {
-      const hour = Math.floor(i / (getSlotDuration() === 30 ? 2 : 1));
-      const minute =
-        getSlotDuration() === 30 ? (i % 2 === 0 ? "00" : "30") : "00";
-      const period = hour >= 12 ? "PM" : "AM";
-      const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
-      return `${displayHour}:${minute} ${period}`;
-    }
+        const { dates } = await fetchResourcesAndSessions(
+          localStorage.getItem("authToken")!,
+          selectedService.serviceid,
+          date,
+          club.id,
+          true
+        );
+        const dateData = dates.find((d: any) => Object.keys(d)[0] === date);
+        if (dateData) {
+          const slots = dateData[date].filter((slot: any) => !slot.bookingid);
+          setTimeSlots(slots);
+        } else {
+          setTimeSlots([]);
+        }
+      } catch (error) {
+        console.error("Error fetching slot availability:", error);
+        setTimeSlots([]);
+      }
+    }, 500),
+    [date, location, service, resources, clubs, services]
   );
 
-  const parseTimeSlot = (time: string) => {
-    const [hourMinute, period] = time.split(" ");
-    let hour = Number(hourMinute.split(":")[0]);
-    const minute = Number(hourMinute.split(":")[1]);
-    if (period === "PM" && hour !== 12) hour += 12;
-    if (period === "AM" && hour === 12) hour = 0;
-    return { hour, minute };
-  };
-
-  /*
-  const isSlotAvailable = (time: string, bay: string) => {
-    const { hour, minute } = parseTimeSlot(time);
-    const slotStart = `${hour.toString().padStart(2, "0")}:${minute
-      .toString()
-      .padStart(2, "0")}:00`;
-    const resource = resources.find((r) => r.name === bay);
-    return !sessions.some(
-      (s) => s.rid === resource?.id && s.bookingstart === slotStart
-    );
-  };
-  */
-
-  const isSlotAvailable = (time: string, bay: string) => {
-    return slotAvailability[`${time}-${bay}`] ?? true; // Default to available if not loaded
-  };
-
-  const handleTimeSelect = (time: string, bay: string) => {
-    if (!location || !service || !date) {
-      toast.error("Select location, service, and date first");
-      return;
-    }
-    if (!isSlotAvailable(time, bay)) {
-      toast.error("Slot unavailable");
-      return;
-    }
-
-    const slotIndex = selectedSlots.findIndex(
-      (slot) => slot.time === time && slot.bay === bay
-    );
-    const updatedSlots =
-      slotIndex >= 0
-        ? selectedSlots.filter((s) => s.time !== time || s.bay !== bay)
-        : [...selectedSlots, { time, bay }];
-    setSelectedSlots(updatedSlots);
-    form.setValue("timeSlots", updatedSlots);
-  };
+  useEffect(() => {
+    debouncedCheckAvailability();
+    return () => debouncedCheckAvailability.cancel();
+  }, [debouncedCheckAvailability]);
 
   const handleGuestCountChange = (count: number) => {
     if (
@@ -380,282 +331,40 @@ export default function BookTeeTime() {
         .fill(null)
         .map((_, i) => currentGuests[i] || { name: "", email: "" })
     );
-    console.log("Updated guests:", form.getValues("guests"));
     if (count === 0) form.clearErrors("guests");
   };
 
   const handleLocationChange = () => {
-    setSelectedSlots([]);
-    form.setValue("timeSlots", []);
     form.setValue("service", "");
+    form.setValue("timeSlot", null);
     setServices([]);
+    setResources([]);
+    setTimeSlots([]);
     setSelectedServiceId(null);
     setSelectedBenefitId(null);
   };
 
   const handleServiceChange = () => {
-    setSelectedSlots([]);
-    form.setValue("timeSlots", []);
+    form.setValue("timeSlot", null);
     setResources([]);
-    setSessions([]);
+    setTimeSlots([]);
     setSelectedServiceId(null);
     setSelectedBenefitId(null);
   };
 
-  /*
   const onSubmit = async (data: z.infer<typeof teeTimeSchema>) => {
     setIsLoading(true);
     try {
       const token = localStorage.getItem("authToken");
       if (!token) throw new Error("Not authenticated - no token");
-
       if (!selectedServiceId) throw new Error("Service ID not loaded");
-
       if (!GYMMASTER_API_KEY) throw new Error("API key missing in environment");
-
       if (!membership) throw new Error("No active membership found");
+      if (!data.timeSlot) throw new Error("Please select a time slot");
 
-      const resourceMap = Object.fromEntries(
-        resources.map((r) => [r.name, r.id])
-      );
       const club = clubs.find((c) => c.name === data.location);
       if (!club) throw new Error("Selected club not found");
 
-      // Generate referral codes and collect booking IDs
-      const newReferralCodes: string[] = [];
-      const newBookingIds: number[] = [];
-      const guestAssignments: number[] = [];
-
-      if (data.guests?.length) {
-        data.guests.forEach(() => {
-          const code = generateReferralCode();
-          newReferralCodes.push(code);
-        });
-      }
-
-      // Book slots
-      for (const slot of data.timeSlots) {
-        try {
-          const bookingId = await addBooking(
-            {
-              date: data.date,
-              day: new Date(data.date).toLocaleDateString("en-US", {
-                weekday: "long",
-              }),
-              time: slot.time,
-              starttime: slot.time,
-              location: data.location,
-              bay: slot.bay, // Ensure this is "PLAYERS BAY" or "MASTERS BAY"
-              servicename: data.service,
-              guests: (data.guests || []) as { name: string; email: string }[],
-              guestPassUsage: {
-                free: Math.min(
-                  (data.guests || []).length,
-                  Math.max(freeGuestPassesPerMonth - guestPassesUsed, 0)
-                ),
-                charged: Math.max(
-                  (data.guests || []).length -
-                    Math.max(freeGuestPassesPerMonth - guestPassesUsed, 0),
-                  0
-                ),
-              },
-            },
-            token,
-            selectedServiceId,
-            resourceMap[slot.bay],
-            membership.id,
-            selectedBenefitId || undefined
-          );
-          console.log("Generated booking ID:", bookingId);
-          newBookingIds.push(bookingId);
-          if (data.guests?.length) {
-            data.guests.forEach(() => guestAssignments.push(bookingId));
-          }
-        } catch (error) {
-          console.error("Booking error for slot:", slot, error);
-          throw new Error(`Booking failed: ${error.message}`);
-        }
-      }
-
-      // Update guest passes, referral codes, and booking IDs
-      if (data.guests?.length) {
-        const newGuestPassesUsed = guestPassesUsed + data.guests.length;
-        const updatedReferralCodes = [...referralCodes, ...newReferralCodes];
-        const updatedBookingIds = [
-          ...guestBookingIds,
-          ...guestAssignments,
-        ].filter((id) => Number.isInteger(id) && id > 0);
-        let retryCount = 0;
-        const maxRetries = 3;
-        while (retryCount < maxRetries) {
-          try {
-            await updateMemberProfile(token, {
-              customtext5: JSON.stringify(updatedBookingIds),
-            });
-            await updateGuestData(
-              token,
-              newGuestPassesUsed,
-              updatedReferralCodes,
-              [], // Skip customtext5
-              (data.guests || []) as {
-                name: string;
-                email: string;
-                date?: string;
-              }[]
-            );
-            break;
-          } catch (error: any) {
-            if (error.response?.status === 413 && retryCount < maxRetries - 1) {
-              console.warn(`Retry ${retryCount + 1} due to 413 error`);
-              retryCount++;
-              await new Promise((resolve) => setTimeout(resolve, 1000));
-              continue;
-            }
-            throw error;
-          }
-        }
-        setGuestPassesUsed(newGuestPassesUsed);
-        setReferralCodes(updatedReferralCodes);
-        setGuestBookingIds(updatedBookingIds);
-      }
-
-      // Send confirmation email to member
-      const memberProfile = await fetchMemberDetails(token);
-      const memberEmail = memberProfile.email || "member@example.com";
-      await sendBookingConfirmationEmail(
-        memberEmail,
-        data,
-        newBookingIds,
-        freeGuestPassesPerMonth,
-        guestPassesUsed,
-        guestPassCharge
-      );
-
-      // Inside onSubmit, after sending member email
-      if (data.guests?.length) {
-        const newGuestPassesUsed = guestPassesUsed + data.guests.length;
-        const updatedReferralCodes = [...referralCodes, ...newReferralCodes];
-        const updatedBookingIds = [
-          ...guestBookingIds,
-          ...guestAssignments,
-        ].filter((id) => Number.isInteger(id) && id > 0);
-
-        // Update guest data
-        let retryCount = 0;
-        const maxRetries = 3;
-        while (retryCount < maxRetries) {
-          try {
-            await updateMemberProfile(token, {
-              customtext5: JSON.stringify(updatedBookingIds),
-            });
-            await updateGuestData(
-              token,
-              newGuestPassesUsed,
-              updatedReferralCodes,
-              [],
-              (data.guests || []) as {
-                name: string;
-                email: string;
-                date?: string;
-              }[]
-            );
-            break;
-          } catch (error: any) {
-            if (error.response?.status === 413 && retryCount < maxRetries - 1) {
-              console.warn(`Retry ${retryCount + 1} due to 413 error`);
-              retryCount++;
-              await new Promise((resolve) => setTimeout(resolve, 1000));
-              continue;
-            }
-            throw error;
-          }
-        }
-        setGuestPassesUsed(newGuestPassesUsed);
-        setReferralCodes(updatedReferralCodes);
-        setGuestBookingIds(updatedBookingIds);
-
-        // Send invite emails to guests
-        for (let i = 0; i < data.guests.length; i++) {
-          const guest = data.guests[i];
-          const referralCode = newReferralCodes[i];
-          const referralLink = `${APP_URL}`; // Adjust URL as needed
-
-          try {
-            await fetch("/api/send-email", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                emailType: "invite",
-                to: guest.email,
-                name: guest.name || "Guest",
-                referralCode,
-                referralLink,
-              }),
-            });
-            console.log(`Invite email sent to ${guest.email}`);
-            toast.success(`Invite email sent to ${guest.email}`);
-          } catch (error) {
-            console.error(
-              `Failed to send invite email to ${guest.email}:`,
-              error
-            );
-            toast.error(`Failed to send invite email to ${guest.email}`);
-          }
-        }
-      }
-
-      const extraCharge =
-        Math.max(
-          (data.guests || []).length -
-            Math.max(freeGuestPassesPerMonth - guestPassesUsed, 0),
-          0
-        ) * guestPassCharge;
-      toast.success("Tee times booked!");
-
-      form.reset({
-        location: "",
-        service: "",
-        date: "",
-        timeSlots: [],
-        guests: [],
-      });
-      setSelectedSlots([]);
-      setGuestCount(0);
-      setShowItinerary(false);
-      setTimeout(() => {
-        router.push("/dashboard/my-tee-times");
-      }, 1000);
-    } catch (err) {
-      console.error("Booking Error:", err);
-      toast.error("Failed to book tee times", {
-        description: (err as Error).message,
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-  */
-
-  /*
-  const onSubmit = async (data: z.infer<typeof teeTimeSchema>) => {
-    setIsLoading(true);
-    try {
-      const token = localStorage.getItem("authToken");
-      if (!token) throw new Error("Not authenticated - no token");
-
-      if (!selectedServiceId) throw new Error("Service ID not loaded");
-
-      if (!GYMMASTER_API_KEY) throw new Error("API key missing in environment");
-
-      if (!membership) throw new Error("No active membership found");
-
-      const resourceMap = Object.fromEntries(
-        resources.map((r) => [r.name, r.id])
-      );
-      const club = clubs.find((c) => c.name === data.location);
-      if (!club) throw new Error("Selected club not found");
-
-      // Calculate guest pass usage
       const guestData = await fetchGuestData(token);
       const guestPassesUsed = guestData.guestPassesUsed || 0;
       const freePassesAvailable = Math.max(
@@ -667,7 +376,6 @@ export default function BookTeeTime() {
         charged: Math.max((data.guests || []).length - freePassesAvailable, 0),
       };
 
-      // Generate referral codes and collect booking IDs
       const newReferralCodes: string[] = [];
       const newBookingIds: number[] = [];
       const guestAssignments: number[] = [];
@@ -679,40 +387,35 @@ export default function BookTeeTime() {
         });
       }
 
-      // Book slots
-      for (const slot of data.timeSlots) {
-        try {
-          const bookingId = await addBooking(
-            {
-              date: data.date,
-              day: new Date(data.date).toLocaleDateString("en-US", {
-                weekday: "long",
-              }),
-              time: slot.time,
-              starttime: slot.time,
-              location: data.location,
-              bay: slot.bay,
-              servicename: data.service,
-              guests: (data.guests || []) as { name: string; email: string }[],
-              guestPassUsage,
-            },
-            token,
-            selectedServiceId,
-            resourceMap[slot.bay],
-            membership.id,
-            selectedBenefitId || undefined
-          );
-          newBookingIds.push(bookingId);
-          if (data.guests?.length) {
-            data.guests.forEach(() => guestAssignments.push(bookingId));
-          }
-        } catch (error) {
-          console.error("Booking error for slot:", slot, error);
-          throw new Error(`Booking failed: ${error.message}`);
-        }
+      const bookingId = await addBooking(
+        {
+          date: data.date,
+          day: new Date(data.date).toLocaleDateString("en-US", {
+            weekday: "long",
+          }),
+          time: data.timeSlot.start_str,
+          starttime: data.timeSlot.bookingstart,
+          location: data.location,
+          bay: data.timeSlot.rname,
+          servicename: data.service,
+          guests: (data.guests || []) as { name: string; email: string }[],
+          guestPassUsage,
+          referralCodes: newReferralCodes,
+          rid: data.timeSlot.rid,
+          bookingstart: data.timeSlot.bookingstart,
+          bookingend: data.timeSlot.bookingend,
+        },
+        token,
+        selectedServiceId,
+        data.timeSlot.rid,
+        membership.id,
+        selectedBenefitId || undefined
+      );
+      newBookingIds.push(bookingId);
+      if (data.guests?.length) {
+        data.guests.forEach(() => guestAssignments.push(bookingId));
       }
 
-      // Update guest passes, referral codes, and booking IDs
       if (data.guests?.length) {
         const updatedReferralCodes = [...referralCodes, ...newReferralCodes];
         const updatedBookingIds = [
@@ -753,7 +456,6 @@ export default function BookTeeTime() {
         setGuestBookingIds(updatedBookingIds);
       }
 
-      // Send confirmation email to member
       const memberProfile = await fetchMemberDetails(token);
       const memberEmail = memberProfile.email || "member@example.com";
       await sendBookingConfirmationEmail(
@@ -765,7 +467,6 @@ export default function BookTeeTime() {
         guestPassCharge
       );
 
-      // Send invite emails to guests
       if (data.guests?.length) {
         for (let i = 0; i < data.guests.length; i++) {
           const guest = data.guests[i];
@@ -794,7 +495,7 @@ export default function BookTeeTime() {
         }
       }
 
-      toast.success("Tee times booked!", {
+      toast.success("Tee time booked!", {
         description:
           guestPassUsage.charged > 0
             ? `Charged $${guestPassUsage.charged * guestPassCharge} for ${guestPassUsage.charged} extra guest(s).`
@@ -805,10 +506,10 @@ export default function BookTeeTime() {
         location: "",
         service: "",
         date: "",
-        timeSlots: [],
+        timeSlot: null,
         guests: [],
       });
-      setSelectedSlots([]);
+      setTimeSlots([]);
       setGuestCount(0);
       setShowItinerary(false);
       setTimeout(() => {
@@ -816,196 +517,7 @@ export default function BookTeeTime() {
       }, 1000);
     } catch (err) {
       console.error("Booking Error:", err);
-      toast.error("Failed to book tee times", {
-        description: (err as Error).message,
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
-  */
-
-  const onSubmit = async (data: z.infer<typeof teeTimeSchema>) => {
-    setIsLoading(true);
-    try {
-      const token = localStorage.getItem("authToken");
-      if (!token) throw new Error("Not authenticated - no token");
-
-      if (!selectedServiceId) throw new Error("Service ID not loaded");
-
-      if (!GYMMASTER_API_KEY) throw new Error("API key missing in environment");
-
-      if (!membership) throw new Error("No active membership found");
-
-      const resourceMap = Object.fromEntries(
-        resources.map((r) => [r.name, r.id])
-      );
-      const club = clubs.find((c) => c.name === data.location);
-      if (!club) throw new Error("Selected club not found");
-
-      // Calculate guest pass usage
-      const guestData = await fetchGuestData(token);
-      const guestPassesUsed = guestData.guestPassesUsed || 0;
-      const freePassesAvailable = Math.max(
-        freeGuestPassesPerMonth - guestPassesUsed,
-        0
-      );
-      const guestPassUsage = {
-        free: Math.min((data.guests || []).length, freePassesAvailable),
-        charged: Math.max((data.guests || []).length - freePassesAvailable, 0),
-      };
-
-      // Generate referral codes and collect booking IDs
-      const newReferralCodes: string[] = [];
-      const newBookingIds: number[] = [];
-      const guestAssignments: number[] = [];
-
-      if (data.guests?.length) {
-        data.guests.forEach(() => {
-          const code = generateReferralCode();
-          newReferralCodes.push(code);
-        });
-      }
-
-      // Book slots
-      for (const slot of data.timeSlots) {
-        try {
-          const bookingId = await addBooking(
-            {
-              date: data.date,
-              day: new Date(data.date).toLocaleDateString("en-US", {
-                weekday: "long",
-              }),
-              time: slot.time,
-              starttime: slot.time,
-              location: data.location,
-              bay: slot.bay,
-              servicename: data.service,
-              guests: (data.guests || []) as { name: string; email: string }[],
-              guestPassUsage,
-              referralCodes: newReferralCodes, // Pass referral codes
-            },
-            token,
-            selectedServiceId,
-            resourceMap[slot.bay],
-            membership.id,
-            selectedBenefitId || undefined
-          );
-          newBookingIds.push(bookingId);
-          if (data.guests?.length) {
-            data.guests.forEach(() => guestAssignments.push(bookingId));
-          }
-        } catch (error) {
-          console.error("Booking error for slot:", slot, error);
-          throw new Error(`Booking failed: ${error.message}`);
-        }
-      }
-
-      // Update guest passes, referral codes, and booking IDs
-      if (data.guests?.length) {
-        const updatedReferralCodes = [...referralCodes, ...newReferralCodes];
-        const updatedBookingIds = [
-          ...guestBookingIds,
-          ...guestAssignments,
-        ].filter((id) => Number.isInteger(id) && id > 0);
-        let retryCount = 0;
-        const maxRetries = 3;
-        while (retryCount < maxRetries) {
-          try {
-            await updateMemberProfile(token, {
-              customtext5: JSON.stringify(updatedBookingIds),
-            });
-            await updateGuestData(
-              token,
-              guestPassesUsed + guestPassUsage.free,
-              updatedReferralCodes,
-              [],
-              (data.guests || []) as {
-                name: string;
-                email: string;
-                date?: string;
-              }[]
-            );
-            break;
-          } catch (error: any) {
-            if (error.response?.status === 413 && retryCount < maxRetries - 1) {
-              console.warn(`Retry ${retryCount + 1} due to 413 error`);
-              retryCount++;
-              await new Promise((resolve) => setTimeout(resolve, 1000));
-              continue;
-            }
-            throw error;
-          }
-        }
-        setGuestPassesUsed(guestPassesUsed + guestPassUsage.free);
-        setReferralCodes(updatedReferralCodes);
-        setGuestBookingIds(updatedBookingIds);
-      }
-
-      // Send confirmation email to member
-      const memberProfile = await fetchMemberDetails(token);
-      const memberEmail = memberProfile.email || "member@example.com";
-      await sendBookingConfirmationEmail(
-        memberEmail,
-        data,
-        newBookingIds,
-        freeGuestPassesPerMonth,
-        guestPassesUsed,
-        guestPassCharge
-      );
-
-      // Send invite emails to guests
-      if (data.guests?.length) {
-        for (let i = 0; i < data.guests.length; i++) {
-          const guest = data.guests[i];
-          const referralCode = newReferralCodes[i];
-          const referralLink = `${APP_URL}`;
-          try {
-            await fetch("/api/send-email", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                emailType: "invite",
-                to: guest.email,
-                name: guest.name || "Guest",
-                referralCode,
-                referralLink,
-              }),
-            });
-            toast.success(`Invite email sent to ${guest.email}`);
-          } catch (error) {
-            console.error(
-              `Failed to send invite email to ${guest.email}:`,
-              error
-            );
-            toast.error(`Failed to send invite email to ${guest.email}`);
-          }
-        }
-      }
-
-      toast.success("Tee times booked!", {
-        description:
-          guestPassUsage.charged > 0
-            ? `Charged $${guestPassUsage.charged * guestPassCharge} for ${guestPassUsage.charged} extra guest(s).`
-            : undefined,
-      });
-
-      form.reset({
-        location: "",
-        service: "",
-        date: "",
-        timeSlots: [],
-        guests: [],
-      });
-      setSelectedSlots([]);
-      setGuestCount(0);
-      setShowItinerary(false);
-      setTimeout(() => {
-        router.push("/dashboard/my-tee-times");
-      }, 1000);
-    } catch (err) {
-      console.error("Booking Error:", err);
-      toast.error("Failed to book tee times", {
+      toast.error("Failed to book tee time", {
         description: (err as Error).message,
       });
     } finally {
@@ -1015,115 +527,8 @@ export default function BookTeeTime() {
 
   const isFormValid = () => {
     const values = form.watch();
-    return (
-      values.location &&
-      values.service &&
-      values.date &&
-      values.timeSlots.length > 0
-    );
+    return values.location && values.service && values.date && values.timeSlot;
   };
-
-  /*
-  useEffect(() => {
-    if (!date || !location || !service) return;
-
-    const checkAvailability = async () => {
-      try {
-        const response = await fetch("/api/check-slots", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            date,
-            location,
-            bays: resources.map((r) => r.name),
-            timeSlots: timeSlots.map((time) => {
-              const { hour, minute } = parseTimeSlot(time);
-              return `${hour.toString().padStart(2, "0")}:${minute
-                .toString()
-                .padStart(2, "0")}:00`;
-            }),
-          }),
-        });
-        const { unavailableSlots } = await response.json();
-        const availability: Record<string, boolean> = {};
-        timeSlots.forEach((time) => {
-          resources.forEach((r) => {
-            const slotKey = `${time}-${r.name}`;
-            const formattedTime = `${parseTimeSlot(time)
-              .hour.toString()
-              .padStart(
-                2,
-                "0"
-              )}:${parseTimeSlot(time).minute.toString().padStart(2, "0")}:00`;
-            availability[slotKey] = !unavailableSlots.some(
-              (slot: { time: string; bay: string }) =>
-                slot.time === formattedTime && slot.bay === r.name
-            );
-          });
-        });
-        setSlotAvailability(availability);
-      } catch (error) {
-        console.error("Error fetching slot availability:", error);
-        setSlotAvailability({});
-      }
-    };
-    checkAvailability();
-  }, [date, location, service, resources, timeSlots]);
-  */
-
-  const checkAvailability = debounce(async () => {
-    if (
-      !date ||
-      !location ||
-      !service ||
-      !resources.length ||
-      !timeSlots.length
-    )
-      return;
-    try {
-      const response = await fetch("/api/check-slots", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          date,
-          location,
-          bays: resources.map((r) => r.name),
-          timeSlots: timeSlots.map((time) => {
-            const { hour, minute } = parseTimeSlot(time);
-            return `${hour.toString().padStart(2, "0")}:${minute
-              .toString()
-              .padStart(2, "0")}:00`;
-          }),
-        }),
-      });
-      const { unavailableSlots } = await response.json();
-      const availability: Record<string, boolean> = {};
-      timeSlots.forEach((time) => {
-        resources.forEach((r) => {
-          const slotKey = `${time}-${r.name}`;
-          const formattedTime = `${parseTimeSlot(time)
-            .hour.toString()
-            .padStart(
-              2,
-              "0"
-            )}:${parseTimeSlot(time).minute.toString().padStart(2, "0")}:00`;
-          availability[slotKey] = !unavailableSlots.some(
-            (slot: { time: string; bay: string }) =>
-              slot.time === formattedTime && slot.bay === r.name
-          );
-        });
-      });
-      setSlotAvailability(availability);
-    } catch (error) {
-      console.error("Error fetching slot availability:", error);
-      setSlotAvailability({});
-    }
-  }, 500); // 500ms debounce delay
-
-  useEffect(() => {
-    checkAvailability();
-    return () => checkAvailability.cancel(); // Cleanup debounce on unmount
-  }, [date, location, service, resources, timeSlots]);
 
   return (
     <div className="space-y-4">
@@ -1278,7 +683,95 @@ export default function BookTeeTime() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4, delay: 0.6 }}
-              className="space-y-4"
+            >
+              <FormField
+                control={form.control}
+                name="timeSlot"
+                render={() => (
+                  <FormItem>
+                    <FormLabel className="text-sm sm:text-base text-black">
+                      Available Time Slots
+                    </FormLabel>
+                    <FormControl>
+                      {isFetchingSlots ? (
+                        <div className="flex items-center justify-center p-4">
+                          <Loader2 className="h-8 w-8 animate-spin text-black" />
+                          <span className="ml-2 text-gray-500">
+                            Loading time slots...
+                          </span>
+                        </div>
+                      ) : timeSlots.length === 0 ? (
+                        <div className="text-center p-4 text-gray-500">
+                          No available time slots for {date}
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          {resources.map((resource: any) => {
+                            const resourceSlots = timeSlots.filter(
+                              (slot) => slot.rname === resource.name
+                            );
+                            return (
+                              resourceSlots.length > 0 && (
+                                <div
+                                  key={resource.id}
+                                  className="border p-4 rounded-md bg-gray-50"
+                                >
+                                  <h4 className="text-sm font-medium text-black mb-2">
+                                    {resource.name}
+                                  </h4>
+                                  <div className="grid grid-cols-1 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                                    {resourceSlots.map((slot) => (
+                                      <Button
+                                        key={`${slot.rid}-${slot.bookingstart}`}
+                                        type="button"
+                                        variant={
+                                          form.getValues("timeSlot")
+                                            ?.start_str === slot.start_str &&
+                                          form.getValues("timeSlot")?.rname ===
+                                            slot.rname
+                                            ? "default"
+                                            : "outline"
+                                        }
+                                        className={`text-sm ${
+                                          form.getValues("timeSlot")
+                                            ?.start_str === slot.start_str &&
+                                          form.getValues("timeSlot")?.rname ===
+                                            slot.rname
+                                            ? "bg-black text-white"
+                                            : "border-gray-300 text-black hover:bg-gray-100"
+                                        }`}
+                                        onClick={() => {
+                                          form.setValue("timeSlot", {
+                                            rid: slot.rid,
+                                            bookingstart: slot.bookingstart,
+                                            bookingend: slot.bookingend,
+                                            start_str: slot.start_str,
+                                            end_str: slot.end_str,
+                                            rname: slot.rname,
+                                          });
+                                        }}
+                                      >
+                                        {`${slot.start_str} - ${slot.end_str}`}
+                                      </Button>
+                                    ))}
+                                  </div>
+                                </div>
+                              )
+                            );
+                          })}
+                        </div>
+                      )}
+                    </FormControl>
+                    <FormMessage className="text-xs sm:text-sm text-red-500" />
+                  </FormItem>
+                )}
+              />
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.7 }}
             >
               <FormLabel className="text-sm sm:text-base flex items-center gap-2 text-black">
                 <Users className="h-5 w-5 text-black" aria-hidden="true" />{" "}
@@ -1291,11 +784,7 @@ export default function BookTeeTime() {
                     type="button"
                     variant={guestCount === count ? "default" : "outline"}
                     onClick={() => handleGuestCountChange(count)}
-                    className={`text-sm sm:text-base ${
-                      guestCount === count
-                        ? "bg-black text-white"
-                        : "border-gray-300 text-black hover:bg-gray-100"
-                    }`}
+                    className={`text-sm sm:text-base ${guestCount === count ? "bg-black text-white" : "border-gray-300 text-black hover:bg-gray-100"}`}
                   >
                     {count === 0 ? "None" : count}
                   </Button>
@@ -1366,185 +855,6 @@ export default function BookTeeTime() {
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4, delay: 0.7 }}
-            >
-              <FormField
-                control={form.control}
-                name="timeSlots"
-                render={() => (
-                  <FormItem>
-                    <FormLabel className="text-sm sm:text-base text-black">
-                      Time Slots
-                    </FormLabel>
-                    <div className="mt-2 max-h-96 overflow-y-auto border rounded-md">
-                      {isFetchingSlots ? (
-                        <div className="flex items-center justify-center p-4">
-                          <Loader2 className="h-8 w-8 animate-spin text-black" />
-                          <span className="ml-2 text-gray-500">
-                            Loading time slots...
-                          </span>
-                        </div>
-                      ) : resources.length === 0 ? (
-                        <div className="text-center p-4 text-gray-500">
-                          Select a location, service, and date to see available
-                          times
-                        </div>
-                      ) : (
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead className="text-xs w-[80px] sm:w-[100px] sticky top-0 bg-white">
-                                Time
-                              </TableHead>
-                              {resources.map((r) => (
-                                <TableHead
-                                  key={r.id}
-                                  className="text-center text-xs w-[60px] sm:w-[80px] sticky top-0 bg-white"
-                                >
-                                  {r.name}
-                                </TableHead>
-                              ))}
-                            </TableRow>
-                          </TableHeader>
-
-                          {/* <TableBody>
-                            {timeSlots.map((time) => (
-                              <TableRow key={time}>
-                                <TableCell className="font-medium text-xs text-black">
-                                  {time}
-                                </TableCell>
-                                {resources.map((r) => {
-                                  const isSelected = selectedSlots.some(
-                                    (s) => s.time === time && s.bay === r.name
-                                  );
-                                  const isUnavailable = !isSlotAvailable(
-                                    time,
-                                    r.name
-                                  );
-                                  return (
-                                    <TableCell
-                                      key={`${r.id}-${time}`}
-                                      className="text-center"
-                                    >
-                                      <Button
-                                        type="button"
-                                        variant={
-                                          isSelected
-                                            ? "default"
-                                            : isUnavailable
-                                              ? "destructive"
-                                              : "outline"
-                                        }
-                                        onClick={() =>
-                                          handleTimeSelect(time, r.name)
-                                        }
-                                        className={`w-full text-[10px] sm:text-xs py-0.5 sm:py-1 px-1 sm:px-2 ${
-                                          isSelected
-                                            ? "bg-black text-white"
-                                            : isUnavailable
-                                              ? "bg-red-500 text-white"
-                                              : "border-gray-300 text-black hover:bg-gray-100"
-                                        }`}
-                                        disabled={
-                                          isUnavailable || !location || !service
-                                        }
-                                        aria-label={
-                                          isSelected
-                                            ? `Selected: ${time} at ${r.name}`
-                                            : isUnavailable
-                                              ? `Unavailable: ${time} at ${r.name}`
-                                              : `Choose ${time} at ${r.name}`
-                                        }
-                                      >
-                                        {isSelected
-                                          ? "Selected"
-                                          : isUnavailable
-                                            ? "N/A"
-                                            : "Select"}
-                                      </Button>
-                                    </TableCell>
-                                  );
-                                })}
-                              </TableRow>
-                            ))}
-                          </TableBody> */}
-
-                          <TableBody>
-                            {timeSlots.map((time) => (
-                              <TableRow key={time}>
-                                <TableCell className="font-medium text-xs text-black">
-                                  {time}
-                                </TableCell>
-                                {resources.map((r) => {
-                                  const isSelected = selectedSlots.some(
-                                    (s) => s.time === time && s.bay === r.name
-                                  );
-                                  const isUnavailable = !isSlotAvailable(
-                                    time,
-                                    r.name
-                                  );
-                                  return (
-                                    <TableCell
-                                      key={`${r.id}-${time}`}
-                                      className="text-center"
-                                    >
-                                      <Button
-                                        type="button"
-                                        variant={
-                                          isSelected
-                                            ? "default"
-                                            : isUnavailable
-                                              ? "destructive"
-                                              : "outline"
-                                        }
-                                        onClick={() =>
-                                          handleTimeSelect(time, r.name)
-                                        }
-                                        className={`w-full text-[10px] sm:text-xs py-0.5 sm:py-1 px-1 sm:px-2 ${
-                                          isSelected
-                                            ? "bg-black text-white"
-                                            : isUnavailable
-                                              ? "bg-red-500 text-white"
-                                              : "border-gray-300 text-black hover:bg-gray-100"
-                                        }`}
-                                        disabled={
-                                          isUnavailable ||
-                                          !location ||
-                                          !service ||
-                                          isFetchingSlots
-                                        }
-                                        aria-label={
-                                          isSelected
-                                            ? `Selected: ${time} at ${r.name}`
-                                            : isUnavailable
-                                              ? `Booked: ${time} at ${r.name}`
-                                              : `Choose ${time} at ${r.name}`
-                                        }
-                                      >
-                                        {isSelected
-                                          ? "Selected"
-                                          : isUnavailable
-                                            ? "Booked"
-                                            : "Select"}
-                                      </Button>
-                                    </TableCell>
-                                  );
-                                })}
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      )}
-                    </div>
-                    <FormMessage className="text-xs sm:text-sm text-red-500" />
-                  </FormItem>
-                )}
-              />
-            </motion.div>
-
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4, delay: 0.8 }}
             >
               <Dialog open={showItinerary} onOpenChange={setShowItinerary}>
@@ -1587,18 +897,15 @@ export default function BookTeeTime() {
                       </p>
                       <div>
                         <strong className="text-sm sm:text-base">
-                          Time Slots:
+                          Time Slot:
                         </strong>
-                        {form.getValues("timeSlots").length > 0 ? (
+                        {form.getValues("timeSlot") ? (
                           <ul className="list-disc pl-5 mt-1">
-                            {form.getValues("timeSlots").map((slot, index) => (
-                              <li
-                                key={index}
-                                className="text-sm sm:text-base text-gray-600"
-                              >
-                                {slot.time} at {slot.bay}
-                              </li>
-                            ))}
+                            <li className="text-sm sm:text-base text-gray-600">
+                              {form.getValues("timeSlot")!.start_str} -{" "}
+                              {form.getValues("timeSlot")!.end_str} at{" "}
+                              {form.getValues("timeSlot")!.rname}
+                            </li>
                           </ul>
                         ) : (
                           "Not selected"
@@ -1614,7 +921,7 @@ export default function BookTeeTime() {
                               (guest, index) => (
                                 <li
                                   key={index}
-                                  className="text-sm sm:text-base text-gray-600"
+                                  className="time-sm sm:text-base text-gray-600"
                                 >
                                   {guest.name} ({guest.email})
                                 </li>
@@ -1633,7 +940,7 @@ export default function BookTeeTime() {
                               0
                             )
                           )}{" "}
-                          free pass(es) used.{" "}
+                          free pass(es) used.
                           {Math.max(
                             (form.getValues("guests") || []).length -
                               Math.max(
@@ -1642,7 +949,7 @@ export default function BookTeeTime() {
                               ),
                             0
                           ) > 0
-                            ? ""
+                            ? ` $${Math.max((form.getValues("guests") || []).length - Math.max(freeGuestPassesPerMonth - guestPassesUsed, 0), 0) * guestPassCharge} for extra guests.`
                             : ""}
                         </p>
                       )}
