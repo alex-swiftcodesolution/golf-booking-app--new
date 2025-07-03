@@ -58,14 +58,14 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
     try {
       const {
         date,
-        time, // Display time (e.g., "10:00 AM")
+        time,
         servicename,
         guests,
         bay,
         location,
         day,
-        bookingstart, // ISO time (e.g., "10:00:00")
-        bookingend, // ISO time (e.g., "11:00:00")
+        bookingstart,
+        bookingend,
         referralCodes,
         rid,
       } = booking;
@@ -168,12 +168,32 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
         }),
       });
 
-      // Update guest data in GymMaster
+      // Update customtext5 with bookingId for all bookings
+      const updatedGuestBookingIds = [
+        ...guestData.guestBookingIds,
+        newId,
+      ].filter((id) => Number.isInteger(id) && id > 0);
+      let retryCount = 0;
+      const maxRetries = 3;
+      while (retryCount < maxRetries) {
+        try {
+          await updateMemberProfile(token, {
+            customtext5: JSON.stringify(updatedGuestBookingIds),
+          });
+          break;
+        } catch (error: any) {
+          if (error.response?.status === 413 && retryCount < maxRetries - 1) {
+            retryCount++;
+            await new Promise((resolve) => setTimeout(resolve, 1000));
+            continue;
+          }
+          console.warn("Booking ID update failed:", error.message);
+          break;
+        }
+      }
+
+      // Update guest data in GymMaster if guests exist
       if (guests.length > 0) {
-        const updatedGuestBookingIds = [
-          ...guestData.guestBookingIds,
-          ...Array(guests.length).fill(newId),
-        ].filter((id) => Number.isInteger(id) && id > 0);
         const updatedGuests = [
           ...guestData.guests,
           ...guests.filter(
@@ -188,13 +208,9 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
         ];
         const updatedGuestPassesUsed = guestPassesUsed + guestPassUsage.free;
 
-        let retryCount = 0;
-        const maxRetries = 3;
+        retryCount = 0;
         while (retryCount < maxRetries) {
           try {
-            await updateMemberProfile(token, {
-              customtext5: JSON.stringify(updatedGuestBookingIds),
-            });
             await updateGuestData(
               token,
               updatedGuestPassesUsed,
@@ -240,7 +256,7 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
           api_key: GYMMASTER_API_KEY || "",
           token,
           bookingid: id.toString(),
-          waitlist: "0",
+          list: "0",
         }),
         {
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -276,12 +292,12 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
               await new Promise((resolve) => setTimeout(resolve, 1000));
               continue;
             }
-            console.warn("Guest data update failed:", error.message);
+            console.warn("Booking ID update failed:", error.message);
             break;
           }
         }
       } catch (error) {
-        console.warn("Non-critical error updating guest data:", error);
+        console.warn("Non-critical error updating booking IDs:", error);
       }
 
       let gymMasterBookings: any[] = [];
