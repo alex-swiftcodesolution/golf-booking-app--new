@@ -340,9 +340,9 @@ export default function MyTeeTimes() {
                   <TableHead className="text-sm font-semibold text-black">
                     Date
                   </TableHead>
-                  <TableHead className="text-sm font-semibold text-black">
+                  {/* <TableHead className="text-sm font-semibold text-black">
                     Day
-                  </TableHead>
+                  </TableHead> */}
                   <TableHead className="text-sm font-semibold text-black">
                     Time
                   </TableHead>
@@ -378,9 +378,9 @@ export default function MyTeeTimes() {
                     <TableCell className="text-sm text-black">
                       {booking.date}
                     </TableCell>
-                    <TableCell className="text-sm text-black">
+                    {/* <TableCell className="text-sm text-black">
                       {booking.day}
-                    </TableCell>
+                    </TableCell> */}
                     <TableCell className="text-sm text-black">
                       {booking.time}
                     </TableCell>
