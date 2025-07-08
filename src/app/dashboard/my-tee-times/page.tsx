@@ -481,12 +481,12 @@ export default function MyTeeTimes() {
                       </span>
                       <span className="text-sm text-black">{booking.date}</span>
                     </div>
-                    <div className="flex flex-col items-start justify-start gap-0">
+                    {/* <div className="flex flex-col items-start justify-start gap-0">
                       <span className="text-sm font-semibold text-gray-700">
                         Day
                       </span>
                       <span className="text-sm text-black">{booking.day}</span>
-                    </div>
+                    </div> */}
                     <div className="flex flex-col items-start justify-start gap-0">
                       <span className="text-sm font-semibold text-gray-700">
                         Time
