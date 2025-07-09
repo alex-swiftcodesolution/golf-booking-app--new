@@ -116,7 +116,7 @@ const generateDeviceIdentifier = async (userId: string): Promise<string> => {
       language: navigator.language,
       platform: navigator.platform,
       screenResolution: `${window.screen.width}x${window.screen.height}`,
-      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      // timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       hardwareConcurrency: navigator.hardwareConcurrency || 4,
       userId, // Include user-specific data to ensure uniqueness per user
     };
