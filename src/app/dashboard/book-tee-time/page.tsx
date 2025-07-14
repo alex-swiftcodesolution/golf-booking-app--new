@@ -682,6 +682,90 @@ export default function BookTeeTime() {
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.7 }}
+            >
+              <FormLabel className="text-sm sm:text-base flex items-center gap-2 text-black">
+                <Users className="h-5 w-5 text-black" aria-hidden="true" />{" "}
+                Invite Guests
+              </FormLabel>
+              <div className="flex gap-2 sm:gap-4">
+                {[0, 1, 2, 3].map((count) => (
+                  <Button
+                    key={count}
+                    type="button"
+                    variant={guestCount === count ? "default" : "outline"}
+                    onClick={() => handleGuestCountChange(count)}
+                    className={`text-sm sm:text-base ${guestCount === count ? "bg-black text-white" : "border-gray-300 text-black hover:bg-gray-100"}`}
+                  >
+                    {count === 0 ? "None" : count}
+                  </Button>
+                ))}
+              </div>
+              {guestCount > 0 && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  transition={{ duration: 0.3 }}
+                  className="space-y-4"
+                >
+                  {Array.from({ length: guestCount }).map((_, index) => (
+                    <motion.div
+                      key={index}
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ duration: 0.3, delay: 0.1 * index }}
+                      className="space-y-2 border p-4 rounded-md bg-gray-50"
+                    >
+                      <h4 className="text-sm font-medium text-black">
+                        Guest {index + 1}
+                      </h4>
+                      <FormField
+                        control={form.control}
+                        name={`guests.${index}.name`}
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-xs sm:text-sm text-gray-600">
+                              Name
+                            </FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="Guest Name"
+                                {...field}
+                                className="border-gray-300 focus:border-black focus:ring-black"
+                              />
+                            </FormControl>
+                            <FormMessage className="text-xs sm:text-sm text-red-500" />
+                          </FormItem>
+                        )}
+                      />
+                      <FormField
+                        control={form.control}
+                        name={`guests.${index}.email`}
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel className="text-xs sm:text-sm text-gray-600">
+                              Email
+                            </FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="guest@example.com"
+                                {...field}
+                                className="border-gray-300 focus:border-black focus:ring-black"
+                              />
+                            </FormControl>
+                            <FormMessage className="text-xs sm:text-sm text-red-500" />
+                          </FormItem>
+                        )}
+                      />
+                    </motion.div>
+                  ))}
+                </motion.div>
+              )}
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4, delay: 0.6 }}
             >
               <FormField
@@ -766,90 +850,6 @@ export default function BookTeeTime() {
                   </FormItem>
                 )}
               />
-            </motion.div>
-
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4, delay: 0.7 }}
-            >
-              <FormLabel className="text-sm sm:text-base flex items-center gap-2 text-black">
-                <Users className="h-5 w-5 text-black" aria-hidden="true" />{" "}
-                Invite Guests
-              </FormLabel>
-              <div className="flex gap-2 sm:gap-4">
-                {[0, 1, 2, 3].map((count) => (
-                  <Button
-                    key={count}
-                    type="button"
-                    variant={guestCount === count ? "default" : "outline"}
-                    onClick={() => handleGuestCountChange(count)}
-                    className={`text-sm sm:text-base ${guestCount === count ? "bg-black text-white" : "border-gray-300 text-black hover:bg-gray-100"}`}
-                  >
-                    {count === 0 ? "None" : count}
-                  </Button>
-                ))}
-              </div>
-              {guestCount > 0 && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  transition={{ duration: 0.3 }}
-                  className="space-y-4"
-                >
-                  {Array.from({ length: guestCount }).map((_, index) => (
-                    <motion.div
-                      key={index}
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ duration: 0.3, delay: 0.1 * index }}
-                      className="space-y-2 border p-4 rounded-md bg-gray-50"
-                    >
-                      <h4 className="text-sm font-medium text-black">
-                        Guest {index + 1}
-                      </h4>
-                      <FormField
-                        control={form.control}
-                        name={`guests.${index}.name`}
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className="text-xs sm:text-sm text-gray-600">
-                              Name
-                            </FormLabel>
-                            <FormControl>
-                              <Input
-                                placeholder="Guest Name"
-                                {...field}
-                                className="border-gray-300 focus:border-black focus:ring-black"
-                              />
-                            </FormControl>
-                            <FormMessage className="text-xs sm:text-sm text-red-500" />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name={`guests.${index}.email`}
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className="text-xs sm:text-sm text-gray-600">
-                              Email
-                            </FormLabel>
-                            <FormControl>
-                              <Input
-                                placeholder="guest@example.com"
-                                {...field}
-                                className="border-gray-300 focus:border-black focus:ring-black"
-                              />
-                            </FormControl>
-                            <FormMessage className="text-xs sm:text-sm text-red-500" />
-                          </FormItem>
-                        )}
-                      />
-                    </motion.div>
-                  ))}
-                </motion.div>
-              )}
             </motion.div>
 
             <motion.div
