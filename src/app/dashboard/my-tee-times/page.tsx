@@ -79,6 +79,7 @@ export default function MyTeeTimes() {
     return `${start} - ${end}`;
   };
 
+  /*
   const fetchBookings = useCallback(async () => {
     setIsFetching(true);
     try {
@@ -178,6 +179,147 @@ export default function MyTeeTimes() {
                 servicename: existing.servicename || newBooking.servicename,
                 guestPassUsage:
                   existing.guestPassUsage || newBooking.guestPassUsage,
+              }
+            : newBooking;
+        })
+      );
+
+      if (fetchedBookings.length === 0) {
+        toast.info("No bookings found");
+      }
+    } catch (error) {
+      console.error("Fetch Bookings Error:", error);
+      toast.error("Failed to fetch bookings", {
+        description: "Please try again later.",
+      });
+    } finally {
+      setIsFetching(false);
+    }
+  }, [setBookings]);
+  */
+
+  const fetchBookings = useCallback(async () => {
+    setIsFetching(true);
+    try {
+      const token = localStorage.getItem("authToken");
+      if (!token) {
+        throw new Error("Not authenticated");
+      }
+
+      // Fetch bookings from GymMaster API
+      const bookingsRes = await axios.get("/api/gymmaster/v2/member/bookings", {
+        params: {
+          api_key: GYMMASTER_API_KEY,
+          token,
+        },
+      });
+
+      // Fetch guest data from MongoDB
+      const mongoFetchResponse = await fetch("/api/bookings/fetch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: token }),
+      });
+
+      if (!mongoFetchResponse.ok) {
+        throw new Error("Failed to fetch guest data from MongoDB");
+      }
+
+      const { bookings: mongoBookings } = await mongoFetchResponse.json();
+
+      // Create a map of MongoDB bookings for quick lookup of guest data
+      const guestDataMap = new Map<number, Partial<Booking>>();
+      mongoBookings.forEach((b: Booking) => {
+        guestDataMap.set(b.id, {
+          guests: b.guests || [],
+          guestPassUsage: b.guestPassUsage || { free: 0, charged: 0 },
+          referralCodes: b.referralCodes || [],
+        });
+      });
+
+      // Fetch clubs for mapping locations
+      const clubs = await fetchClubs();
+      const clubMap = Object.fromEntries(
+        clubs.map((club) => [club.name, club.id])
+      );
+
+      // Get unique club names
+      const uniqueClubs: string[] = Array.from(
+        new Set(
+          bookingsRes.data.result?.servicebookings?.map(
+            (b: ServiceBooking) => b.location || "Simcognito's Golf 2/47 Club"
+          )
+        )
+      );
+
+      // Fetch services for each club
+      const serviceMaps: Record<string, Record<number, string>> = {};
+      for (const clubName of uniqueClubs) {
+        const companyid = clubMap[clubName];
+        if (companyid) {
+          const services = await fetchServices(token, undefined, companyid);
+          serviceMaps[clubName] = Object.fromEntries(
+            services
+              .filter((s) => s.servicename.includes("Member Golf Bay"))
+              .map((s) => [s.serviceid, s.servicename.trim()])
+          );
+        }
+      }
+
+      // Map GymMaster bookings and merge with MongoDB guest data
+      const fetchedBookings: Booking[] =
+        bookingsRes.data.result?.servicebookings?.map((b: ServiceBooking) => {
+          const time = formatTimeRange(b.starttime, b.endtime, b.start_str);
+          const [year, month, day] = b.day.split("-").map(Number);
+          const formattedDate = `${month.toString().padStart(2, "0")}/${day
+            .toString()
+            .padStart(2, "0")}/${year.toString().slice(-2)}`;
+          const clubName = b.location || "Simcognito's Golf 2/47 Club";
+          const servicename =
+            b.type?.trim() ||
+            (typeof b.serviceid === "number" &&
+            serviceMaps[clubName]?.[b.serviceid]
+              ? serviceMaps[clubName][b.serviceid]
+              : b.servicename || "Unknown Service");
+
+          // Get guest data from MongoDB
+          const mongoGuestData = guestDataMap.get(b.id) || {
+            guests: [],
+            guestPassUsage: { free: 0, charged: 0 },
+            referralCodes: [],
+          };
+
+          return {
+            id: b.id,
+            date: formattedDate,
+            time,
+            location: clubName,
+            bay: b.name || "Unknown",
+            servicename,
+            guests: mongoGuestData.guests,
+            guestPassUsage: mongoGuestData.guestPassUsage,
+            referralCodes: mongoGuestData.referralCodes,
+            day: new Date(b.day).toLocaleDateString("en-US", {
+              weekday: "long",
+            }),
+            starttime: b.starttime,
+            rid: b.id, // Adjust if needed
+            bookingstart: b.starttime,
+            bookingend: b.endtime,
+          };
+        }) || [];
+
+      setBookings((prev) =>
+        fetchedBookings.map((newBooking) => {
+          const existing = prev.find((b) => b.id === newBooking.id);
+          return existing
+            ? {
+                ...newBooking,
+                servicename: existing.servicename || newBooking.servicename,
+                guestPassUsage:
+                  existing.guestPassUsage || newBooking.guestPassUsage,
+                referralCodes:
+                  existing.referralCodes || newBooking.referralCodes,
               }
             : newBooking;
         })
