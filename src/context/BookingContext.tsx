@@ -9,20 +9,20 @@ import {
 } from "@/api/gymmaster";
 
 export interface Booking {
-  id?: number;
+  id: number; // Changed to required number
   date: string;
-  time: string; // Stores display time (e.g., "10:00 AM")
+  time: string;
   location: string;
-  bay: string; // rname from JSON (e.g., "MASTERS BAY")
+  bay: string;
   servicename: string;
   guests: { name: string; email: string; date?: string }[];
   guestPassUsage: { free: number; charged: number };
-  day: string; // Weekday (e.g., "Monday")
-  starttime: string; // ISO time (e.g., "10:00:00")
+  day: string;
+  starttime: string;
   referralCodes?: string[];
-  rid: number; // Resource ID from JSON
-  bookingstart: string; // ISO time (e.g., "10:00:00")
-  bookingend: string; // ISO time (e.g., "11:00:00")
+  rid: number;
+  bookingstart: string;
+  bookingend: string;
 }
 
 interface BookingContextType {
@@ -35,7 +35,7 @@ interface BookingContextType {
     membershipId: number,
     benefitId?: number
   ) => Promise<number>;
-  deleteBooking: (id: number, token: string) => void;
+  deleteBooking: (id: number, token: string) => Promise<void>;
   updateBooking: (id: number, updatedBooking: Partial<Booking>) => void;
   setBookings: React.Dispatch<React.SetStateAction<Booking[]>>;
 }
@@ -69,6 +69,11 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
         referralCodes,
         rid,
       } = booking;
+
+      // Decode JWT to get stable user ID
+      const decodedToken = JSON.parse(atob(token.split(".")[1]));
+      const stableUserId = Number(decodedToken.id); // e.g., 268638
+      console.log("Stable User ID in addBooking:", stableUserId);
 
       // Fetch guest data
       const guestData = await fetchGuestData(token);
@@ -145,7 +150,7 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
         throw new Error(`Invalid booking ID: ${newId}`);
       }
 
-      // Save to MongoDB
+      // Save to MongoDB with stable userId
       await fetch("/api/bookings/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -156,7 +161,7 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
           location,
           bay,
           servicename,
-          userId: token,
+          userId: stableUserId,
           guests,
           guestPassUsage,
           day,
@@ -250,6 +255,11 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
 
   const deleteBooking = async (id: number, token: string): Promise<void> => {
     try {
+      // Decode JWT to get stable user ID
+      const decodedToken = JSON.parse(atob(token.split(".")[1]));
+      const stableUserId = Number(decodedToken.id); // e.g., 268638
+      console.log("Stable User ID in deleteBooking:", stableUserId);
+
       const response = await axios.post(
         "/api/gymmaster/v1/member/cancelbooking",
         new URLSearchParams({
@@ -267,10 +277,11 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
         throw new Error(response.data.error || "Failed to cancel booking");
       }
 
+      // Delete from MongoDB using stable userId
       await fetch("/api/bookings/delete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ bookingId: id }),
+        body: JSON.stringify({ bookingId: id, userId: stableUserId }),
       });
 
       try {
@@ -318,7 +329,7 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
         const mongoFetchResponse = await fetch("/api/bookings/fetch", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ userId: token }),
+          body: JSON.stringify({ userId: stableUserId }),
         });
         if (!mongoFetchResponse.ok) {
           throw new Error("Failed to fetch bookings from MongoDB");

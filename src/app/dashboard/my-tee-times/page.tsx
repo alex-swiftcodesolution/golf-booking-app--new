@@ -43,6 +43,7 @@ interface ServiceBooking {
   servicename?: string;
   serviceid?: number;
   type?: string;
+  resourceid?: number;
 }
 
 export default function MyTeeTimes() {
@@ -79,7 +80,6 @@ export default function MyTeeTimes() {
     return `${start} - ${end}`;
   };
 
-  /*
   const fetchBookings = useCallback(async () => {
     setIsFetching(true);
     try {
@@ -88,123 +88,10 @@ export default function MyTeeTimes() {
         throw new Error("Not authenticated");
       }
 
-      const [bookingsRes, guestData] = await Promise.all([
-        axios.get("/api/gymmaster/v2/member/bookings", {
-          params: {
-            api_key: GYMMASTER_API_KEY,
-            token,
-          },
-        }),
-        fetchGuestData(token),
-      ]);
-
-      const { guestBookingIds, guests } = guestData;
-
-      const guestMap = new Map<
-        string,
-        { name: string; email: string; date?: string }[]
-      >();
-      guestBookingIds.forEach((id: number, index: number) => {
-        const guest = guests[index] || { name: "", email: "", date: "" };
-        const key = `${id}_${guest.date ?? ""}`;
-        guestMap.set(key, [...(guestMap.get(key) || []), guest]);
-      });
-
-      const clubs = await fetchClubs();
-      const clubMap = Object.fromEntries(
-        clubs.map((club) => [club.name, club.id])
-      );
-
-      const uniqueClubs: string[] = Array.from(
-        new Set(
-          bookingsRes.data.result?.servicebookings?.map(
-            (b: ServiceBooking) => b.location || "Simcognito's Golf 2/47 Club"
-          )
-        )
-      );
-
-      const serviceMaps: Record<string, Record<number, string>> = {};
-      for (const clubName of uniqueClubs) {
-        const companyid = clubMap[clubName];
-        if (companyid) {
-          const services = await fetchServices(token, undefined, companyid);
-          serviceMaps[clubName] = Object.fromEntries(
-            services
-              .filter((s) => s.servicename.includes("Member Golf Bay"))
-              .map((s) => [s.serviceid, s.servicename.trim()])
-          );
-        }
-      }
-
-      const fetchedBookings: Booking[] =
-        bookingsRes.data.result?.servicebookings?.map((b: ServiceBooking) => {
-          const time = formatTimeRange(b.starttime, b.endtime, b.start_str);
-          const [year, month, day] = b.day.split("-").map(Number);
-          const formattedDate = `${month.toString().padStart(2, "0")}/${day
-            .toString()
-            .padStart(2, "0")}/${year.toString().slice(-2)}`;
-          const clubName = b.location || "Simcognito's Golf 2/47 Club";
-          const servicename =
-            b.type?.trim() ||
-            (typeof b.serviceid === "number" &&
-            serviceMaps[clubName]?.[b.serviceid]
-              ? serviceMaps[clubName][b.serviceid]
-              : b.servicename || "Unknown Service");
-          const guestKey = `${b.id}_${b.day}`;
-          return {
-            id: b.id,
-            date: formattedDate,
-            time,
-            location: clubName,
-            bay: b.name || "Unknown",
-            servicename,
-            guests: guestMap.get(guestKey) || [],
-            guestPassUsage: { free: 0, charged: 0 }, // Requires sync with MongoDB
-            day: new Date(b.day).toLocaleDateString("en-US", {
-              weekday: "long",
-            }),
-            starttime: b.starttime,
-            rid: b.id, // Placeholder, adjust if needed
-            bookingstart: b.starttime,
-            bookingend: b.endtime,
-          };
-        }) || [];
-
-      setBookings((prev) =>
-        fetchedBookings.map((newBooking) => {
-          const existing = prev.find((b) => b.id === newBooking.id);
-          return existing
-            ? {
-                ...newBooking,
-                servicename: existing.servicename || newBooking.servicename,
-                guestPassUsage:
-                  existing.guestPassUsage || newBooking.guestPassUsage,
-              }
-            : newBooking;
-        })
-      );
-
-      if (fetchedBookings.length === 0) {
-        toast.info("No bookings found");
-      }
-    } catch (error) {
-      console.error("Fetch Bookings Error:", error);
-      toast.error("Failed to fetch bookings", {
-        description: "Please try again later.",
-      });
-    } finally {
-      setIsFetching(false);
-    }
-  }, [setBookings]);
-  */
-
-  const fetchBookings = useCallback(async () => {
-    setIsFetching(true);
-    try {
-      const token = localStorage.getItem("authToken");
-      if (!token) {
-        throw new Error("Not authenticated");
-      }
+      // Decode JWT to get stable user ID
+      const decodedToken = JSON.parse(atob(token.split(".")[1]));
+      const stableUserId = Number(decodedToken.id); // e.g., 268638
+      console.log("Auth Token:", token, "Stable User ID:", stableUserId);
 
       // Fetch bookings from GymMaster API
       const bookingsRes = await axios.get("/api/gymmaster/v2/member/bookings", {
@@ -213,12 +100,16 @@ export default function MyTeeTimes() {
           token,
         },
       });
+      console.log(
+        "GymMaster Bookings:",
+        bookingsRes.data.result?.servicebookings
+      );
 
       // Fetch guest data from MongoDB
       const mongoFetchResponse = await fetch("/api/bookings/fetch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: token }),
+        body: JSON.stringify({ userId: stableUserId }),
       });
 
       if (!mongoFetchResponse.ok) {
@@ -226,6 +117,7 @@ export default function MyTeeTimes() {
       }
 
       const { bookings: mongoBookings } = await mongoFetchResponse.json();
+      console.log("MongoDB Bookings:", mongoBookings);
 
       // Create a map of MongoDB bookings for quick lookup of guest data
       const guestDataMap = new Map<number, Partial<Booking>>();
@@ -236,6 +128,7 @@ export default function MyTeeTimes() {
           referralCodes: b.referralCodes || [],
         });
       });
+      console.log("Guest Data Map:", Array.from(guestDataMap.entries()));
 
       // Fetch clubs for mapping locations
       const clubs = await fetchClubs();
@@ -243,7 +136,6 @@ export default function MyTeeTimes() {
         clubs.map((club) => [club.name, club.id])
       );
 
-      // Get unique club names
       const uniqueClubs: string[] = Array.from(
         new Set(
           bookingsRes.data.result?.servicebookings?.map(
@@ -252,7 +144,6 @@ export default function MyTeeTimes() {
         )
       );
 
-      // Fetch services for each club
       const serviceMaps: Record<string, Record<number, string>> = {};
       for (const clubName of uniqueClubs) {
         const companyid = clubMap[clubName];
@@ -266,7 +157,6 @@ export default function MyTeeTimes() {
         }
       }
 
-      // Map GymMaster bookings and merge with MongoDB guest data
       const fetchedBookings: Booking[] =
         bookingsRes.data.result?.servicebookings?.map((b: ServiceBooking) => {
           const time = formatTimeRange(b.starttime, b.endtime, b.start_str);
@@ -288,9 +178,10 @@ export default function MyTeeTimes() {
             guestPassUsage: { free: 0, charged: 0 },
             referralCodes: [],
           };
+          console.log(`Booking ID ${b.id} Guest Data:`, mongoGuestData);
 
           return {
-            id: b.id,
+            id: Number(b.id),
             date: formattedDate,
             time,
             location: clubName,
@@ -303,12 +194,13 @@ export default function MyTeeTimes() {
               weekday: "long",
             }),
             starttime: b.starttime,
-            rid: b.id, // Adjust if needed
+            rid: Number(b.resourceid || b.id),
             bookingstart: b.starttime,
             bookingend: b.endtime,
           };
         }) || [];
 
+      console.log("Fetched Bookings:", fetchedBookings);
       setBookings((prev) =>
         fetchedBookings.map((newBooking) => {
           const existing = prev.find((b) => b.id === newBooking.id);
@@ -350,6 +242,11 @@ export default function MyTeeTimes() {
 
       const token = localStorage.getItem("authToken");
       if (!token) throw new Error("Not authenticated");
+
+      // Decode JWT to get stable user ID
+      const decodedToken = JSON.parse(atob(token.split(".")[1]));
+      const stableUserId = Number(decodedToken.id); // e.g., 268638
+      console.log("Stable User ID in handleDelete:", stableUserId);
 
       const response = await axios.post(
         "/api/gymmaster/v1/member/cancelbooking",
@@ -402,7 +299,7 @@ export default function MyTeeTimes() {
         );
       }
 
-      deleteBooking(id, token);
+      await deleteBooking(id, token);
       toast.success("Tee time canceled", {
         description: `Your tee time on ${booking.date} at ${booking.time} has been canceled.`,
       });
@@ -482,9 +379,6 @@ export default function MyTeeTimes() {
                   <TableHead className="text-sm font-semibold text-black">
                     Date
                   </TableHead>
-                  {/* <TableHead className="text-sm font-semibold text-black">
-                    Day
-                  </TableHead> */}
                   <TableHead className="text-sm font-semibold text-black">
                     Time
                   </TableHead>
@@ -520,9 +414,6 @@ export default function MyTeeTimes() {
                     <TableCell className="text-sm text-black">
                       {booking.date}
                     </TableCell>
-                    {/* <TableCell className="text-sm text-black">
-                      {booking.day}
-                    </TableCell> */}
                     <TableCell className="text-sm text-black">
                       {booking.time}
                     </TableCell>
@@ -623,12 +514,6 @@ export default function MyTeeTimes() {
                       </span>
                       <span className="text-sm text-black">{booking.date}</span>
                     </div>
-                    {/* <div className="flex flex-col items-start justify-start gap-0">
-                      <span className="text-sm font-semibold text-gray-700">
-                        Day
-                      </span>
-                      <span className="text-sm text-black">{booking.day}</span>
-                    </div> */}
                     <div className="flex flex-col items-start justify-start gap-0">
                       <span className="text-sm font-semibold text-gray-700">
                         Time

@@ -107,6 +107,7 @@
 //   }
 // }
 
+/*
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/mongodb";
 
@@ -141,6 +142,65 @@ export async function POST(request: Request) {
         day || new Date(date).toLocaleDateString("en-US", { weekday: "long" }),
       starttime: starttime || time,
       referralCodes: referralCodes || [], // Store referral codes
+      createdAt: new Date(),
+    });
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("Error saving booking:", error);
+    return NextResponse.json(
+      { error: "Failed to save booking" },
+      { status: 500 }
+    );
+  }
+}
+*/
+
+import { NextResponse } from "next/server";
+import { getDb } from "@/lib/mongodb";
+
+export async function POST(request: Request) {
+  try {
+    const {
+      bookingId,
+      date,
+      time,
+      location,
+      bay,
+      servicename,
+      userId,
+      guests,
+      guestPassUsage,
+      day,
+      starttime,
+      referralCodes,
+      rid,
+      bookingstart,
+      bookingend,
+    } = await request.json();
+    console.log(
+      "Creating booking for bookingId:",
+      bookingId,
+      "userId:",
+      userId
+    ); // Debug log
+    const db = await getDb();
+    await db.collection("bookings").insertOne({
+      bookingId: Number(bookingId),
+      date,
+      time,
+      location,
+      bay,
+      servicename,
+      userId: Number(userId), // Store as number
+      guests: guests || [],
+      guestPassUsage: guestPassUsage || { free: 0, charged: 0 },
+      day:
+        day || new Date(date).toLocaleDateString("en-US", { weekday: "long" }),
+      starttime: starttime || time,
+      referralCodes: referralCodes || [],
+      rid: Number(rid),
+      bookingstart,
+      bookingend,
       createdAt: new Date(),
     });
     return NextResponse.json({ success: true });
