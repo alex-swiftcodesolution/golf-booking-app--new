@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
@@ -5,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Clock, Users, DoorOpen } from "lucide-react";
 import Link from "next/link";
-import { useBookings } from "@/context/BookingContext";
+import { Booking, useBookings } from "@/context/BookingContext";
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -20,6 +21,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import axios from "axios";
 
 function SignupDialog({ memberName }: { memberName: string | null }) {
   const [showSuccessDialog, setShowSuccessDialog] = useState(false);
@@ -55,7 +57,7 @@ function SignupDialog({ memberName }: { memberName: string | null }) {
 }
 
 export default function Dashboard() {
-  const { bookings } = useBookings();
+  const { bookings, setBookings } = useBookings();
   const [accountStatus, setAccountStatus] = useState<
     "Payment Complete" | "Not Paid Yet" | "Unknown" | null
   >(null);
@@ -64,8 +66,10 @@ export default function Dashboard() {
   const [recentInvites, setRecentInvites] = useState<
     { name: string; email: string; date?: string }[]
   >([]);
+  const [isLoadingBookings, setIsLoadingBookings] = useState(true);
 
   const router = useRouter();
+  const GYMMASTER_API_KEY = process.env.NEXT_PUBLIC_GYMMASTER_API_KEY;
 
   const buttonVariants = {
     hover: { scale: 1.05, transition: { duration: 0.2 } },
@@ -101,17 +105,74 @@ export default function Dashboard() {
 
         const guestData = await fetchGuestData(token);
         setRecentInvites(guestData.guests.slice(0, 2));
+
+        // Fetch bookings
+        const decodedToken = JSON.parse(atob(token.split(".")[1]));
+        const stableUserId = Number(decodedToken.id);
+
+        const [gymMasterResponse, mongoResponse] = await Promise.all([
+          axios.get("/api/gymmaster/v2/member/bookings", {
+            params: { api_key: GYMMASTER_API_KEY || "", token },
+          }),
+          fetch("/api/bookings/fetch", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ userId: stableUserId }),
+          }).then((res) => res.json()),
+        ]);
+
+        const gymMasterBookings =
+          gymMasterResponse.data.result?.servicebookings || [];
+        const mongoBookings = mongoResponse.bookings || [];
+
+        const updatedBookings = gymMasterBookings
+          .filter((b: any) =>
+            mongoBookings.some((mb: Booking) => mb.id === Number(b.id))
+          )
+          .map((b: any) => {
+            const mongoBooking = mongoBookings.find(
+              (mb: Booking) => mb.id === Number(b.id)
+            );
+            return {
+              id: Number(b.id),
+              date: b.day,
+              time: mongoBooking?.time || b.starttime,
+              location: b.location || mongoBooking?.location || "",
+              bay: b.name,
+              servicename: b.servicename,
+              guests: mongoBooking?.guests || [],
+              guestPassUsage: mongoBooking?.guestPassUsage || {
+                free: 0,
+                charged: 0,
+              },
+              guestPassCharge: mongoBooking?.guestPassCharge || 25,
+              day:
+                mongoBooking?.day ||
+                new Date(b.day).toLocaleDateString("en-US", {
+                  weekday: "long",
+                }),
+              starttime: b.starttime,
+              referralCodes: mongoBooking?.referralCodes || [],
+              rid: Number(b.resourceid),
+              bookingstart: b.starttime,
+              bookingend: b.endtime,
+            };
+          });
+
+        setBookings(updatedBookings);
       } catch (error) {
         console.error("Failed to fetch data:", error);
         toast.error("Failed to load dashboard data", {
           description: "Please try again later.",
         });
         setAccountStatus("Unknown");
+      } finally {
+        setIsLoadingBookings(false);
       }
     };
 
     fetchData();
-  }, [router]);
+  }, [router, setBookings]);
 
   return (
     <div className="space-y-4">
@@ -225,31 +286,99 @@ export default function Dashboard() {
                   Upcoming Tee Times
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
-                {bookings.length > 0 ? (
-                  <ul className="space-y-3">
-                    {bookings.slice(0, 5).map((teeTime, index) => (
-                      <motion.li
-                        key={teeTime.id}
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ duration: 0.3, delay: index * 0.1 }}
-                        className="flex items-center gap-3"
-                      >
-                        <Clock
-                          className="h-4 w-4 sm:h-5 sm:w-5 text-gray-500"
-                          aria-hidden="true"
-                        />
-                        <div>
-                          <p className="font-semibold text-sm sm:text-base">
-                            {teeTime.date} at {teeTime.time}
-                          </p>
-                          <p className="text-xs sm:text-sm text-gray-600">
-                            {teeTime.location} ({teeTime.bay})
-                          </p>
-                        </div>
-                      </motion.li>
+              <CardContent className="space-y-4">
+                {isLoadingBookings ? (
+                  <div className="space-y-3">
+                    {[...Array(3)].map((_, index) => (
+                      <div key={index} className="animate-pulse">
+                        <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
+                        <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+                      </div>
                     ))}
+                  </div>
+                ) : bookings.length > 0 ? (
+                  <ul className="space-y-4">
+                    {bookings
+                      .sort(
+                        (a, b) =>
+                          new Date(a.bookingstart).getTime() -
+                          new Date(b.bookingstart).getTime()
+                      )
+                      .slice(0, 3)
+                      .map((teeTime, index) => (
+                        <motion.li
+                          key={teeTime.id}
+                          initial={{ opacity: 0, x: -20 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ duration: 0.3, delay: index * 0.1 }}
+                          className="border-b pb-3 last:border-b-0"
+                        >
+                          <div className="flex flex-col gap-2 text-sm sm:text-base">
+                            <div className="flex justify-between items-start">
+                              <p className="font-semibold">
+                                {new Date(teeTime.date).toLocaleDateString(
+                                  "en-US",
+                                  {
+                                    month: "short",
+                                    day: "numeric",
+                                    year: "numeric",
+                                  }
+                                )}{" "}
+                                at {teeTime.time}
+                              </p>
+                              <Badge variant="outline" className="text-xs">
+                                {teeTime.servicename}
+                              </Badge>
+                            </div>
+                            <p className="text-gray-600">
+                              <span className="font-medium">Location:</span>{" "}
+                              {teeTime.location} ({teeTime.bay})
+                            </p>
+                            <p className="text-gray-600">
+                              <span className="font-medium">Day:</span>{" "}
+                              {teeTime.day}
+                            </p>
+                            <p className="text-gray-600">
+                              <span className="font-medium">Time:</span>{" "}
+                              {teeTime.bookingstart} - {teeTime.bookingend}
+                            </p>
+                            {teeTime.guests.length > 0 && (
+                              <div className="text-gray-600">
+                                <p className="font-medium">Guests:</p>
+                                <ul className="list-disc pl-5 text-xs sm:text-sm">
+                                  {teeTime.guests.map((guest, i) => (
+                                    <li key={i}>
+                                      {guest.name} ({guest.email})
+                                      {guest.date &&
+                                        `, ${new Date(guest.date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`}
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            )}
+                            <p className="text-gray-600">
+                              <span className="font-medium">Guest Passes:</span>{" "}
+                              {teeTime.guestPassUsage.free} Free,{" "}
+                              {teeTime.guestPassUsage.charged} Charged
+                              {teeTime.guestPassCharge > 0 &&
+                                ` ($${teeTime.guestPassCharge})`}
+                            </p>
+                            {teeTime.referralCodes &&
+                              teeTime.referralCodes.length > 0 && (
+                                <p className="text-gray-600 text-xs sm:text-sm">
+                                  <span className="font-medium">
+                                    Referral Codes:
+                                  </span>{" "}
+                                  {teeTime.referralCodes.join(", ")}
+                                </p>
+                              )}
+                            <p className="text-gray-600 text-xs sm:text-sm">
+                              <span className="font-medium">Resource ID:</span>{" "}
+                              {teeTime.rid}
+                            </p>
+                          </div>
+                        </motion.li>
+                      ))}
                   </ul>
                 ) : (
                   <p className="text-gray-600 text-sm sm:text-base">
