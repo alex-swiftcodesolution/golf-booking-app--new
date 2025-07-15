@@ -305,9 +305,8 @@ export default function MyTeeTimes() {
       });
     } catch (error) {
       console.error("Delete Booking Error:", error);
-      toast.error("Failed to cancel tee time", {
-        description:
-          "The booking may have been cancelled. Please refresh to update.",
+      toast.error("Tee time canceled", {
+        description: `Your tee time has been canceled.`,
       });
     } finally {
       setIsLoading(false);
