@@ -9,7 +9,7 @@ import {
 } from "@/api/gymmaster";
 
 export interface Booking {
-  id: number; // Changed to required number
+  id: number;
   date: string;
   time: string;
   location: string;
@@ -17,6 +17,7 @@ export interface Booking {
   servicename: string;
   guests: { name: string; email: string; date?: string }[];
   guestPassUsage: { free: number; charged: number };
+  guestPassCharge: number;
   day: string;
   starttime: string;
   referralCodes?: string[];
@@ -33,7 +34,9 @@ interface BookingContextType {
     serviceId: number,
     resourceId: number,
     membershipId: number,
-    benefitId?: number
+    benefitId?: number,
+    availableGuestPasses?: number,
+    guestPassCharge?: number
   ) => Promise<number>;
   deleteBooking: (id: number, token: string) => Promise<void>;
   updateBooking: (id: number, updatedBooking: Partial<Booking>) => void;
@@ -53,7 +56,9 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
     serviceId: number,
     resourceId: number,
     membershipId: number,
-    benefitId?: number
+    benefitId?: number,
+    availableGuestPasses: number = 0
+    // guestPassCharge: number = 25
   ): Promise<number> => {
     try {
       const {
@@ -68,23 +73,22 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
         bookingend,
         referralCodes,
         rid,
+        guestPassCharge: bookingGuestPassCharge, // Rename to avoid conflict
       } = booking;
 
       // Decode JWT to get stable user ID
       const decodedToken = JSON.parse(atob(token.split(".")[1]));
-      const stableUserId = Number(decodedToken.id); // e.g., 268638
+      const stableUserId = Number(decodedToken.id);
       console.log("Stable User ID in addBooking:", stableUserId);
 
       // Fetch guest data
       const guestData = await fetchGuestData(token);
       const guestPassesUsed = guestData.guestPassesUsed || 0;
-      const freeGuestPassesPerMonth =
-        Number(process.env.NEXT_PUBLIC_FREE_GUEST_PASSES_PER_MONTH) || 3;
       const freePassesAvailable = Math.max(
-        freeGuestPassesPerMonth - guestPassesUsed,
+        availableGuestPasses - guestPassesUsed,
         0
       );
-      const guestPassUsage = {
+      const calculatedGuestPassUsage = {
         free: Math.min(guests.length, freePassesAvailable),
         charged: Math.max(guests.length - freePassesAvailable, 0),
       };
@@ -163,7 +167,8 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
           servicename,
           userId: stableUserId,
           guests,
-          guestPassUsage,
+          guestPassUsage: calculatedGuestPassUsage,
+          guestPassCharge: bookingGuestPassCharge,
           day,
           starttime: bookingstart,
           referralCodes: referralCodes || [],
@@ -211,7 +216,8 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
               )
           ),
         ];
-        const updatedGuestPassesUsed = guestPassesUsed + guestPassUsage.free;
+        const updatedGuestPassesUsed =
+          guestPassesUsed + calculatedGuestPassUsage.free;
 
         retryCount = 0;
         while (retryCount < maxRetries) {
@@ -240,10 +246,25 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
         const exists = prev.find((b) => b.id === newId);
         if (exists) {
           return prev.map((b) =>
-            b.id === newId ? { ...booking, id: newId, guestPassUsage } : b
+            b.id === newId
+              ? {
+                  ...booking,
+                  id: newId,
+                  guestPassUsage: calculatedGuestPassUsage,
+                  guestPassCharge: bookingGuestPassCharge,
+                }
+              : b
           );
         }
-        return [...prev, { ...booking, id: newId, guestPassUsage }];
+        return [
+          ...prev,
+          {
+            ...booking,
+            id: newId,
+            guestPassUsage: calculatedGuestPassUsage,
+            guestPassCharge: bookingGuestPassCharge,
+          },
+        ];
       });
 
       return newId;
@@ -257,7 +278,7 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
     try {
       // Decode JWT to get stable user ID
       const decodedToken = JSON.parse(atob(token.split(".")[1]));
-      const stableUserId = Number(decodedToken.id); // e.g., 268638
+      const stableUserId = Number(decodedToken.id);
       console.log("Stable User ID in deleteBooking:", stableUserId);
 
       const response = await axios.post(
@@ -360,6 +381,7 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
               free: 0,
               charged: 0,
             },
+            guestPassCharge: mongoBooking?.guestPassCharge || 25,
             day:
               mongoBooking?.day ||
               new Date(b.day).toLocaleDateString("en-US", { weekday: "long" }),

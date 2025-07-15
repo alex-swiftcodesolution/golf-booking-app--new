@@ -43,6 +43,8 @@ import {
   updateGuestData,
   fetchMemberDetails,
   updateMemberProfile,
+  fetchMemberBenefitBalances,
+  logGuestPassCharge,
 } from "@/api/gymmaster";
 import { Club, Resource, Service, MemberMembership } from "@/lib/types";
 import { useRouter } from "next/navigation";
@@ -52,9 +54,6 @@ import { debounce } from "lodash";
 const GYMMASTER_API_KEY = process.env.NEXT_PUBLIC_GYMMASTER_API_KEY;
 const APP_URL =
   process.env.NEXT_PUBLIC_APP_URL || "https://test-swiftcode.vercel.app/";
-const freeGuestPassesPerMonth =
-  Number(process.env.NEXT_PUBLIC_FREE_GUEST_PASSES_PER_MONTH) || 3;
-const guestPassCharge = Number(process.env.NEXT_PUBLIC_GUEST_PASS_CHARGE) || 10;
 
 const teeTimeSchema = z.object({
   location: z.string().min(1, "Please select a location"),
@@ -100,8 +99,14 @@ export default function BookTeeTime() {
   const [isFetchingSlots, setIsFetchingSlots] = useState(false);
   const [hasFetchedClubs, setHasFetchedClubs] = useState(false);
   const [guestPassesUsed, setGuestPassesUsed] = useState(0);
+  const [availableGuestPasses, setAvailableGuestPasses] = useState<number>(0);
+  const [guestPassCharge, setGuestPassCharge] = useState<number>(25); // Default to 25
   const [referralCodes, setReferralCodes] = useState<string[]>([]);
   const [guestBookingIds, setGuestBookingIds] = useState<number[]>([]);
+  const [showChargeConfirmation, setShowChargeConfirmation] = useState(false);
+  const [pendingGuestCount, setPendingGuestCount] = useState<number | null>(
+    null
+  );
   const { addBooking } = useBookings();
   const router = useRouter();
 
@@ -122,7 +127,7 @@ export default function BookTeeTime() {
     email: string,
     data: z.infer<typeof teeTimeSchema>,
     bookingIds: number[],
-    freeGuestPassesPerMonth: number,
+    availableGuestPasses: number,
     guestPassesUsed: number,
     guestPassCharge: number
   ) => {
@@ -141,7 +146,7 @@ export default function BookTeeTime() {
             : [],
           guests: data.guests || [],
           bookingIds,
-          freeGuestPassesPerMonth,
+          availableGuestPasses,
           guestPassesUsed,
           guestPassCharge,
         }),
@@ -183,6 +188,44 @@ export default function BookTeeTime() {
         );
         if (!activeMembership) throw new Error("No active membership found");
         setMembership(activeMembership);
+
+        const benefitBalances = await fetchMemberBenefitBalances(token);
+        const guestFreePassBenefit = benefitBalances.find(
+          (benefit: any) =>
+            benefit.benefitname.includes("Guest FREE Visit") &&
+            benefit.balance !== null
+        );
+        const guestPaidPassBenefit = benefitBalances.find(
+          (benefit: any) =>
+            benefit.benefitname.includes("Guest PAID Visit") &&
+            benefit.price !== null
+        );
+
+        if (guestFreePassBenefit && guestFreePassBenefit.balance !== null) {
+          setAvailableGuestPasses(guestFreePassBenefit.balance);
+        } else {
+          console.warn(
+            "No 'Guest FREE Visit' benefit with valid balance found"
+          );
+          setAvailableGuestPasses(0);
+          toast.warning("No guest pass benefits available", {
+            description:
+              "You have no free guest passes. Additional guests will be charged.",
+          });
+        }
+
+        if (guestPaidPassBenefit && guestPaidPassBenefit.price) {
+          const price = parseFloat(
+            guestPaidPassBenefit.price.replace(/[^0-9.]/g, "")
+          );
+          setGuestPassCharge(isNaN(price) ? 25 : price);
+        } else {
+          console.warn("No 'Guest PAID Visit' benefit with valid price found");
+          setGuestPassCharge(25);
+          toast.warning("Unable to fetch guest pass charge", {
+            description: "Using default charge of $25 per additional guest.",
+          });
+        }
 
         const { guestPassesUsed, referralCodes, guestBookingIds } =
           await fetchGuestData(token);
@@ -315,23 +358,44 @@ export default function BookTeeTime() {
   }, [debouncedCheckAvailability]);
 
   const handleGuestCountChange = (count: number) => {
-    if (
-      count > freeGuestPassesPerMonth &&
-      guestPassesUsed >= freeGuestPassesPerMonth
-    ) {
-      toast.warning("Guest pass limit reached", {
-        description: `You've used ${guestPassesUsed} of ${freeGuestPassesPerMonth} free guest passes. Additional guests cost $${guestPassCharge} each.`,
-      });
-    }
-    setGuestCount(count);
-    const currentGuests = form.getValues("guests") || [];
-    form.setValue(
-      "guests",
-      Array(count)
-        .fill(null)
-        .map((_, i) => currentGuests[i] || { name: "", email: "" })
+    const freePassesAvailable = Math.max(
+      availableGuestPasses - guestPassesUsed,
+      0
     );
-    if (count === 0) form.clearErrors("guests");
+    if (count > freePassesAvailable) {
+      setPendingGuestCount(count);
+      setShowChargeConfirmation(true);
+    } else {
+      setGuestCount(count);
+      const currentGuests = form.getValues("guests") || [];
+      form.setValue(
+        "guests",
+        Array(count)
+          .fill(null)
+          .map((_, i) => currentGuests[i] || { name: "", email: "" })
+      );
+      if (count === 0) form.clearErrors("guests");
+    }
+  };
+
+  const handleChargeConfirmation = (confirmed: boolean) => {
+    if (confirmed && pendingGuestCount !== null) {
+      setGuestCount(pendingGuestCount);
+      const currentGuests = form.getValues("guests") || [];
+      form.setValue(
+        "guests",
+        Array(pendingGuestCount)
+          .fill(null)
+          .map((_, i) => currentGuests[i] || { name: "", email: "" })
+      );
+      if (pendingGuestCount === 0) form.clearErrors("guests");
+    } else {
+      setGuestCount(0);
+      form.setValue("guests", []);
+      form.clearErrors("guests");
+    }
+    setShowChargeConfirmation(false);
+    setPendingGuestCount(null);
   };
 
   const handleLocationChange = () => {
@@ -368,7 +432,7 @@ export default function BookTeeTime() {
       const guestData = await fetchGuestData(token);
       const guestPassesUsed = guestData.guestPassesUsed || 0;
       const freePassesAvailable = Math.max(
-        freeGuestPassesPerMonth - guestPassesUsed,
+        availableGuestPasses - guestPassesUsed,
         0
       );
       const guestPassUsage = {
@@ -404,16 +468,32 @@ export default function BookTeeTime() {
           rid: data.timeSlot.rid,
           bookingstart: data.timeSlot.bookingstart,
           bookingend: data.timeSlot.bookingend,
+          guestPassCharge,
         },
         token,
         selectedServiceId,
         data.timeSlot.rid,
         membership.id,
-        selectedBenefitId || undefined
+        selectedBenefitId || undefined,
+        availableGuestPasses, // NEW: Pass availableGuestPasses
+        guestPassCharge // NEW: Pass guestPassCharge
       );
+
       newBookingIds.push(bookingId);
       if (data.guests?.length) {
         data.guests.forEach(() => guestAssignments.push(bookingId));
+      }
+
+      if (guestPassUsage.charged > 0) {
+        const totalCharge = guestPassUsage.charged * guestPassCharge;
+        await logGuestPassCharge(
+          token,
+          totalCharge,
+          `Guest PAID Visit for ${guestPassUsage.charged} guest(s) on ${data.date}`
+        );
+        toast.success("Guest pass charges applied", {
+          description: `Charged $${totalCharge.toFixed(2)} for ${guestPassUsage.charged} extra guest(s).`,
+        });
       }
 
       if (data.guests?.length) {
@@ -456,13 +536,12 @@ export default function BookTeeTime() {
         setGuestBookingIds(updatedBookingIds);
       }
 
-      const memberProfile = await fetchMemberDetails(token);
-      const memberEmail = memberProfile.email || "member@example.com";
+      const member = await fetchMemberDetails(token);
       await sendBookingConfirmationEmail(
-        memberEmail,
+        member.email,
         data,
         newBookingIds,
-        freeGuestPassesPerMonth,
+        availableGuestPasses,
         guestPassesUsed,
         guestPassCharge
       );
@@ -498,7 +577,7 @@ export default function BookTeeTime() {
       toast.success("Tee time booked!", {
         description:
           guestPassUsage.charged > 0
-            ? `Charged $${guestPassUsage.charged * guestPassCharge} for ${guestPassUsage.charged} extra guest(s).`
+            ? `Charged $${(guestPassUsage.charged * guestPassCharge).toFixed(2)} for ${guestPassUsage.charged} extra guest(s).`
             : undefined,
       });
 
@@ -763,6 +842,70 @@ export default function BookTeeTime() {
               )}
             </motion.div>
 
+            <Dialog
+              open={showChargeConfirmation}
+              onOpenChange={setShowChargeConfirmation}
+            >
+              <DialogContent className="sm:max-w-md">
+                <DialogHeader>
+                  <DialogTitle className="text-xl text-black">
+                    Confirm Additional Guest Charges
+                  </DialogTitle>
+                  <DialogDescription className="text-gray-600">
+                    You have used {guestPassesUsed} of {availableGuestPasses}{" "}
+                    free guest passes.
+                    {pendingGuestCount &&
+                    pendingGuestCount >
+                      Math.max(availableGuestPasses - guestPassesUsed, 0) ? (
+                      <>
+                        Adding {pendingGuestCount} guest(s) will use{" "}
+                        {Math.min(
+                          pendingGuestCount,
+                          Math.max(availableGuestPasses - guestPassesUsed, 0)
+                        )}{" "}
+                        free pass(es) and charge $
+                        {(
+                          (pendingGuestCount -
+                            Math.max(
+                              availableGuestPasses - guestPassesUsed,
+                              0
+                            )) *
+                          guestPassCharge
+                        ).toFixed(2)}{" "}
+                        for{" "}
+                        {pendingGuestCount -
+                          Math.max(
+                            availableGuestPasses - guestPassesUsed,
+                            0
+                          )}{" "}
+                        additional guest(s) at ${guestPassCharge.toFixed(2)}{" "}
+                        each.
+                      </>
+                    ) : (
+                      "Please confirm to proceed."
+                    )}
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="flex flex-col sm:flex-row gap-2 mt-4">
+                  <Button
+                    type="button"
+                    className="w-full sm:w-auto bg-black text-white hover:bg-gray-800"
+                    onClick={() => handleChargeConfirmation(true)}
+                  >
+                    Confirm
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full sm:w-auto border-gray-300 text-black hover:bg-gray-100"
+                    onClick={() => handleChargeConfirmation(false)}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
+
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -921,7 +1064,7 @@ export default function BookTeeTime() {
                               (guest, index) => (
                                 <li
                                   key={index}
-                                  className="time-sm sm:text-base text-gray-600"
+                                  className="text-sm sm:text-base text-gray-600"
                                 >
                                   {guest.name} ({guest.email})
                                 </li>
@@ -935,21 +1078,18 @@ export default function BookTeeTime() {
                           <strong>Guest Pass Usage:</strong>{" "}
                           {Math.min(
                             (form.getValues("guests") || []).length,
-                            Math.max(
-                              freeGuestPassesPerMonth - guestPassesUsed,
-                              0
-                            )
+                            Math.max(availableGuestPasses - guestPassesUsed, 0)
                           )}{" "}
                           free pass(es) used.
                           {Math.max(
                             (form.getValues("guests") || []).length -
                               Math.max(
-                                freeGuestPassesPerMonth - guestPassesUsed,
+                                availableGuestPasses - guestPassesUsed,
                                 0
                               ),
                             0
                           ) > 0
-                            ? ` $${Math.max((form.getValues("guests") || []).length - Math.max(freeGuestPassesPerMonth - guestPassesUsed, 0), 0) * guestPassCharge} for extra guests.`
+                            ? ` $${(Math.max((form.getValues("guests") || []).length - Math.max(availableGuestPasses - guestPassesUsed, 0), 0) * guestPassCharge).toFixed(2)} for ${Math.max((form.getValues("guests") || []).length - Math.max(availableGuestPasses - guestPassesUsed, 0), 0)} extra guest(s) at $${guestPassCharge.toFixed(2)} each.`
                             : ""}
                         </p>
                       )}

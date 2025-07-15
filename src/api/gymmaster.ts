@@ -1130,3 +1130,53 @@ export const resetMemberPassword = async (email: string): Promise<string> => {
     throw error;
   }
 };
+
+export const fetchMemberBenefitBalances = async (
+  token: string
+): Promise<
+  { benefitname: string; balance: number | null; price?: string }[]
+> => {
+  try {
+    const res = await axios.get<{
+      result: { benefitname: string; balance: number | null; price?: string }[];
+      error: string | null;
+    }>(
+      "/api/gymmaster/v1/member/membership/benefit/balances",
+      getConfig({ token })
+    );
+    if (res.data.error) throw new Error(res.data.error);
+    return res.data.result;
+  } catch (error) {
+    console.error("Fetch member benefit balances error:", error);
+    throw error;
+  }
+};
+
+// NEW: Function to log a charge for additional guests
+export const logGuestPassCharge = async (
+  token: string,
+  amount: number,
+  note: string
+): Promise<string> => {
+  try {
+    const res = await axios.post<{
+      result: string;
+      error: string | null;
+    }>(
+      "/api/gymmaster/v2/payment/log",
+      {
+        api_key: GYMMASTER_API_KEY,
+        token,
+        amount: amount.toFixed(2), // Ensure amount is formatted as a string with 2 decimal places
+        note,
+        paymentmethod_name: "Guest Pass Charge", // Adjust based on your payment method setup
+      },
+      postConfig
+    );
+    if (res.data.error) throw new Error(res.data.error);
+    return res.data.result;
+  } catch (error) {
+    console.error("Log guest pass charge error:", error);
+    throw new Error(`Failed to log guest pass charge: ${String(error)}`);
+  }
+};
