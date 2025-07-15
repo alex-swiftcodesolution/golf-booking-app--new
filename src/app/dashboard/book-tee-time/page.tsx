@@ -1089,7 +1089,23 @@ export default function BookTeeTime() {
                               ),
                             0
                           ) > 0
-                            ? ` $${(Math.max((form.getValues("guests") || []).length - Math.max(availableGuestPasses - guestPassesUsed, 0), 0) * guestPassCharge).toFixed(2)} for ${Math.max((form.getValues("guests") || []).length - Math.max(availableGuestPasses - guestPassesUsed, 0), 0)} extra guest(s) at $${guestPassCharge.toFixed(2)} each.`
+                            ? ` $${(
+                                Math.max(
+                                  (form.getValues("guests") || []).length -
+                                    Math.max(
+                                      availableGuestPasses - guestPassesUsed,
+                                      0
+                                    ),
+                                  0
+                                ) * guestPassCharge
+                              ).toFixed(2)} for ${Math.max(
+                                (form.getValues("guests") || []).length -
+                                  Math.max(
+                                    availableGuestPasses - guestPassesUsed,
+                                    0
+                                  ),
+                                0
+                              )} extra guest(s) at $${guestPassCharge.toFixed(2)} each.`
                             : ""}
                         </p>
                       )}
