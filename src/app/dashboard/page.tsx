@@ -363,19 +363,6 @@ export default function Dashboard() {
                               {teeTime.guestPassCharge > 0 &&
                                 ` ($${teeTime.guestPassCharge})`}
                             </p>
-                            {teeTime.referralCodes &&
-                              teeTime.referralCodes.length > 0 && (
-                                <p className="text-gray-600 text-xs sm:text-sm">
-                                  <span className="font-medium">
-                                    Referral Codes:
-                                  </span>{" "}
-                                  {teeTime.referralCodes.join(", ")}
-                                </p>
-                              )}
-                            <p className="text-gray-600 text-xs sm:text-sm">
-                              <span className="font-medium">Resource ID:</span>{" "}
-                              {teeTime.rid}
-                            </p>
                           </div>
                         </motion.li>
                       ))}
