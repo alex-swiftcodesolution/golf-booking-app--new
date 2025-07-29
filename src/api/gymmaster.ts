@@ -254,7 +254,7 @@ export const login = async (
     localStorage.setItem("deviceFingerprint", fingerprint);
 
     localStorage.setItem("authToken", res.data.result.token);
-    localStorage.setItem("memberId", res.data.result.memberid.toString());
+    localStorage.setItem("memberId", res.data.result.mid.toString());
     localStorage.setItem(
       "tokenExpires",
       (Date.now() + res.data.result.expires * 1000).toString()
@@ -802,7 +802,6 @@ export const updateGuestData = async (
       customtext5: updatedBookingIds,
       customtext6: updatedGuests,
     });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } catch (error: any) {
     console.error("Update guest data error:", error);
     if (error.response?.status === 413) {

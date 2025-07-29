@@ -42,7 +42,7 @@ export interface SignupResponse {
 }
 
 export interface LoginResponse {
-  result: { token: string; memberid: number; expires: number };
+  result: { token: string; mid: number; expires: number };
   error?: string;
 }
 
