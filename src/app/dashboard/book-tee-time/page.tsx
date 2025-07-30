@@ -50,6 +50,7 @@ import { Club, Resource, Service, MemberMembership } from "@/lib/types";
 import { useRouter } from "next/navigation";
 import { generateReferralCode } from "@/lib/utils";
 import { debounce } from "lodash";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 const GYMMASTER_API_KEY = process.env.NEXT_PUBLIC_GYMMASTER_API_KEY;
 const APP_URL =
@@ -100,13 +101,14 @@ export default function BookTeeTime() {
   const [hasFetchedClubs, setHasFetchedClubs] = useState(false);
   const [guestPassesUsed, setGuestPassesUsed] = useState(0);
   const [availableGuestPasses, setAvailableGuestPasses] = useState<number>(0);
-  const [guestPassCharge, setGuestPassCharge] = useState<number>(25); // Default to 25
+  const [guestPassCharge, setGuestPassCharge] = useState<number>(25);
   const [referralCodes, setReferralCodes] = useState<string[]>([]);
   const [guestBookingIds, setGuestBookingIds] = useState<number[]>([]);
   const [showChargeConfirmation, setShowChargeConfirmation] = useState(false);
   const [pendingGuestCount, setPendingGuestCount] = useState<number | null>(
     null
   );
+  const [activeTab, setActiveTab] = useState<"self" | "guest">("self");
   const { addBooking } = useBookings();
   const router = useRouter();
 
@@ -189,7 +191,6 @@ export default function BookTeeTime() {
         if (!activeMembership) throw new Error("No active membership found");
         setMembership(activeMembership);
 
-        // Check if member has access to Guest services
         const services = await fetchServices(
           token,
           undefined,
@@ -233,7 +234,7 @@ export default function BookTeeTime() {
           );
           setGuestPassCharge(isNaN(price) ? 25 : price);
         } else {
-          setGuestPassCharge(hasGuestService ? 25 : 0); // Only set charge if Guest service exists
+          setGuestPassCharge(hasGuestService ? 25 : 0);
           if (hasGuestService) {
             toast.warning("Unable to fetch guest pass charge", {
               description: "Using default charge of $25 per additional guest.",
@@ -375,13 +376,12 @@ export default function BookTeeTime() {
   }, [debouncedCheckAvailability]);
 
   const handleGuestCountChange = (count: number) => {
-    const isGuestService = service.toLowerCase().includes("guest");
-    if (!isGuestService) {
+    if (activeTab !== "guest") {
       setGuestCount(0);
       form.setValue("guests", []);
       form.clearErrors("guests");
       if (count > 0) {
-        toast.warning("Guests can only be added for Guest services");
+        toast.warning("Guests can only be added in the Guest tab");
       }
       return;
     }
@@ -434,6 +434,8 @@ export default function BookTeeTime() {
     setTimeSlots([]);
     setSelectedServiceId(null);
     setSelectedBenefitId(null);
+    setGuestCount(0);
+    form.setValue("guests", []);
   };
 
   const handleServiceChange = () => {
@@ -442,6 +444,24 @@ export default function BookTeeTime() {
     setTimeSlots([]);
     setSelectedServiceId(null);
     setSelectedBenefitId(null);
+    if (activeTab === "self") {
+      setGuestCount(0);
+      form.setValue("guests", []);
+      form.clearErrors("guests");
+    }
+  };
+
+  const handleTabChange = (value: string) => {
+    setActiveTab(value as "self" | "guest");
+    form.setValue("service", "");
+    form.setValue("timeSlot", null);
+    setResources([]);
+    setTimeSlots([]);
+    setSelectedServiceId(null);
+    setSelectedBenefitId(null);
+    setGuestCount(0);
+    form.setValue("guests", []);
+    form.clearErrors("guests");
   };
 
   const onSubmit = async (data: z.infer<typeof teeTimeSchema>) => {
@@ -457,7 +477,7 @@ export default function BookTeeTime() {
       const club = clubs.find((c) => c.name === data.location);
       if (!club) throw new Error("Selected club not found");
 
-      const isGuestService = data.service.toLowerCase().includes("guest");
+      const isGuestService = activeTab === "guest";
       let guestPassUsage = { free: 0, charged: 0 };
       const newReferralCodes: string[] = [];
       const newBookingIds: number[] = [];
@@ -622,6 +642,7 @@ export default function BookTeeTime() {
       setTimeSlots([]);
       setGuestCount(0);
       setShowItinerary(false);
+      setActiveTab("self");
       setTimeout(() => {
         router.push("/dashboard/my-tee-times");
       }, 1000);
@@ -639,6 +660,13 @@ export default function BookTeeTime() {
     const values = form.watch();
     return values.location && values.service && values.date && values.timeSlot;
   };
+
+  const selfServices = services.filter(
+    (svc) => !svc.servicename.toLowerCase().includes("guest")
+  );
+  const guestServices = services.filter((svc) =>
+    svc.servicename.toLowerCase().includes("guest")
+  );
 
   return (
     <div className="space-y-4">
@@ -756,122 +784,173 @@ export default function BookTeeTime() {
                       />{" "}
                       Choose Service
                     </FormLabel>
-                    <FormControl>
-                      {isFetchingServices ? (
-                        <div className="flex items-center gap-2 w-full sm:w-64 p-2 border border-gray-300 rounded-md">
-                          <Loader2 className="h-5 w-5 animate-spin text-black" />
-                          <span className="text-gray-500">
-                            Loading services...
-                          </span>
-                        </div>
-                      ) : (
-                        <select
-                          value={field.value}
-                          onChange={(e) => {
-                            field.onChange(e.target.value);
-                            handleServiceChange();
-                          }}
-                          className="w-full sm:w-64 p-2 border border-gray-300 rounded-md focus:border-black focus:ring-black"
-                          disabled={!location}
-                        >
-                          <option value="">Select a service</option>
-                          {services.map((svc) => (
-                            <option key={svc.serviceid} value={svc.servicename}>
-                              {svc.servicename}
-                            </option>
-                          ))}
-                        </select>
-                      )}
-                    </FormControl>
-                    <FormMessage className="text-xs sm:text-sm text-red-500" />
+                    <Tabs
+                      defaultValue="self"
+                      value={activeTab}
+                      onValueChange={handleTabChange}
+                      className="w-full"
+                    >
+                      <TabsList className="grid w-full sm:w-64 grid-cols-2 mb-2">
+                        <TabsTrigger value="self">Self</TabsTrigger>
+                        <TabsTrigger value="guest">Guest</TabsTrigger>
+                      </TabsList>
+                      <TabsContent value="self">
+                        <FormControl>
+                          {isFetchingServices ? (
+                            <div className="flex items-center gap-2 w-full sm:w-64 p-2 border border-gray-300 rounded-md">
+                              <Loader2 className="h-5 w-5 animate-spin text-black" />
+                              <span className="text-gray-500">
+                                Loading services...
+                              </span>
+                            </div>
+                          ) : (
+                            <select
+                              value={field.value}
+                              onChange={(e) => {
+                                field.onChange(e.target.value);
+                                handleServiceChange();
+                              }}
+                              className="w-full sm:w-64 p-2 border border-gray-300 rounded-md focus:border-black focus:ring-black"
+                              disabled={!location}
+                            >
+                              <option value="">Select a service</option>
+                              {selfServices.map((svc) => (
+                                <option
+                                  key={svc.serviceid}
+                                  value={svc.servicename}
+                                >
+                                  {svc.servicename}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+                        </FormControl>
+                        <FormMessage className="text-xs sm:text-sm text-red-500" />
+                      </TabsContent>
+                      <TabsContent value="guest">
+                        <FormControl>
+                          {isFetchingServices ? (
+                            <div className="flex items-center gap-2 w-full sm:w-64 p-2 border border-gray-300 rounded-md">
+                              <Loader2 className="h-5 w-5 animate-spin text-black" />
+                              <span className="text-gray-500">
+                                Loading services...
+                              </span>
+                            </div>
+                          ) : (
+                            <select
+                              value={field.value}
+                              onChange={(e) => {
+                                field.onChange(e.target.value);
+                                handleServiceChange();
+                              }}
+                              className="w-full sm:w-64 p-2 border border-gray-300 rounded-md focus:border-black focus:ring-black"
+                              disabled={!location}
+                            >
+                              <option value="">Select a service</option>
+                              {guestServices.map((svc) => (
+                                <option
+                                  key={svc.serviceid}
+                                  value={svc.servicename}
+                                >
+                                  {svc.servicename}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+                        </FormControl>
+                        <FormMessage className="text-xs sm:text-sm text-red-500" />
+                      </TabsContent>
+                    </Tabs>
                   </FormItem>
                 )}
               />
             </motion.div>
 
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4, delay: 0.7 }}
-            >
-              <FormLabel className="text-sm sm:text-base flex items-center gap-2 text-black">
-                <Users className="h-5 w-5 text-black" aria-hidden="true" />{" "}
-                Invite Guests
-              </FormLabel>
-              <div className="flex gap-2 sm:gap-4">
-                {[0, 1, 2, 3].map((count) => (
-                  <Button
-                    key={count}
-                    type="button"
-                    variant={guestCount === count ? "default" : "outline"}
-                    onClick={() => handleGuestCountChange(count)}
-                    className={`text-sm sm:text-base ${guestCount === count ? "bg-black text-white" : "border-gray-300 text-black hover:bg-gray-100"}`}
-                  >
-                    {count === 0 ? "None" : count}
-                  </Button>
-                ))}
-              </div>
-              {guestCount > 0 && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  transition={{ duration: 0.3 }}
-                  className="space-y-4"
-                >
-                  {Array.from({ length: guestCount }).map((_, index) => (
-                    <motion.div
-                      key={index}
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ duration: 0.3, delay: 0.1 * index }}
-                      className="space-y-2 border p-4 rounded-md bg-gray-50"
+            {activeTab === "guest" && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, delay: 0.7 }}
+              >
+                <FormLabel className="text-sm sm:text-base flex items-center gap-2 text-black">
+                  <Users className="h-5 w-5 text-black" aria-hidden="true" />{" "}
+                  Invite Guests
+                </FormLabel>
+                <div className="flex gap-2 sm:gap-4">
+                  {[0, 1, 2, 3].map((count) => (
+                    <Button
+                      key={count}
+                      type="button"
+                      variant={guestCount === count ? "default" : "outline"}
+                      onClick={() => handleGuestCountChange(count)}
+                      className={`text-sm sm:text-base ${guestCount === count ? "bg-black text-white" : "border-gray-300 text-black hover:bg-gray-100"}`}
                     >
-                      <h4 className="text-sm font-medium text-black">
-                        Guest {index + 1}
-                      </h4>
-                      <FormField
-                        control={form.control}
-                        name={`guests.${index}.name`}
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className="text-xs sm:text-sm text-gray-600">
-                              Name
-                            </FormLabel>
-                            <FormControl>
-                              <Input
-                                placeholder="Guest Name"
-                                {...field}
-                                className="border-gray-300 focus:border-black focus:ring-black"
-                              />
-                            </FormControl>
-                            <FormMessage className="text-xs sm:text-sm text-red-500" />
-                          </FormItem>
-                        )}
-                      />
-                      <FormField
-                        control={form.control}
-                        name={`guests.${index}.email`}
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel className="text-xs sm:text-sm text-gray-600">
-                              Email
-                            </FormLabel>
-                            <FormControl>
-                              <Input
-                                placeholder="guest@example.com"
-                                {...field}
-                                className="border-gray-300 focus:border-black focus:ring-black"
-                              />
-                            </FormControl>
-                            <FormMessage className="text-xs sm:text-sm text-red-500" />
-                          </FormItem>
-                        )}
-                      />
-                    </motion.div>
+                      {count === 0 ? "None" : count}
+                    </Button>
                   ))}
-                </motion.div>
-              )}
-            </motion.div>
+                </div>
+                {guestCount > 0 && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    transition={{ duration: 0.3 }}
+                    className="space-y-4"
+                  >
+                    {Array.from({ length: guestCount }).map((_, index) => (
+                      <motion.div
+                        key={index}
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ duration: 0.3, delay: 0.1 * index }}
+                        className="space-y-2 border p-4 rounded-md bg-gray-50"
+                      >
+                        <h4 className="text-sm font-medium text-black">
+                          Guest {index + 1}
+                        </h4>
+                        <FormField
+                          control={form.control}
+                          name={`guests.${index}.name`}
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel className="text-xs sm:text-sm text-gray-600">
+                                Name
+                              </FormLabel>
+                              <FormControl>
+                                <Input
+                                  placeholder="Guest Name"
+                                  {...field}
+                                  className="border-gray-300 focus:border-black focus:ring-black"
+                                />
+                              </FormControl>
+                              <FormMessage className="text-xs sm:text-sm text-red-500" />
+                            </FormItem>
+                          )}
+                        />
+                        <FormField
+                          control={form.control}
+                          name={`guests.${index}.email`}
+                          render={({ field }) => (
+                            <FormItem>
+                              <FormLabel className="text-xs sm:text-sm text-gray-600">
+                                Email
+                              </FormLabel>
+                              <FormControl>
+                                <Input
+                                  placeholder="guest@example.com"
+                                  {...field}
+                                  className="border-gray-300 focus:border-black focus:ring-black"
+                                />
+                              </FormControl>
+                              <FormMessage className="text-xs sm:text-sm text-red-500" />
+                            </FormItem>
+                          )}
+                        />
+                      </motion.div>
+                    ))}
+                  </motion.div>
+                )}
+              </motion.div>
+            )}
 
             <Dialog
               open={showChargeConfirmation}
@@ -883,49 +962,37 @@ export default function BookTeeTime() {
                     Confirm Additional Guest Charges
                   </DialogTitle>
                   <DialogDescription className="text-gray-600">
-                    {service.toLowerCase().includes("guest") ? (
+                    You have used {guestPassesUsed} of {availableGuestPasses}{" "}
+                    free guest passes.
+                    {pendingGuestCount &&
+                    pendingGuestCount >
+                      Math.max(availableGuestPasses - guestPassesUsed, 0) ? (
                       <>
-                        You have used {guestPassesUsed} of{" "}
-                        {availableGuestPasses} free guest passes.
-                        {pendingGuestCount &&
-                        pendingGuestCount >
+                        Adding {pendingGuestCount} guest(s) will use{" "}
+                        {Math.min(
+                          pendingGuestCount,
+                          Math.max(availableGuestPasses - guestPassesUsed, 0)
+                        )}{" "}
+                        free pass(es) and charge $
+                        {(
+                          (pendingGuestCount -
+                            Math.max(
+                              availableGuestPasses - guestPassesUsed,
+                              0
+                            )) *
+                          guestPassCharge
+                        ).toFixed(2)}{" "}
+                        for{" "}
+                        {pendingGuestCount -
                           Math.max(
                             availableGuestPasses - guestPassesUsed,
                             0
-                          ) ? (
-                          <>
-                            Adding {pendingGuestCount} guest(s) will use{" "}
-                            {Math.min(
-                              pendingGuestCount,
-                              Math.max(
-                                availableGuestPasses - guestPassesUsed,
-                                0
-                              )
-                            )}{" "}
-                            free pass(es) and charge $
-                            {(
-                              (pendingGuestCount -
-                                Math.max(
-                                  availableGuestPasses - guestPassesUsed,
-                                  0
-                                )) *
-                              guestPassCharge
-                            ).toFixed(2)}{" "}
-                            for{" "}
-                            {pendingGuestCount -
-                              Math.max(
-                                availableGuestPasses - guestPassesUsed,
-                                0
-                              )}{" "}
-                            additional guest(s) at ${guestPassCharge.toFixed(2)}{" "}
-                            each.
-                          </>
-                        ) : (
-                          "Please confirm to proceed."
-                        )}
+                          )}{" "}
+                        additional guest(s) at ${guestPassCharge.toFixed(2)}{" "}
+                        each.
                       </>
                     ) : (
-                      "Guests can only be added for services with 'Guest' in the name."
+                      "Please confirm to proceed."
                     )}
                   </DialogDescription>
                 </DialogHeader>
@@ -934,7 +1001,6 @@ export default function BookTeeTime() {
                     type="button"
                     className="w-full sm:w-auto bg-black text-white hover:bg-gray-800"
                     onClick={() => handleChargeConfirmation(true)}
-                    disabled={!service.toLowerCase().includes("guest")}
                   >
                     Confirm
                   </Button>
@@ -1093,10 +1159,7 @@ export default function BookTeeTime() {
                         "Not selected"
                       )}
                     </div>
-                    {form
-                      .getValues("service")
-                      ?.toLowerCase()
-                      .includes("guest") &&
+                    {activeTab === "guest" &&
                       (form.getValues("guests") || []).length > 0 && (
                         <div>
                           <strong className="text-sm sm:text-base">
@@ -1116,10 +1179,7 @@ export default function BookTeeTime() {
                           </ul>
                         </div>
                       )}
-                    {form
-                      .getValues("service")
-                      ?.toLowerCase()
-                      .includes("guest") &&
+                    {activeTab === "guest" &&
                       (form.getValues("guests") || []).length > 0 && (
                         <p className="text-sm sm:text-base text-gray-600">
                           <strong>Guest Pass Usage:</strong>{" "}
