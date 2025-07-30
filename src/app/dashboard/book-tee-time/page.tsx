@@ -189,29 +189,42 @@ export default function BookTeeTime() {
         if (!activeMembership) throw new Error("No active membership found");
         setMembership(activeMembership);
 
-        const benefitBalances = await fetchMemberBenefitBalances(token);
-        const guestFreePassBenefit = benefitBalances.find(
-          (benefit: any) =>
-            benefit.benefitname.includes("Guest FREE Visit") &&
-            benefit.balance !== null
+        // Check if member has access to Guest services
+        const services = await fetchServices(
+          token,
+          undefined,
+          fetchedClubs[0]?.id
         );
-        const guestPaidPassBenefit = benefitBalances.find(
-          (benefit: any) =>
-            benefit.benefitname.includes("Guest PAID Visit") &&
-            benefit.price !== null
+        const hasGuestService = services.some((s) =>
+          s.servicename.toLowerCase().includes("guest")
         );
+
+        let guestFreePassBenefit = null;
+        let guestPaidPassBenefit = null;
+        if (hasGuestService) {
+          const benefitBalances = await fetchMemberBenefitBalances(token);
+          guestFreePassBenefit = benefitBalances.find(
+            (benefit: any) =>
+              benefit.benefitname.toLowerCase().includes("guest free visit") &&
+              benefit.balance !== null
+          );
+          guestPaidPassBenefit = benefitBalances.find(
+            (benefit: any) =>
+              benefit.benefitname.toLowerCase().includes("guest paid visit") &&
+              benefit.price !== null
+          );
+        }
 
         if (guestFreePassBenefit && guestFreePassBenefit.balance !== null) {
           setAvailableGuestPasses(guestFreePassBenefit.balance);
         } else {
-          console.warn(
-            "No 'Guest FREE Visit' benefit with valid balance found"
-          );
           setAvailableGuestPasses(0);
-          toast.warning("No guest pass benefits available", {
-            description:
-              "You have no free guest passes. Additional guests will be charged.",
-          });
+          if (hasGuestService) {
+            toast.warning("No guest pass benefits available", {
+              description:
+                "You have no free guest passes. Additional guests will be charged.",
+            });
+          }
         }
 
         if (guestPaidPassBenefit && guestPaidPassBenefit.price) {
@@ -220,15 +233,18 @@ export default function BookTeeTime() {
           );
           setGuestPassCharge(isNaN(price) ? 25 : price);
         } else {
-          console.warn("No 'Guest PAID Visit' benefit with valid price found");
-          setGuestPassCharge(25);
-          toast.warning("Unable to fetch guest pass charge", {
-            description: "Using default charge of $25 per additional guest.",
-          });
+          setGuestPassCharge(hasGuestService ? 25 : 0); // Only set charge if Guest service exists
+          if (hasGuestService) {
+            toast.warning("Unable to fetch guest pass charge", {
+              description: "Using default charge of $25 per additional guest.",
+            });
+          }
         }
 
         const { guestPassesUsed, referralCodes, guestBookingIds } =
-          await fetchGuestData(token);
+          hasGuestService
+            ? await fetchGuestData(token)
+            : { guestPassesUsed: 0, referralCodes: [], guestBookingIds: [] };
         setGuestPassesUsed(guestPassesUsed);
         setReferralCodes(referralCodes);
         setGuestBookingIds(guestBookingIds);
@@ -261,10 +277,10 @@ export default function BookTeeTime() {
           undefined,
           club.id
         );
-        const memberServices = fetchedServices
-          // .filter((s) => s.servicename.includes("Member Golf Bay"))
-          .filter((s) => s.servicename.includes(""))
-          .map((s) => ({ ...s, servicename: s.servicename.trim() }));
+        const memberServices = fetchedServices.map((s) => ({
+          ...s,
+          servicename: s.servicename.trim(),
+        }));
         setServices(memberServices);
       } catch (err) {
         console.error("Services Fetch Error:", err);
@@ -359,6 +375,17 @@ export default function BookTeeTime() {
   }, [debouncedCheckAvailability]);
 
   const handleGuestCountChange = (count: number) => {
+    const isGuestService = service.toLowerCase().includes("guest");
+    if (!isGuestService) {
+      setGuestCount(0);
+      form.setValue("guests", []);
+      form.clearErrors("guests");
+      if (count > 0) {
+        toast.warning("Guests can only be added for Guest services");
+      }
+      return;
+    }
+
     const freePassesAvailable = Math.max(
       availableGuestPasses - guestPassesUsed,
       0
@@ -430,22 +457,25 @@ export default function BookTeeTime() {
       const club = clubs.find((c) => c.name === data.location);
       if (!club) throw new Error("Selected club not found");
 
-      const guestData = await fetchGuestData(token);
-      const guestPassesUsed = guestData.guestPassesUsed || 0;
-      const freePassesAvailable = Math.max(
-        availableGuestPasses - guestPassesUsed,
-        0
-      );
-      const guestPassUsage = {
-        free: Math.min((data.guests || []).length, freePassesAvailable),
-        charged: Math.max((data.guests || []).length - freePassesAvailable, 0),
-      };
-
+      const isGuestService = data.service.toLowerCase().includes("guest");
+      let guestPassUsage = { free: 0, charged: 0 };
       const newReferralCodes: string[] = [];
       const newBookingIds: number[] = [];
       const guestAssignments: number[] = [];
+      let guestPassesUsed = 0;
 
-      if (data.guests?.length) {
+      if (isGuestService && data.guests?.length) {
+        const guestData = await fetchGuestData(token);
+        guestPassesUsed = guestData.guestPassesUsed || 0;
+        const freePassesAvailable = Math.max(
+          availableGuestPasses - guestPassesUsed,
+          0
+        );
+        guestPassUsage = {
+          free: Math.min(data.guests.length, freePassesAvailable),
+          charged: Math.max(data.guests.length - freePassesAvailable, 0),
+        };
+
         data.guests.forEach(() => {
           const code = generateReferralCode();
           newReferralCodes.push(code);
@@ -469,23 +499,23 @@ export default function BookTeeTime() {
           rid: data.timeSlot.rid,
           bookingstart: data.timeSlot.bookingstart,
           bookingend: data.timeSlot.bookingend,
-          guestPassCharge,
+          guestPassCharge: isGuestService ? guestPassCharge : 0,
         },
         token,
         selectedServiceId,
         data.timeSlot.rid,
         membership.id,
         selectedBenefitId || undefined,
-        availableGuestPasses, // NEW: Pass availableGuestPasses
-        guestPassCharge // NEW: Pass guestPassCharge
+        isGuestService ? availableGuestPasses : 0,
+        isGuestService ? guestPassCharge : 0
       );
 
       newBookingIds.push(bookingId);
-      if (data.guests?.length) {
+      if (isGuestService && data.guests?.length) {
         data.guests.forEach(() => guestAssignments.push(bookingId));
       }
 
-      if (guestPassUsage.charged > 0) {
+      if (isGuestService && guestPassUsage.charged > 0) {
         const totalCharge = guestPassUsage.charged * guestPassCharge;
         await logGuestPassCharge(
           token,
@@ -497,7 +527,7 @@ export default function BookTeeTime() {
         });
       }
 
-      if (data.guests?.length) {
+      if (isGuestService && data.guests?.length) {
         const updatedReferralCodes = [...referralCodes, ...newReferralCodes];
         const updatedBookingIds = [
           ...guestBookingIds,
@@ -542,12 +572,12 @@ export default function BookTeeTime() {
         member.email,
         data,
         newBookingIds,
-        availableGuestPasses,
-        guestPassesUsed,
-        guestPassCharge
+        isGuestService ? availableGuestPasses : 0,
+        isGuestService ? guestPassesUsed : 0,
+        isGuestService ? guestPassCharge : 0
       );
 
-      if (data.guests?.length) {
+      if (isGuestService && data.guests?.length) {
         for (let i = 0; i < data.guests.length; i++) {
           const guest = data.guests[i];
           const referralCode = newReferralCodes[i];
@@ -577,7 +607,7 @@ export default function BookTeeTime() {
 
       toast.success("Tee time booked!", {
         description:
-          guestPassUsage.charged > 0
+          isGuestService && guestPassUsage.charged > 0
             ? `Charged $${(guestPassUsage.charged * guestPassCharge).toFixed(2)} for ${guestPassUsage.charged} extra guest(s).`
             : undefined,
       });
@@ -853,37 +883,49 @@ export default function BookTeeTime() {
                     Confirm Additional Guest Charges
                   </DialogTitle>
                   <DialogDescription className="text-gray-600">
-                    You have used {guestPassesUsed} of {availableGuestPasses}{" "}
-                    free guest passes.
-                    {pendingGuestCount &&
-                    pendingGuestCount >
-                      Math.max(availableGuestPasses - guestPassesUsed, 0) ? (
+                    {service.toLowerCase().includes("guest") ? (
                       <>
-                        Adding {pendingGuestCount} guest(s) will use{" "}
-                        {Math.min(
-                          pendingGuestCount,
-                          Math.max(availableGuestPasses - guestPassesUsed, 0)
-                        )}{" "}
-                        free pass(es) and charge $
-                        {(
-                          (pendingGuestCount -
-                            Math.max(
-                              availableGuestPasses - guestPassesUsed,
-                              0
-                            )) *
-                          guestPassCharge
-                        ).toFixed(2)}{" "}
-                        for{" "}
-                        {pendingGuestCount -
+                        You have used {guestPassesUsed} of{" "}
+                        {availableGuestPasses} free guest passes.
+                        {pendingGuestCount &&
+                        pendingGuestCount >
                           Math.max(
                             availableGuestPasses - guestPassesUsed,
                             0
-                          )}{" "}
-                        additional guest(s) at ${guestPassCharge.toFixed(2)}{" "}
-                        each.
+                          ) ? (
+                          <>
+                            Adding {pendingGuestCount} guest(s) will use{" "}
+                            {Math.min(
+                              pendingGuestCount,
+                              Math.max(
+                                availableGuestPasses - guestPassesUsed,
+                                0
+                              )
+                            )}{" "}
+                            free pass(es) and charge $
+                            {(
+                              (pendingGuestCount -
+                                Math.max(
+                                  availableGuestPasses - guestPassesUsed,
+                                  0
+                                )) *
+                              guestPassCharge
+                            ).toFixed(2)}{" "}
+                            for{" "}
+                            {pendingGuestCount -
+                              Math.max(
+                                availableGuestPasses - guestPassesUsed,
+                                0
+                              )}{" "}
+                            additional guest(s) at ${guestPassCharge.toFixed(2)}{" "}
+                            each.
+                          </>
+                        ) : (
+                          "Please confirm to proceed."
+                        )}
                       </>
                     ) : (
-                      "Please confirm to proceed."
+                      "Guests can only be added for services with 'Guest' in the name."
                     )}
                   </DialogDescription>
                 </DialogHeader>
@@ -892,6 +934,7 @@ export default function BookTeeTime() {
                     type="button"
                     className="w-full sm:w-auto bg-black text-white hover:bg-gray-800"
                     onClick={() => handleChargeConfirmation(true)}
+                    disabled={!service.toLowerCase().includes("guest")}
                   >
                     Confirm
                   </Button>
@@ -996,66 +1039,65 @@ export default function BookTeeTime() {
               />
             </motion.div>
 
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4, delay: 0.8 }}
-            >
-              <Dialog open={showItinerary} onOpenChange={setShowItinerary}>
-                <DialogTrigger asChild>
-                  <Button
-                    type="button"
-                    className="w-full py-2.5 sm:py-3 text-lg sm:text-base bg-black text-white hover:bg-gray-800"
-                    disabled={!isFormValid() || isLoading}
-                    onClick={() => setShowItinerary(true)}
-                  >
-                    Review Itinerary
-                  </Button>
-                </DialogTrigger>
-                <DialogContent className="sm:max-w-lg">
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ duration: 0.3 }}
-                  >
-                    <DialogHeader>
-                      <DialogTitle className="text-xl text-black">
-                        Review Your Booking
-                      </DialogTitle>
-                      <DialogDescription className="text-gray-600">
-                        Confirm your tee time details below.
-                      </DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4">
-                      <p className="text-sm sm:text-base">
-                        <strong>Location:</strong>{" "}
-                        {form.getValues("location") || "Not selected"}
-                      </p>
-                      <p className="text-sm sm:text-base">
-                        <strong>Service:</strong>{" "}
-                        {form.getValues("service") || "Not selected"}
-                      </p>
-                      <p className="text-sm sm:text-base">
-                        <strong>Date:</strong>{" "}
-                        {form.getValues("date") || "Not selected"}
-                      </p>
-                      <div>
-                        <strong className="text-sm sm:text-base">
-                          Time Slot:
-                        </strong>
-                        {form.getValues("timeSlot") ? (
-                          <ul className="list-disc pl-5 mt-1">
-                            <li className="text-sm sm:text-base text-gray-600">
-                              {form.getValues("timeSlot")!.start_str} -{" "}
-                              {form.getValues("timeSlot")!.end_str} at{" "}
-                              {form.getValues("timeSlot")!.rname}
-                            </li>
-                          </ul>
-                        ) : (
-                          "Not selected"
-                        )}
-                      </div>
-                      {(form.getValues("guests") || []).length > 0 && (
+            <Dialog open={showItinerary} onOpenChange={setShowItinerary}>
+              <DialogTrigger asChild>
+                <Button
+                  type="button"
+                  className="w-full py-2.5 sm:py-3 text-lg sm:text-base bg-black text-white hover:bg-gray-800"
+                  disabled={!isFormValid() || isLoading}
+                  onClick={() => setShowItinerary(true)}
+                >
+                  Review Itinerary
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-lg">
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  <DialogHeader>
+                    <DialogTitle className="text-xl text-black">
+                      Review Your Booking
+                    </DialogTitle>
+                    <DialogDescription className="text-gray-600">
+                      Confirm your tee time details below.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <p className="text-sm sm:text-base">
+                      <strong>Location:</strong>{" "}
+                      {form.getValues("location") || "Not selected"}
+                    </p>
+                    <p className="text-sm sm:text-base">
+                      <strong>Service:</strong>{" "}
+                      {form.getValues("service") || "Not selected"}
+                    </p>
+                    <p className="text-sm sm:text-base">
+                      <strong>Date:</strong>{" "}
+                      {form.getValues("date") || "Not selected"}
+                    </p>
+                    <div>
+                      <strong className="text-sm sm:text-base">
+                        Time Slot:
+                      </strong>
+                      {form.getValues("timeSlot") ? (
+                        <ul className="list-disc pl-5 mt-1">
+                          <li className="text-sm sm:text-base text-gray-600">
+                            {form.getValues("timeSlot")!.start_str} -{" "}
+                            {form.getValues("timeSlot")!.end_str} at{" "}
+                            {form.getValues("timeSlot")!.rname}
+                          </li>
+                        </ul>
+                      ) : (
+                        "Not selected"
+                      )}
+                    </div>
+                    {form
+                      .getValues("service")
+                      ?.toLowerCase()
+                      .includes("guest") &&
+                      (form.getValues("guests") || []).length > 0 && (
                         <div>
                           <strong className="text-sm sm:text-base">
                             Guests:
@@ -1074,7 +1116,11 @@ export default function BookTeeTime() {
                           </ul>
                         </div>
                       )}
-                      {(form.getValues("guests") || []).length > 0 && (
+                    {form
+                      .getValues("service")
+                      ?.toLowerCase()
+                      .includes("guest") &&
+                      (form.getValues("guests") || []).length > 0 && (
                         <p className="text-sm sm:text-base text-gray-600">
                           <strong>Guest Pass Usage:</strong>{" "}
                           {Math.min(
@@ -1110,34 +1156,33 @@ export default function BookTeeTime() {
                             : ""}
                         </p>
                       )}
-                    </div>
-                    <div className="flex flex-col sm:flex-row gap-2 mt-4">
-                      <Button
-                        type="button"
-                        className="w-full sm:w-auto bg-black text-white hover:bg-gray-800"
-                        disabled={isLoading}
-                        onClick={form.handleSubmit(onSubmit)}
-                      >
-                        {isLoading ? (
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        ) : (
-                          "Confirm Booking"
-                        )}
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="w-full sm:w-auto border-gray-300 text-black hover:bg-gray-100"
-                        onClick={() => setShowItinerary(false)}
-                        disabled={isLoading}
-                      >
-                        Edit
-                      </Button>
-                    </div>
-                  </motion.div>
-                </DialogContent>
-              </Dialog>
-            </motion.div>
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-2 mt-4">
+                    <Button
+                      type="button"
+                      className="w-full sm:w-auto bg-black text-white hover:bg-gray-800"
+                      disabled={isLoading}
+                      onClick={form.handleSubmit(onSubmit)}
+                    >
+                      {isLoading ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        "Confirm Booking"
+                      )}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full sm:w-auto border-gray-300 text-black hover:bg-gray-100"
+                      onClick={() => setShowItinerary(false)}
+                      disabled={isLoading}
+                    >
+                      Edit
+                    </Button>
+                  </div>
+                </motion.div>
+              </DialogContent>
+            </Dialog>
           </form>
         </Form>
       </motion.div>
