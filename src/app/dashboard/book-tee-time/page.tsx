@@ -109,6 +109,7 @@ export default function BookTeeTime() {
     null
   );
   const [activeTab, setActiveTab] = useState<"self" | "guest">("self");
+  const [activeResourceTab, setActiveResourceTab] = useState<string>(""); // New state for resource tabs
   const { addBooking } = useBookings();
   const router = useRouter();
 
@@ -324,8 +325,18 @@ export default function BookTeeTime() {
         if (dateData) {
           const slots = dateData[date].filter((slot: any) => !slot.bookingid);
           setTimeSlots(slots);
+          // Set the first resource with available slots as the active tab
+          const firstResourceWithSlots = resources.find((r: any) =>
+            slots.some((slot: any) => slot.rname === r.name)
+          );
+          if (firstResourceWithSlots) {
+            setActiveResourceTab(firstResourceWithSlots.name);
+          } else {
+            setActiveResourceTab("");
+          }
         } else {
           setTimeSlots([]);
+          setActiveResourceTab("");
         }
       } catch (err) {
         console.error("Slots Fetch Error:", err);
@@ -359,15 +370,27 @@ export default function BookTeeTime() {
         if (dateData) {
           const slots = dateData[date].filter((slot: any) => !slot.bookingid);
           setTimeSlots(slots);
+          // Update active resource tab if necessary
+          const firstResourceWithSlots = resources.find((r: any) =>
+            slots.some((slot: any) => slot.rname === r.name)
+          );
+          if (
+            firstResourceWithSlots &&
+            !slots.some((slot: any) => slot.rname === activeResourceTab)
+          ) {
+            setActiveResourceTab(firstResourceWithSlots.name);
+          }
         } else {
           setTimeSlots([]);
+          setActiveResourceTab("");
         }
       } catch (error) {
         console.error("Error fetching slot availability:", error);
         setTimeSlots([]);
+        setActiveResourceTab("");
       }
     }, 500),
-    [date, location, service, resources, clubs, services]
+    [date, location, service, resources, clubs, services, activeResourceTab]
   );
 
   useEffect(() => {
@@ -435,6 +458,7 @@ export default function BookTeeTime() {
     setSelectedServiceId(null);
     setSelectedBenefitId(null);
     setGuestCount(0);
+    setActiveResourceTab("");
     form.setValue("guests", []);
   };
 
@@ -444,6 +468,7 @@ export default function BookTeeTime() {
     setTimeSlots([]);
     setSelectedServiceId(null);
     setSelectedBenefitId(null);
+    setActiveResourceTab("");
     if (activeTab === "self") {
       setGuestCount(0);
       form.setValue("guests", []);
@@ -460,6 +485,7 @@ export default function BookTeeTime() {
     setSelectedServiceId(null);
     setSelectedBenefitId(null);
     setGuestCount(0);
+    setActiveResourceTab("");
     form.setValue("guests", []);
     form.clearErrors("guests");
   };
@@ -643,6 +669,7 @@ export default function BookTeeTime() {
       setGuestCount(0);
       setShowItinerary(false);
       setActiveTab("self");
+      setActiveResourceTab("");
       setTimeout(() => {
         router.push("/dashboard/my-tee-times");
       }, 1000);
@@ -683,7 +710,7 @@ export default function BookTeeTime() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, delay: 0.2 }}
-        className="w-full max-w-4xl mx-auto space-y-6 sm:space-y-8 bg-background "
+        className="w-full max-w-4xl mx-auto space-y-6 sm:space-y-8 bg-background p-6 rounded-lg shadow-md"
       >
         <Form {...form}>
           <form className="space-y-6">
@@ -1045,54 +1072,80 @@ export default function BookTeeTime() {
                           No available time slots for {date}
                         </div>
                       ) : (
-                        <div className="space-y-4">
-                          {resources.map((resource: any) => {
-                            const resourceSlots = timeSlots.filter(
-                              (slot) => slot.rname === resource.name
-                            );
-                            return (
-                              resourceSlots.length > 0 && (
-                                <div
+                        <Tabs
+                          value={activeResourceTab}
+                          onValueChange={setActiveResourceTab}
+                          className="w-full"
+                        >
+                          <TabsList className="w-full flex flex-wrap justify-start mb-4">
+                            {resources
+                              .filter((resource: any) =>
+                                timeSlots.some(
+                                  (slot) => slot.rname === resource.name
+                                )
+                              )
+                              .map((resource: any) => (
+                                <TabsTrigger
                                   key={resource.id}
-                                  className="border border-input p-4 rounded-md bg-muted"
+                                  value={resource.name}
+                                  className="text-sm"
                                 >
+                                  {resource.name}
+                                </TabsTrigger>
+                              ))}
+                          </TabsList>
+                          {resources
+                            .filter((resource: any) =>
+                              timeSlots.some(
+                                (slot) => slot.rname === resource.name
+                              )
+                            )
+                            .map((resource: any) => (
+                              <TabsContent
+                                key={resource.id}
+                                value={resource.name}
+                              >
+                                <div className="border border-input p-4 rounded-md bg-muted">
                                   <h4 className="text-sm font-medium text-foreground mb-2">
                                     {resource.name}
                                   </h4>
                                   <div className="grid grid-cols-1 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                                    {resourceSlots.map((slot) => (
-                                      <Button
-                                        key={`${slot.rid}-${slot.bookingstart}`}
-                                        type="button"
-                                        variant={
-                                          form.getValues("timeSlot")
-                                            ?.start_str === slot.start_str &&
-                                          form.getValues("timeSlot")?.rname ===
-                                            slot.rname
-                                            ? "default"
-                                            : "outline"
-                                        }
-                                        className="text-sm"
-                                        onClick={() => {
-                                          form.setValue("timeSlot", {
-                                            rid: slot.rid,
-                                            bookingstart: slot.bookingstart,
-                                            bookingend: slot.bookingend,
-                                            start_str: slot.start_str,
-                                            end_str: slot.end_str,
-                                            rname: slot.rname,
-                                          });
-                                        }}
-                                      >
-                                        {`${slot.start_str} - ${slot.end_str}`}
-                                      </Button>
-                                    ))}
+                                    {timeSlots
+                                      .filter(
+                                        (slot) => slot.rname === resource.name
+                                      )
+                                      .map((slot) => (
+                                        <Button
+                                          key={`${slot.rid}-${slot.bookingstart}`}
+                                          type="button"
+                                          variant={
+                                            form.getValues("timeSlot")
+                                              ?.start_str === slot.start_str &&
+                                            form.getValues("timeSlot")
+                                              ?.rname === slot.rname
+                                              ? "default"
+                                              : "outline"
+                                          }
+                                          className="text-sm"
+                                          onClick={() => {
+                                            form.setValue("timeSlot", {
+                                              rid: slot.rid,
+                                              bookingstart: slot.bookingstart,
+                                              bookingend: slot.bookingend,
+                                              start_str: slot.start_str,
+                                              end_str: slot.end_str,
+                                              rname: slot.rname,
+                                            });
+                                          }}
+                                        >
+                                          {`${slot.start_str} - ${slot.end_str}`}
+                                        </Button>
+                                      ))}
                                   </div>
                                 </div>
-                              )
-                            );
-                          })}
-                        </div>
+                              </TabsContent>
+                            ))}
+                        </Tabs>
                       )}
                     </FormControl>
                     <FormMessage className="text-xs sm:text-sm text-destructive" />
