@@ -326,7 +326,7 @@ export default function MyTeeTimes() {
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="text-3xl sm:text-4xl font-bold text-center text-black"
+        className="text-3xl sm:text-4xl font-bold text-center text-foreground"
       >
         My Tee Times
       </motion.h1>
@@ -335,20 +335,20 @@ export default function MyTeeTimes() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, delay: 0.2 }}
-        className="w-full max-w-5xl mx-auto"
+        className="w-full max-w-5xl mx-auto bg-background"
       >
         <div className="flex justify-end mb-4">
           <Button
             variant="outline"
             onClick={fetchBookings}
             disabled={isFetching}
-            className="border-gray-300 text-black hover:bg-gray-100"
+            className=""
             aria-label="Refresh bookings"
           >
             {isFetching ? (
-              <Loader2 className="mr-2 h-4 w-4 animate-spin text-black" />
+              <Loader2 className="mr-2 h-4 w-4 animate-spin text-foreground" />
             ) : (
-              <RefreshCw className="mr-2 h-4 w-4 text-black" />
+              <RefreshCw className="mr-2 h-4 w-4 text-foreground" />
             )}
             Refresh
           </Button>
@@ -359,14 +359,11 @@ export default function MyTeeTimes() {
             {Array(3)
               .fill(null)
               .map((_, i) => (
-                <div
-                  key={i}
-                  className="h-12 bg-gray-200 animate-pulse rounded"
-                />
+                <div key={i} className="h-12 bg-muted animate-pulse rounded" />
               ))}
           </div>
         ) : sortedBookings.length === 0 ? (
-          <p className="text-center text-gray-500">
+          <p className="text-center text-muted-foreground">
             You have no booked tee times.
           </p>
         ) : (
@@ -374,29 +371,29 @@ export default function MyTeeTimes() {
             {/* Desktop Table */}
             <Table className="hidden sm:table w-full">
               <TableHeader>
-                <TableRow className="bg-gray-100">
-                  <TableHead className="text-sm font-semibold text-black">
+                <TableRow className="bg-muted">
+                  <TableHead className="text-sm font-semibold text-foreground">
                     Date
                   </TableHead>
-                  <TableHead className="text-sm font-semibold text-black">
+                  <TableHead className="text-sm font-semibold text-foreground">
                     Time
                   </TableHead>
-                  <TableHead className="text-sm font-semibold text-black">
+                  <TableHead className="text-sm font-semibold text-foreground">
                     Location
                   </TableHead>
-                  <TableHead className="text-sm font-semibold text-black">
+                  <TableHead className="text-sm font-semibold text-foreground">
                     Service
                   </TableHead>
-                  <TableHead className="text-sm font-semibold text-black">
+                  <TableHead className="text-sm font-semibold text-foreground">
                     Bay
                   </TableHead>
-                  <TableHead className="text-sm font-semibold text-black">
+                  <TableHead className="text-sm font-semibold text-foreground">
                     Guests
                   </TableHead>
-                  <TableHead className="text-sm font-semibold text-black">
+                  <TableHead className="text-sm font-semibold text-foreground">
                     Guest Passes
                   </TableHead>
-                  <TableHead className="text-sm font-semibold text-black">
+                  <TableHead className="text-sm font-semibold text-foreground">
                     Actions
                   </TableHead>
                 </TableRow>
@@ -408,31 +405,31 @@ export default function MyTeeTimes() {
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.3, delay: index * 0.1 }}
-                    className="border-b"
+                    className="border-b border-input"
                   >
-                    <TableCell className="text-sm text-black">
+                    <TableCell className="text-sm text-foreground">
                       {booking.date}
                     </TableCell>
-                    <TableCell className="text-sm text-black">
+                    <TableCell className="text-sm text-foreground">
                       {booking.time}
                     </TableCell>
-                    <TableCell className="text-sm text-black">
+                    <TableCell className="text-sm text-foreground">
                       {booking.location}
                     </TableCell>
-                    <TableCell className="text-sm text-black">
+                    <TableCell className="text-sm text-foreground">
                       {booking.servicename}
                     </TableCell>
-                    <TableCell className="text-sm text-black">
+                    <TableCell className="text-sm text-foreground">
                       {booking.bay}
                     </TableCell>
-                    <TableCell className="text-sm text-black">
+                    <TableCell className="text-sm text-foreground">
                       {booking.guests.length > 0
                         ? booking.guests
                             .map((g) => g.name || g.email)
                             .join(", ")
                         : "None"}
                     </TableCell>
-                    <TableCell className="text-sm text-black">
+                    <TableCell className="text-sm text-foreground">
                       {booking.guestPassUsage.free > 0 ||
                       booking.guestPassUsage.charged > 0
                         ? `${booking.guestPassUsage.free} free, ${booking.guestPassUsage.charged} charged`
@@ -450,7 +447,6 @@ export default function MyTeeTimes() {
                             variant="destructive"
                             size="sm"
                             onClick={() => setDeleteBookingId(booking.id)}
-                            className="bg-red-500 text-white hover:bg-red-600"
                             aria-label={`Cancel tee time for ${booking.date} at ${booking.time}`}
                           >
                             Cancel
@@ -458,10 +454,10 @@ export default function MyTeeTimes() {
                         </DialogTrigger>
                         <DialogContent>
                           <DialogHeader>
-                            <DialogTitle className="text-black">
+                            <DialogTitle className="text-foreground">
                               Confirm Cancellation
                             </DialogTitle>
-                            <DialogDescription className="text-gray-600">
+                            <DialogDescription className="text-muted-foreground">
                               Are you sure you want to cancel the booking for{" "}
                               {booking.date} at {booking.time}?
                             </DialogDescription>
@@ -469,7 +465,7 @@ export default function MyTeeTimes() {
                           <DialogFooter className="flex flex-col sm:flex-row gap-2">
                             <Button
                               variant="outline"
-                              className="w-full sm:w-auto border-gray-300 text-black hover:bg-gray-100"
+                              className="w-full sm:w-auto"
                               onClick={() => setDeleteBookingId(null)}
                               disabled={isLoading}
                             >
@@ -477,7 +473,7 @@ export default function MyTeeTimes() {
                             </Button>
                             <Button
                               variant="destructive"
-                              className="w-full sm:w-auto bg-red-500 text-white hover:bg-red-600"
+                              className="w-full sm:w-auto"
                               onClick={() => handleDelete(booking.id)}
                               disabled={isLoading}
                             >
@@ -504,48 +500,54 @@ export default function MyTeeTimes() {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.3, delay: index * 0.1 }}
-                  className="border rounded-lg p-4 shadow-md bg-white hover:shadow-lg transition-shadow duration-200"
+                  className="border border-input rounded-lg p-4 shadow-md bg-background hover:shadow-lg transition-shadow duration-200"
                 >
                   <div className="grid grid-cols-1 gap-2">
                     <div className="flex flex-col items-start justify-start gap-0">
-                      <span className="text-sm font-semibold text-gray-700">
+                      <span className="text-sm font-semibold text-muted-foreground">
                         Date
                       </span>
-                      <span className="text-sm text-black">{booking.date}</span>
+                      <span className="text-sm text-foreground">
+                        {booking.date}
+                      </span>
                     </div>
                     <div className="flex flex-col items-start justify-start gap-0">
-                      <span className="text-sm font-semibold text-gray-700">
+                      <span className="text-sm font-semibold text-muted-foreground">
                         Time
                       </span>
-                      <span className="text-sm text-black">{booking.time}</span>
+                      <span className="text-sm text-foreground">
+                        {booking.time}
+                      </span>
                     </div>
                     <div className="flex flex-col items-start justify-start gap-0">
-                      <span className="text-sm font-semibold text-gray-700">
+                      <span className="text-sm font-semibold text-muted-foreground">
                         Location
                       </span>
-                      <span className="text-sm text-black">
+                      <span className="text-sm text-foreground">
                         {booking.location}
                       </span>
                     </div>
                     <div className="flex flex-col items-start justify-start gap-0">
-                      <span className="text-sm font-semibold text-gray-700">
+                      <span className="text-sm font-semibold text-muted-foreground">
                         Service
                       </span>
-                      <span className="text-sm text-black">
+                      <span className="text-sm text-foreground">
                         {booking.servicename}
                       </span>
                     </div>
                     <div className="flex flex-col items-start justify-start gap-0">
-                      <span className="text-sm font-semibold text-gray-700">
+                      <span className="text-sm font-semibold text-muted-foreground">
                         Bay
                       </span>
-                      <span className="text-sm text-black">{booking.bay}</span>
+                      <span className="text-sm text-foreground">
+                        {booking.bay}
+                      </span>
                     </div>
                     <div className="flex flex-col items-start justify-start gap-0">
-                      <span className="text-sm font-semibold text-gray-700">
+                      <span className="text-sm font-semibold text-muted-foreground">
                         Guests
                       </span>
-                      <span className="text-sm text-black">
+                      <span className="text-sm text-foreground">
                         {booking.guests.length > 0
                           ? booking.guests
                               .map((g) => g.name || g.email)
@@ -554,10 +556,10 @@ export default function MyTeeTimes() {
                       </span>
                     </div>
                     <div className="flex flex-col items-start justify-start gap-0">
-                      <span className="text-sm font-semibold text-gray-700">
+                      <span className="text-sm font-semibold text-muted-foreground">
                         Guest Passes
                       </span>
-                      <span className="text-sm text-black">
+                      <span className="text-sm text-foreground">
                         {booking.guestPassUsage.free > 0 ||
                         booking.guestPassUsage.charged > 0
                           ? `${booking.guestPassUsage.free} free, ${booking.guestPassUsage.charged} charged`
@@ -576,7 +578,6 @@ export default function MyTeeTimes() {
                             variant="destructive"
                             size="sm"
                             onClick={() => setDeleteBookingId(booking.id)}
-                            className="bg-red-500 text-white hover:bg-red-600"
                             aria-label={`Cancel tee time for ${booking.date} at ${booking.time}`}
                           >
                             Cancel
@@ -584,10 +585,10 @@ export default function MyTeeTimes() {
                         </DialogTrigger>
                         <DialogContent>
                           <DialogHeader>
-                            <DialogTitle className="text-black">
+                            <DialogTitle className="text-foreground">
                               Confirm Cancellation
                             </DialogTitle>
-                            <DialogDescription className="text-gray-600">
+                            <DialogDescription className="text-muted-foreground">
                               Are you sure you want to cancel the booking for{" "}
                               {booking.date} at {booking.time}?
                             </DialogDescription>
@@ -595,7 +596,7 @@ export default function MyTeeTimes() {
                           <DialogFooter className="flex flex-col sm:flex-row gap-2">
                             <Button
                               variant="outline"
-                              className="w-full sm:w-auto border-gray-300 text-black hover:bg-gray-100"
+                              className="w-full sm:w-auto"
                               onClick={() => setDeleteBookingId(null)}
                               disabled={isLoading}
                             >
@@ -603,7 +604,7 @@ export default function MyTeeTimes() {
                             </Button>
                             <Button
                               variant="destructive"
-                              className="w-full sm:w-auto bg-red-500 text-white hover:bg-red-600"
+                              className="w-full sm:w-auto"
                               onClick={() => handleDelete(booking.id)}
                               disabled={isLoading}
                             >

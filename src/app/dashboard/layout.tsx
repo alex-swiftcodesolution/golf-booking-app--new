@@ -10,6 +10,7 @@ import Link from "next/link";
 import { BookingProvider } from "@/context/BookingContext";
 import { useRouter } from "next/navigation";
 import SessionChecker from "../SessionChecker";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 export default function DashboardLayout({
   children,
@@ -112,7 +113,7 @@ export default function DashboardLayout({
         <div className="flex min-h-screen">
           {/* Sidebar */}
           <aside
-            className={`fixed inset-y-0 left-0 z-50 w-64 bg-white shadow-md transform transition-transform duration-300 ease-in-out ${
+            className={`fixed inset-y-0 left-0 z-50 w-64 bg-white dark:bg-black shadow-md transform transition-transform duration-300 ease-in-out ${
               isMobileMenuOpen ? "translate-x-0" : "-translate-x-full"
             } md:translate-x-0`}
           >
@@ -126,14 +127,16 @@ export default function DashboardLayout({
                     alt="Simcognito's 24/7 golf club logo"
                     width={150} // Base width
                     height={50} // Adjust height based on logo aspect ratio
-                    className="w-36 h-auto" // Fixed width within sidebar, maintaining aspect ratio
+                    className="w-36 h-auto dark:invert-100" // Fixed width within sidebar, maintaining aspect ratio
                   />
                 </div>
                 <nav className="mt-6 space-y-2">
                   <Link
                     href="/dashboard"
-                    className={`block rounded-md p-2 text-sm hover:bg-gray-100 ${
-                      pathname === "/dashboard" ? "bg-gray-200 font-medium" : ""
+                    className={`block rounded-md p-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 ${
+                      pathname === "/dashboard"
+                        ? "bg-gray-200 font-medium dark:bg-gray-800"
+                        : ""
                     }`}
                     aria-current={
                       pathname === "/dashboard" ? "page" : undefined
@@ -143,9 +146,9 @@ export default function DashboardLayout({
                   </Link>
                   <Link
                     href="/dashboard/open-door"
-                    className={`block rounded-md p-2 text-sm hover:bg-gray-100 ${
+                    className={`block rounded-md p-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 ${
                       pathname === "/dashboard/open-door"
-                        ? "bg-gray-200 font-medium"
+                        ? "bg-gray-200 font-medium dark:bg-gray-800"
                         : ""
                     }`}
                     aria-current={
@@ -156,9 +159,9 @@ export default function DashboardLayout({
                   </Link>
                   <Link
                     href="/dashboard/my-account"
-                    className={`block rounded-md p-2 text-sm hover:bg-gray-100 ${
+                    className={`block rounded-md p-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 ${
                       pathname === "/dashboard/my-account"
-                        ? "bg-gray-200 font-medium"
+                        ? "bg-gray-200 font-medium dark:bg-gray-800"
                         : ""
                     }`}
                     aria-current={
@@ -169,9 +172,9 @@ export default function DashboardLayout({
                   </Link>
                   <Link
                     href="/dashboard/book-tee-time"
-                    className={`block rounded-md p-2 text-sm hover:bg-gray-100 ${
+                    className={`block rounded-md p-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 ${
                       pathname === "/dashboard/book-tee-time"
-                        ? "bg-gray-200 font-medium"
+                        ? "bg-gray-200 font-medium dark:bg-gray-800"
                         : ""
                     }`}
                     aria-current={
@@ -184,9 +187,9 @@ export default function DashboardLayout({
                   </Link>
                   <Link
                     href="/dashboard/my-tee-times"
-                    className={`block rounded-md p-2 text-sm hover:bg-gray-100 ${
+                    className={`block rounded-md p-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 ${
                       pathname === "/dashboard/my-tee-times"
-                        ? "bg-gray-200 font-medium"
+                        ? "bg-gray-200 font-medium dark:bg-gray-800"
                         : ""
                     }`}
                     aria-current={
@@ -199,9 +202,9 @@ export default function DashboardLayout({
                   </Link>
                   <Link
                     href="/dashboard/invite"
-                    className={`block rounded-md p-2 text-sm hover:bg-gray-100 ${
+                    className={`block rounded-md p-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 ${
                       pathname === "/dashboard/invite"
-                        ? "bg-gray-200 font-medium"
+                        ? "bg-gray-200 font-medium dark:bg-gray-800"
                         : ""
                     }`}
                     aria-current={
@@ -212,12 +215,15 @@ export default function DashboardLayout({
                   </Link>
                 </nav>
               </div>
+              <div className="absolute bottom-5 left-5">
+                <ThemeToggle />
+              </div>
             </div>
           </aside>
 
           {/* Main Content */}
           <div className="flex-1 flex flex-col">
-            <header className="fixed top-0 left-0 w-full z-40 bg-white shadow-md p-4 sm:p-2 flex items-center justify-between">
+            <header className="fixed top-0 left-0 w-full z-40 bg-white dark:bg-black shadow-md p-4 sm:p-2 flex items-center justify-between">
               <Button
                 variant="ghost"
                 size="icon"

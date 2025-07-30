@@ -674,7 +674,7 @@ export default function BookTeeTime() {
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="text-3xl sm:text-4xl font-bold text-center text-black"
+        className="text-3xl sm:text-4xl font-bold text-center text-foreground"
       >
         Book a Tee Time
       </motion.h1>
@@ -683,7 +683,7 @@ export default function BookTeeTime() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5, delay: 0.2 }}
-        className="w-full max-w-4xl mx-auto space-y-6 sm:space-y-8 bg-white p-6 rounded-lg shadow-md"
+        className="w-full max-w-4xl mx-auto space-y-6 sm:space-y-8 bg-background "
       >
         <Form {...form}>
           <form className="space-y-6">
@@ -697,9 +697,9 @@ export default function BookTeeTime() {
                 name="date"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-sm sm:text-base flex items-center gap-2 text-black">
+                    <FormLabel className="text-sm sm:text-base flex items-center gap-2 text-foreground">
                       <Calendar
-                        className="h-5 w-5 text-black"
+                        className="h-5 w-5 text-foreground"
                         aria-hidden="true"
                       />{" "}
                       Choose Date
@@ -709,10 +709,10 @@ export default function BookTeeTime() {
                         type="date"
                         {...field}
                         min={new Date().toISOString().split("T")[0]}
-                        className="border-gray-300 focus:border-black focus:ring-black"
+                        className="border-input focus:border-primary focus:ring-primary"
                       />
                     </FormControl>
-                    <FormMessage className="text-xs sm:text-sm text-red-500" />
+                    <FormMessage className="text-xs sm:text-sm text-destructive" />
                   </FormItem>
                 )}
               />
@@ -728,18 +728,18 @@ export default function BookTeeTime() {
                 name="location"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-sm sm:text-base flex items-center gap-2 text-black">
+                    <FormLabel className="text-sm sm:text-base flex items-center gap-2 text-foreground">
                       <MapPin
-                        className="h-5 w-5 text-black"
+                        className="h-5 w-5 text-foreground"
                         aria-hidden="true"
                       />{" "}
                       Choose Location
                     </FormLabel>
                     <FormControl>
                       {isFetchingClubs ? (
-                        <div className="flex items-center gap-2 w-full sm:w-64 p-2 border border-gray-300 rounded-md">
-                          <Loader2 className="h-5 w-5 animate-spin text-black" />
-                          <span className="text-gray-500">
+                        <div className="flex items-center gap-2 w-full sm:w-64 p-2 border border-input rounded-md">
+                          <Loader2 className="h-5 w-5 animate-spin text-foreground" />
+                          <span className="text-muted-foreground">
                             Loading locations...
                           </span>
                         </div>
@@ -750,7 +750,7 @@ export default function BookTeeTime() {
                             field.onChange(e.target.value);
                             handleLocationChange();
                           }}
-                          className="w-full sm:w-64 p-2 border border-gray-300 rounded-md focus:border-black focus:ring-black"
+                          className="w-full sm:w-64 p-2 border border-input rounded-md focus:border-primary focus:ring-primary bg-background text-foreground"
                         >
                           <option value="">Select a location</option>
                           {clubs.map((club) => (
@@ -761,7 +761,7 @@ export default function BookTeeTime() {
                         </select>
                       )}
                     </FormControl>
-                    <FormMessage className="text-xs sm:text-sm text-red-500" />
+                    <FormMessage className="text-xs sm:text-sm text-destructive" />
                   </FormItem>
                 )}
               />
@@ -777,9 +777,9 @@ export default function BookTeeTime() {
                 name="service"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-sm sm:text-base flex items-center gap-2 text-black">
+                    <FormLabel className="text-sm sm:text-base flex items-center gap-2 text-foreground">
                       <MapPin
-                        className="h-5 w-5 text-black"
+                        className="h-5 w-5 text-foreground"
                         aria-hidden="true"
                       />{" "}
                       Choose Service
@@ -797,9 +797,9 @@ export default function BookTeeTime() {
                       <TabsContent value="self">
                         <FormControl>
                           {isFetchingServices ? (
-                            <div className="flex items-center gap-2 w-full sm:w-64 p-2 border border-gray-300 rounded-md">
-                              <Loader2 className="h-5 w-5 animate-spin text-black" />
-                              <span className="text-gray-500">
+                            <div className="flex items-center gap-2 w-full sm:w-64 p-2 border border-input rounded-md">
+                              <Loader2 className="h-5 w-5 animate-spin text-foreground" />
+                              <span className="text-muted-foreground">
                                 Loading services...
                               </span>
                             </div>
@@ -810,7 +810,7 @@ export default function BookTeeTime() {
                                 field.onChange(e.target.value);
                                 handleServiceChange();
                               }}
-                              className="w-full sm:w-64 p-2 border border-gray-300 rounded-md focus:border-black focus:ring-black"
+                              className="w-full sm:w-64 p-2 border border-input rounded-md focus:border-primary focus:ring-primary bg-background text-foreground"
                               disabled={!location}
                             >
                               <option value="">Select a service</option>
@@ -825,14 +825,14 @@ export default function BookTeeTime() {
                             </select>
                           )}
                         </FormControl>
-                        <FormMessage className="text-xs sm:text-sm text-red-500" />
+                        <FormMessage className="text-xs sm:text-sm text-destructive" />
                       </TabsContent>
                       <TabsContent value="guest">
                         <FormControl>
                           {isFetchingServices ? (
-                            <div className="flex items-center gap-2 w-full sm:w-64 p-2 border border-gray-300 rounded-md">
-                              <Loader2 className="h-5 w-5 animate-spin text-black" />
-                              <span className="text-gray-500">
+                            <div className="flex items-center gap-2 w-full sm:w-64 p-2 border border-input rounded-md">
+                              <Loader2 className="h-5 w-5 animate-spin text-foreground" />
+                              <span className="text-muted-foreground">
                                 Loading services...
                               </span>
                             </div>
@@ -843,7 +843,7 @@ export default function BookTeeTime() {
                                 field.onChange(e.target.value);
                                 handleServiceChange();
                               }}
-                              className="w-full sm:w-64 p-2 border border-gray-300 rounded-md focus:border-black focus:ring-black"
+                              className="w-full sm:w-64 p-2 border border-input rounded-md focus:border-primary focus:ring-primary bg-background text-foreground"
                               disabled={!location}
                             >
                               <option value="">Select a service</option>
@@ -858,7 +858,7 @@ export default function BookTeeTime() {
                             </select>
                           )}
                         </FormControl>
-                        <FormMessage className="text-xs sm:text-sm text-red-500" />
+                        <FormMessage className="text-xs sm:text-sm text-destructive" />
                       </TabsContent>
                     </Tabs>
                   </FormItem>
@@ -872,8 +872,11 @@ export default function BookTeeTime() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.4, delay: 0.7 }}
               >
-                <FormLabel className="text-sm sm:text-base flex items-center gap-2 text-black">
-                  <Users className="h-5 w-5 text-black" aria-hidden="true" />{" "}
+                <FormLabel className="text-sm sm:text-base flex items-center gap-2 text-foreground">
+                  <Users
+                    className="h-5 w-5 text-foreground"
+                    aria-hidden="true"
+                  />{" "}
                   Invite Guests
                 </FormLabel>
                 <div className="flex gap-2 sm:gap-4">
@@ -883,7 +886,7 @@ export default function BookTeeTime() {
                       type="button"
                       variant={guestCount === count ? "default" : "outline"}
                       onClick={() => handleGuestCountChange(count)}
-                      className={`text-sm sm:text-base ${guestCount === count ? "bg-black text-white" : "border-gray-300 text-black hover:bg-gray-100"}`}
+                      className="text-sm sm:text-base"
                     >
                       {count === 0 ? "None" : count}
                     </Button>
@@ -902,9 +905,9 @@ export default function BookTeeTime() {
                         initial={{ opacity: 0, x: -20 }}
                         animate={{ opacity: 1, x: 0 }}
                         transition={{ duration: 0.3, delay: 0.1 * index }}
-                        className="space-y-2 border p-4 rounded-md bg-gray-50"
+                        className="space-y-2 border border-input p-4 rounded-md bg-muted"
                       >
-                        <h4 className="text-sm font-medium text-black">
+                        <h4 className="text-sm font-medium text-foreground">
                           Guest {index + 1}
                         </h4>
                         <FormField
@@ -912,17 +915,17 @@ export default function BookTeeTime() {
                           name={`guests.${index}.name`}
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel className="text-xs sm:text-sm text-gray-600">
+                              <FormLabel className="text-xs sm:text-sm text-muted-foreground">
                                 Name
                               </FormLabel>
                               <FormControl>
                                 <Input
                                   placeholder="Guest Name"
                                   {...field}
-                                  className="border-gray-300 focus:border-black focus:ring-black"
+                                  className="border-input focus:border-primary focus:ring-primary bg-background text-foreground"
                                 />
                               </FormControl>
-                              <FormMessage className="text-xs sm:text-sm text-red-500" />
+                              <FormMessage className="text-xs sm:text-sm text-destructive" />
                             </FormItem>
                           )}
                         />
@@ -931,17 +934,17 @@ export default function BookTeeTime() {
                           name={`guests.${index}.email`}
                           render={({ field }) => (
                             <FormItem>
-                              <FormLabel className="text-xs sm:text-sm text-gray-600">
+                              <FormLabel className="text-xs sm:text-sm text-muted-foreground">
                                 Email
                               </FormLabel>
                               <FormControl>
                                 <Input
                                   placeholder="guest@example.com"
                                   {...field}
-                                  className="border-gray-300 focus:border-black focus:ring-black"
+                                  className="border-input focus:border-primary focus:ring-primary bg-background text-foreground"
                                 />
                               </FormControl>
-                              <FormMessage className="text-xs sm:text-sm text-red-500" />
+                              <FormMessage className="text-xs sm:text-sm text-destructive" />
                             </FormItem>
                           )}
                         />
@@ -958,10 +961,10 @@ export default function BookTeeTime() {
             >
               <DialogContent className="sm:max-w-md">
                 <DialogHeader>
-                  <DialogTitle className="text-xl text-black">
+                  <DialogTitle className="text-xl text-foreground">
                     Confirm Additional Guest Charges
                   </DialogTitle>
-                  <DialogDescription className="text-gray-600">
+                  <DialogDescription className="text-muted-foreground">
                     You have used {guestPassesUsed} of {availableGuestPasses}{" "}
                     free guest passes.
                     {pendingGuestCount &&
@@ -999,7 +1002,7 @@ export default function BookTeeTime() {
                 <div className="flex flex-col sm:flex-row gap-2 mt-4">
                   <Button
                     type="button"
-                    className="w-full sm:w-auto bg-black text-white hover:bg-gray-800"
+                    className="w-full sm:w-auto"
                     onClick={() => handleChargeConfirmation(true)}
                   >
                     Confirm
@@ -1007,7 +1010,7 @@ export default function BookTeeTime() {
                   <Button
                     type="button"
                     variant="outline"
-                    className="w-full sm:w-auto border-gray-300 text-black hover:bg-gray-100"
+                    className="w-full sm:w-auto"
                     onClick={() => handleChargeConfirmation(false)}
                   >
                     Cancel
@@ -1026,19 +1029,19 @@ export default function BookTeeTime() {
                 name="timeSlot"
                 render={() => (
                   <FormItem>
-                    <FormLabel className="text-sm sm:text-base text-black">
+                    <FormLabel className="text-sm sm:text-base text-foreground">
                       Available Time Slots
                     </FormLabel>
                     <FormControl>
                       {isFetchingSlots ? (
                         <div className="flex items-center justify-center p-4">
-                          <Loader2 className="h-8 w-8 animate-spin text-black" />
-                          <span className="ml-2 text-gray-500">
+                          <Loader2 className="h-8 w-8 animate-spin text-foreground" />
+                          <span className="ml-2 text-muted-foreground">
                             Loading time slots...
                           </span>
                         </div>
                       ) : timeSlots.length === 0 ? (
-                        <div className="text-center p-4 text-gray-500">
+                        <div className="text-center p-4 text-muted-foreground">
                           No available time slots for {date}
                         </div>
                       ) : (
@@ -1051,9 +1054,9 @@ export default function BookTeeTime() {
                               resourceSlots.length > 0 && (
                                 <div
                                   key={resource.id}
-                                  className="border p-4 rounded-md bg-gray-50"
+                                  className="border border-input p-4 rounded-md bg-muted"
                                 >
-                                  <h4 className="text-sm font-medium text-black mb-2">
+                                  <h4 className="text-sm font-medium text-foreground mb-2">
                                     {resource.name}
                                   </h4>
                                   <div className="grid grid-cols-1 sm:grid-cols-3 md:grid-cols-4 gap-2">
@@ -1069,14 +1072,7 @@ export default function BookTeeTime() {
                                             ? "default"
                                             : "outline"
                                         }
-                                        className={`text-sm ${
-                                          form.getValues("timeSlot")
-                                            ?.start_str === slot.start_str &&
-                                          form.getValues("timeSlot")?.rname ===
-                                            slot.rname
-                                            ? "bg-black text-white"
-                                            : "border-gray-300 text-black hover:bg-gray-100"
-                                        }`}
+                                        className="text-sm"
                                         onClick={() => {
                                           form.setValue("timeSlot", {
                                             rid: slot.rid,
@@ -1099,7 +1095,7 @@ export default function BookTeeTime() {
                         </div>
                       )}
                     </FormControl>
-                    <FormMessage className="text-xs sm:text-sm text-red-500" />
+                    <FormMessage className="text-xs sm:text-sm text-destructive" />
                   </FormItem>
                 )}
               />
@@ -1109,7 +1105,7 @@ export default function BookTeeTime() {
               <DialogTrigger asChild>
                 <Button
                   type="button"
-                  className="w-full py-2.5 sm:py-3 text-lg sm:text-base bg-black text-white hover:bg-gray-800"
+                  className="w-full py-2.5 sm:py-3 text-lg sm:text-base"
                   disabled={!isFormValid() || isLoading}
                   onClick={() => setShowItinerary(true)}
                 >
@@ -1123,46 +1119,48 @@ export default function BookTeeTime() {
                   transition={{ duration: 0.3 }}
                 >
                   <DialogHeader>
-                    <DialogTitle className="text-xl text-black">
+                    <DialogTitle className="text-xl text-foreground">
                       Review Your Booking
                     </DialogTitle>
-                    <DialogDescription className="text-gray-600">
+                    <DialogDescription className="text-muted-foreground">
                       Confirm your tee time details below.
                     </DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4">
-                    <p className="text-sm sm:text-base">
+                    <p className="text-sm sm:text-base text-foreground">
                       <strong>Location:</strong>{" "}
                       {form.getValues("location") || "Not selected"}
                     </p>
-                    <p className="text-sm sm:text-base">
+                    <p className="text-sm sm:text-base text-foreground">
                       <strong>Service:</strong>{" "}
                       {form.getValues("service") || "Not selected"}
                     </p>
-                    <p className="text-sm sm:text-base">
+                    <p className="text-sm sm:text-base text-foreground">
                       <strong>Date:</strong>{" "}
                       {form.getValues("date") || "Not selected"}
                     </p>
                     <div>
-                      <strong className="text-sm sm:text-base">
+                      <strong className="text-sm sm:text-base text-foreground">
                         Time Slot:
                       </strong>
                       {form.getValues("timeSlot") ? (
                         <ul className="list-disc pl-5 mt-1">
-                          <li className="text-sm sm:text-base text-gray-600">
+                          <li className="text-sm sm:text-base text-muted-foreground">
                             {form.getValues("timeSlot")!.start_str} -{" "}
                             {form.getValues("timeSlot")!.end_str} at{" "}
                             {form.getValues("timeSlot")!.rname}
                           </li>
                         </ul>
                       ) : (
-                        "Not selected"
+                        <span className="text-muted-foreground">
+                          Not selected
+                        </span>
                       )}
                     </div>
                     {activeTab === "guest" &&
                       (form.getValues("guests") || []).length > 0 && (
                         <div>
-                          <strong className="text-sm sm:text-base">
+                          <strong className="text-sm sm:text-base text-foreground">
                             Guests:
                           </strong>
                           <ul className="list-disc pl-5 mt-1">
@@ -1170,7 +1168,7 @@ export default function BookTeeTime() {
                               (guest, index) => (
                                 <li
                                   key={index}
-                                  className="text-sm sm:text-base text-gray-600"
+                                  className="text-sm sm:text-base text-muted-foreground"
                                 >
                                   {guest.name} ({guest.email})
                                 </li>
@@ -1181,7 +1179,7 @@ export default function BookTeeTime() {
                       )}
                     {activeTab === "guest" &&
                       (form.getValues("guests") || []).length > 0 && (
-                        <p className="text-sm sm:text-base text-gray-600">
+                        <p className="text-sm sm:text-base text-muted-foreground">
                           <strong>Guest Pass Usage:</strong>{" "}
                           {Math.min(
                             (form.getValues("guests") || []).length,
@@ -1220,7 +1218,7 @@ export default function BookTeeTime() {
                   <div className="flex flex-col sm:flex-row gap-2 mt-4">
                     <Button
                       type="button"
-                      className="w-full sm:w-auto bg-black text-white hover:bg-gray-800"
+                      className="w-full sm:w-auto"
                       disabled={isLoading}
                       onClick={form.handleSubmit(onSubmit)}
                     >
@@ -1233,7 +1231,7 @@ export default function BookTeeTime() {
                     <Button
                       type="button"
                       variant="outline"
-                      className="w-full sm:w-auto border-gray-300 text-black hover:bg-gray-100"
+                      className="w-full sm:w-auto"
                       onClick={() => setShowItinerary(false)}
                       disabled={isLoading}
                     >

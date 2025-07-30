@@ -47,6 +47,7 @@ import {
   resetMemberPassword,
 } from "@/api/gymmaster";
 import { Club, Membership } from "@/lib/types";
+import { Card } from "@/components/ui/card";
 
 const signUpSchema = z
   .object({
@@ -687,519 +688,537 @@ function HomeContent() {
           <TabsTrigger value="signup">Sign Up</TabsTrigger>
         </TabsList>
 
-        <TabsContent
-          value="login"
-          className="space-y-4 bg-white/90 p-6 rounded-lg shadow-lg"
-        >
-          <Form {...loginForm}>
-            <form
-              className="space-y-4"
-              onSubmit={loginForm.handleSubmit(onLoginSubmit)}
-            >
-              <FormField
-                control={loginForm.control}
-                name="email"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Email</FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder="john@example.com"
-                        type="email"
-                        {...field}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <FormField
-                control={loginForm.control}
-                name="password"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Password</FormLabel>
-                    <FormControl>
-                      <div className="relative">
+        <TabsContent value="login">
+          <Card className="p-4">
+            <Form {...loginForm}>
+              <form
+                className="space-y-4"
+                onSubmit={loginForm.handleSubmit(onLoginSubmit)}
+              >
+                <FormField
+                  control={loginForm.control}
+                  name="email"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Email</FormLabel>
+                      <FormControl>
                         <Input
-                          placeholder="Password"
-                          type={showPasswords.password ? "text" : "password"}
+                          placeholder="john@example.com"
+                          type="email"
                           {...field}
-                          className="pr-10"
                         />
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setShowPasswords((prev) => ({
-                              ...prev,
-                              password: !prev.password,
-                            }))
-                          }
-                          className="absolute inset-y-0 right-0 pr-3 flex items-center"
-                        >
-                          {showPasswords.password ? (
-                            <EyeOff className="h-4 w-4 text-gray-500" />
-                          ) : (
-                            <Eye className="h-4 w-4 text-gray-500" />
-                          )}
-                        </button>
-                      </div>
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-              <Button type="submit" className="w-full" disabled={loading.login}>
-                {loading.login ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  "Login"
-                )}
-              </Button>
-            </form>
-          </Form>
-          <div className="flex justify-end">
-            <Dialog>
-              <DialogTrigger asChild>
-                <Button type="button" variant="link" className="text-sm">
-                  Forgot Password?
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={loginForm.control}
+                  name="password"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Password</FormLabel>
+                      <FormControl>
+                        <div className="relative">
+                          <Input
+                            placeholder="Password"
+                            type={showPasswords.password ? "text" : "password"}
+                            {...field}
+                            className="pr-10"
+                          />
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setShowPasswords((prev) => ({
+                                ...prev,
+                                password: !prev.password,
+                              }))
+                            }
+                            className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                          >
+                            {showPasswords.password ? (
+                              <EyeOff className="h-4 w-4 text-gray-500" />
+                            ) : (
+                              <Eye className="h-4 w-4 text-gray-500" />
+                            )}
+                          </button>
+                        </div>
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <Button
+                  type="submit"
+                  className="w-full"
+                  disabled={loading.login}
+                >
+                  {loading.login ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    "Login"
+                  )}
                 </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Reset Password</DialogTitle>
-                </DialogHeader>
-                <Form {...resetPasswordForm}>
-                  <form
-                    onSubmit={resetPasswordForm.handleSubmit(
-                      onResetPasswordSubmit
-                    )}
-                    className="space-y-4"
-                  >
-                    <FormField
-                      control={resetPasswordForm.control}
-                      name="email"
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>Email</FormLabel>
-                          <FormControl>
-                            <Input
-                              placeholder="john@example.com"
-                              type="email"
-                              {...field}
-                            />
-                          </FormControl>
-                          <FormMessage />
-                        </FormItem>
+              </form>
+            </Form>
+            <div className="flex justify-end">
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button type="button" variant="link" className="text-sm">
+                    Forgot Password?
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Reset Password</DialogTitle>
+                  </DialogHeader>
+                  <Form {...resetPasswordForm}>
+                    <form
+                      onSubmit={resetPasswordForm.handleSubmit(
+                        onResetPasswordSubmit
                       )}
-                    />
-                    <Button
-                      type="submit"
-                      className="w-full"
-                      disabled={isResetting}
+                      className="space-y-4"
                     >
-                      {isResetting ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : (
-                        "Reset Password"
-                      )}
-                    </Button>
-                  </form>
-                </Form>
-              </DialogContent>
-            </Dialog>
-          </div>
+                      <FormField
+                        control={resetPasswordForm.control}
+                        name="email"
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>Email</FormLabel>
+                            <FormControl>
+                              <Input
+                                placeholder="john@example.com"
+                                type="email"
+                                {...field}
+                              />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <Button
+                        type="submit"
+                        className="w-full"
+                        disabled={isResetting}
+                      >
+                        {isResetting ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          "Reset Password"
+                        )}
+                      </Button>
+                    </form>
+                  </Form>
+                </DialogContent>
+              </Dialog>
+            </div>
+          </Card>
         </TabsContent>
 
         <TabsContent value="signup">
-          <Form {...signUpForm}>
-            <form
-              onSubmit={signUpForm.handleSubmit(onSignUpSubmit)}
-              className="space-y-4 bg-white/90 p-6 rounded-lg shadow-lg"
-            >
-              {step === 1 && (
-                <>
-                  <h2 className="text-xl font-semibold">
-                    Step 1: Personal Info
-                  </h2>
-                  {textInputFields.map((name) => (
-                    <FormField
-                      key={name}
-                      control={signUpForm.control}
-                      name={name as keyof SignUpFormData}
-                      render={({ field }) => (
-                        <FormItem>
-                          <FormLabel>
-                            {name === "dob"
-                              ? "Date of Birth"
-                              : name === "phoneCell"
-                                ? "Cell Phone"
-                                : name === "referralCode"
-                                  ? "Referral Code"
-                                  : name.replace(/([A-Z])/g, " $1").trim()}
-                          </FormLabel>
-                          <FormControl>
-                            {name === "dob" ? (
-                              <Input
-                                type="text"
-                                inputMode="numeric"
-                                pattern="\d*"
-                                maxLength={10}
-                                placeholder="MM/DD/YYYY"
-                                {...field}
-                                value={String(field.value)}
-                                onChange={(e) => {
-                                  let value = e.target.value.replace(/\D/g, ""); // remove non-digits
-                                  if (value.length > 8)
-                                    value = value.slice(0, 8); // limit to MMDDYYYY
-
-                                  // Add slashes
-                                  if (value.length > 4) {
-                                    value = `${value.slice(0, 2)}/${value.slice(2, 4)}/${value.slice(4)}`;
-                                  } else if (value.length > 2) {
-                                    value = `${value.slice(0, 2)}/${value.slice(2)}`;
-                                  }
-
-                                  e.target.value = value;
-
-                                  field.onChange(e);
-                                  checkAge(e.target.value);
-                                }}
-                              />
-                            ) : name === "password" ||
-                              name === "confirmPassword" ? (
-                              <div className="relative">
+          <Card className="p-4">
+            <Form {...signUpForm}>
+              <form
+                className="space-y-4"
+                onSubmit={signUpForm.handleSubmit(onSignUpSubmit)}
+              >
+                {step === 1 && (
+                  <>
+                    <h2 className="text-xl font-semibold">
+                      Step 1: Personal Info
+                    </h2>
+                    {textInputFields.map((name) => (
+                      <FormField
+                        key={name}
+                        control={signUpForm.control}
+                        name={name as keyof SignUpFormData}
+                        render={({ field }) => (
+                          <FormItem>
+                            <FormLabel>
+                              {name === "dob"
+                                ? "Date of Birth"
+                                : name === "phoneCell"
+                                  ? "Cell Phone"
+                                  : name === "referralCode"
+                                    ? "Referral Code"
+                                    : name.replace(/([A-Z])/g, " $1").trim()}
+                            </FormLabel>
+                            <FormControl>
+                              {name === "dob" ? (
                                 <Input
-                                  placeholder={
-                                    name === "password"
-                                      ? "Password"
-                                      : "Confirm Password"
-                                  }
-                                  type={
-                                    showPasswords[
+                                  type="text"
+                                  inputMode="numeric"
+                                  pattern="\d*"
+                                  maxLength={10}
+                                  placeholder="MM/DD/YYYY"
+                                  {...field}
+                                  value={String(field.value)}
+                                  onChange={(e) => {
+                                    let value = e.target.value.replace(
+                                      /\D/g,
+                                      ""
+                                    ); // remove non-digits
+                                    if (value.length > 8)
+                                      value = value.slice(0, 8); // limit to MMDDYYYY
+
+                                    // Add slashes
+                                    if (value.length > 4) {
+                                      value = `${value.slice(0, 2)}/${value.slice(2, 4)}/${value.slice(4)}`;
+                                    } else if (value.length > 2) {
+                                      value = `${value.slice(0, 2)}/${value.slice(2)}`;
+                                    }
+
+                                    e.target.value = value;
+
+                                    field.onChange(e);
+                                    checkAge(e.target.value);
+                                  }}
+                                />
+                              ) : name === "password" ||
+                                name === "confirmPassword" ? (
+                                <div className="relative">
+                                  <Input
+                                    placeholder={
+                                      name === "password"
+                                        ? "Password"
+                                        : "Confirm Password"
+                                    }
+                                    type={
+                                      showPasswords[
+                                        name === "password"
+                                          ? "password"
+                                          : "confirm"
+                                      ]
+                                        ? "text"
+                                        : "password"
+                                    }
+                                    {...field}
+                                    value={String(field.value)}
+                                    className="pr-10"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setShowPasswords((prev) => ({
+                                        ...prev,
+                                        [name === "password"
+                                          ? "password"
+                                          : "confirm"]:
+                                          !prev[
+                                            name === "password"
+                                              ? "password"
+                                              : "confirm"
+                                          ],
+                                      }))
+                                    }
+                                    className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                                  >
+                                    {showPasswords[
                                       name === "password"
                                         ? "password"
                                         : "confirm"
-                                    ]
-                                      ? "text"
-                                      : "password"
+                                    ] ? (
+                                      <EyeOff className="h-4 w-4 text-gray-500" />
+                                    ) : (
+                                      <Eye className="h-4 w-4 text-gray-500" />
+                                    )}
+                                  </button>
+                                </div>
+                              ) : (
+                                <Input
+                                  placeholder={
+                                    name === "email"
+                                      ? "john@example.com"
+                                      : name === "phoneCell"
+                                        ? "1234567890"
+                                        : name === "referralCode"
+                                          ? "Referral code"
+                                          : name
+                                              .replace(/([A-Z])/g, " $1")
+                                              .trim()
                                   }
+                                  type={name === "email" ? "email" : "text"}
                                   {...field}
                                   value={String(field.value)}
-                                  className="pr-10"
                                 />
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setShowPasswords((prev) => ({
-                                      ...prev,
-                                      [name === "password"
-                                        ? "password"
-                                        : "confirm"]:
-                                        !prev[
-                                          name === "password"
-                                            ? "password"
-                                            : "confirm"
-                                        ],
-                                    }))
-                                  }
-                                  className="absolute inset-y-0 right-0 pr-3 flex items-center"
-                                >
-                                  {showPasswords[
-                                    name === "password" ? "password" : "confirm"
-                                  ] ? (
-                                    <EyeOff className="h-4 w-4 text-gray-500" />
-                                  ) : (
-                                    <Eye className="h-4 w-4 text-gray-500" />
-                                  )}
-                                </button>
-                              </div>
-                            ) : (
-                              <Input
-                                placeholder={
-                                  name === "email"
-                                    ? "john@example.com"
-                                    : name === "phoneCell"
-                                      ? "1234567890"
-                                      : name === "referralCode"
-                                        ? "Referral code"
-                                        : name.replace(/([A-Z])/g, " $1").trim()
-                                }
-                                type={name === "email" ? "email" : "text"}
-                                {...field}
-                                value={String(field.value)}
-                              />
-                            )}
-                          </FormControl>
-                          {name === "dob" && isOver18 === false && (
-                            <p className="text-red-600 text-sm">
-                              You must be 18 or older
-                            </p>
-                          )}
-                          <FormMessage />
-                        </FormItem>
-                      )}
-                    />
-                  ))}
-                  <Button
-                    type="button"
-                    onClick={nextStep}
-                    className="w-full"
-                    disabled={isOver18 === false || isOver18 === null}
-                  >
-                    Next
-                  </Button>
-                </>
-              )}
-
-              {step === 2 && (
-                <>
-                  <h2 className="text-xl font-semibold">
-                    Step 2: Membership Details
-                  </h2>
-                  <FormField
-                    control={signUpForm.control}
-                    name="location"
-                    render={({ field }) => (
-                      <FormItem className="block w-full">
-                        <FormLabel>Location</FormLabel>
-                        <Select
-                          onValueChange={field.onChange}
-                          value={field.value}
-                        >
-                          <FormControl>
-                            <SelectTrigger className="w-full">
-                              <SelectValue placeholder="Choose a location" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {locations.map((loc) => (
-                              <SelectItem
-                                key={loc.id}
-                                value={loc.id.toString()}
-                              >
-                                {loc.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={signUpForm.control}
-                    name="membershipType"
-                    render={({ field }) => (
-                      <FormItem className="block w-full">
-                        <FormLabel>Membership Type</FormLabel>
-                        <Select
-                          onValueChange={field.onChange}
-                          value={field.value}
-                        >
-                          <FormControl>
-                            <SelectTrigger className="w-full">
-                              <SelectValue placeholder="Choose a membership" />
-                            </SelectTrigger>
-                          </FormControl>
-                          <SelectContent>
-                            {membershipTypes.map((type) => (
-                              <SelectItem
-                                key={type.id}
-                                value={type.id.toString()}
-                              >
-                                {type.name}- {type.price}(
-                                {type.promotional_period || "N/A"})
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        {field.value && (
-                          <div className="mt-2 p-3 bg-gray-100 rounded-md text-sm w-full text-wrap">
-                            {["name", "description", "price"].map((key) => (
-                              <p key={key}>
-                                <strong>
-                                  {key.replace(/([A-Z])/g, " $1").trim()}:
-                                </strong>{" "}
-                                {membershipTypes.find(
-                                  (t) => t.id.toString() === field.value
-                                )?.[key as keyof Membership] || "N/A"}
+                              )}
+                            </FormControl>
+                            {name === "dob" && isOver18 === false && (
+                              <p className="text-red-600 text-sm">
+                                You must be 18 or older
                               </p>
-                            ))}
-                          </div>
+                            )}
+                            <FormMessage />
+                          </FormItem>
                         )}
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <div className="flex space-x-2 flex-col-reverse md:flex-col gap-2 space-y-2">
-                    <Button
-                      type="button"
-                      onClick={prevStep}
-                      variant="outline"
-                      className="w-full"
-                    >
-                      Back
-                    </Button>
-                    <Button type="button" onClick={nextStep} className="w-full">
-                      Next
-                    </Button>
-                  </div>
-                </>
-              )}
-
-              {step === 3 && (
-                <>
-                  <h2 className="text-xl font-semibold">Step 3: Sign Waiver</h2>
-                  <FormField
-                    control={signUpForm.control}
-                    name="waiverSignature"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Sign the Waiver</FormLabel>
-                        <FormControl>
-                          <div className="border rounded-md">
-                            <SignatureCanvas
-                              ref={sigCanvas}
-                              canvasProps={{ className: "w-full h-32" }}
-                              onEnd={() =>
-                                field.onChange(
-                                  sigCanvas.current?.toDataURL() || ""
-                                )
-                              }
-                            />
-                          </div>
-                        </FormControl>
-                        <div className="mt-2 flex space-x-2">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            onClick={clearSignature}
-                          >
-                            Clear
-                          </Button>
-                          <Dialog>
-                            <DialogTrigger asChild>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                onClick={() => setHasReadTerms(true)}
-                              >
-                                Read Terms
-                              </Button>
-                            </DialogTrigger>
-                            <DialogContent>
-                              <DialogHeader>
-                                <DialogTitle>Waiver</DialogTitle>
-                              </DialogHeader>
-                              <div
-                                className="max-h-[60vh] overflow-y-auto"
-                                dangerouslySetInnerHTML={{
-                                  __html: waiverContent || "Loading...",
-                                }}
-                              />
-                            </DialogContent>
-                          </Dialog>
-                        </div>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  <FormField
-                    control={signUpForm.control}
-                    name="hasReadTerms"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormControl>
-                          <div className="flex items-center space-x-2">
-                            <input
-                              type="checkbox"
-                              checked={field.value}
-                              onChange={(e) => {
-                                field.onChange(e.target.checked);
-                                setHasReadTerms(e.target.checked);
-                              }}
-                              className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                            />
-                            <FormLabel>
-                              I have read and agree to the terms
-                            </FormLabel>
-                          </div>
-                        </FormControl>
-                        <FormMessage /> {/* Ensure error displays */}
-                      </FormItem>
-                    )}
-                  />
-                  <div className="flex space-x-2 flex-col-reverse md:flex-col gap-2 space-y-2">
-                    <Button
-                      type="button"
-                      onClick={prevStep}
-                      variant="outline"
-                      className="w-full"
-                    >
-                      Back
-                    </Button>
+                      />
+                    ))}
                     <Button
                       type="button"
                       onClick={nextStep}
                       className="w-full"
-                      disabled={loading.signup}
+                      disabled={isOver18 === false || isOver18 === null}
                     >
-                      {loading.signup ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      ) : (
-                        "Submit"
-                      )}
+                      Next
                     </Button>
-                  </div>
-                </>
-              )}
+                  </>
+                )}
 
-              {step === 4 && (
-                <Dialog
-                  open={step === 4}
-                  onOpenChange={() => router.push("/dashboard")}
-                >
-                  <DialogContent>
-                    <DialogHeader>
-                      <DialogTitle>Confirmation</DialogTitle>
-                    </DialogHeader>
-                    <div className="space-y-4">
-                      <p>
-                        <strong>
-                          Welcome, {signUpForm.getValues("firstName")}!
-                        </strong>
-                      </p>
-                      <p>
-                        Membership:{" "}
-                        {
-                          membershipTypes.find(
-                            (t) =>
-                              t.id.toString() ===
-                              signUpForm.getValues("membershipType")
-                          )?.name
-                        }
-                      </p>
-                      <p>
-                        Location:{" "}
-                        {
-                          locations.find(
-                            (l) =>
-                              l.id.toString() ===
-                              signUpForm.getValues("location")
-                          )?.name
-                        }
-                      </p>
-                      <p>No payment required</p>
-                      <Button onClick={() => router.push("/dashboard")}>
-                        Go to Dashboard
+                {step === 2 && (
+                  <>
+                    <h2 className="text-xl font-semibold">
+                      Step 2: Membership Details
+                    </h2>
+                    <FormField
+                      control={signUpForm.control}
+                      name="location"
+                      render={({ field }) => (
+                        <FormItem className="block w-full">
+                          <FormLabel>Location</FormLabel>
+                          <Select
+                            onValueChange={field.onChange}
+                            value={field.value}
+                          >
+                            <FormControl>
+                              <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Choose a location" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {locations.map((loc) => (
+                                <SelectItem
+                                  key={loc.id}
+                                  value={loc.id.toString()}
+                                >
+                                  {loc.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={signUpForm.control}
+                      name="membershipType"
+                      render={({ field }) => (
+                        <FormItem className="block w-full">
+                          <FormLabel>Membership Type</FormLabel>
+                          <Select
+                            onValueChange={field.onChange}
+                            value={field.value}
+                          >
+                            <FormControl>
+                              <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Choose a membership" />
+                              </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                              {membershipTypes.map((type) => (
+                                <SelectItem
+                                  key={type.id}
+                                  value={type.id.toString()}
+                                >
+                                  {type.name}- {type.price}(
+                                  {type.promotional_period || "N/A"})
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {field.value && (
+                            <div className="mt-2 p-3 rounded-md text-sm w-full text-wrap">
+                              {["name", "description", "price"].map((key) => (
+                                <p key={key}>
+                                  <strong>
+                                    {key.replace(/([A-Z])/g, " $1").trim()}:
+                                  </strong>{" "}
+                                  {membershipTypes.find(
+                                    (t) => t.id.toString() === field.value
+                                  )?.[key as keyof Membership] || "N/A"}
+                                </p>
+                              ))}
+                            </div>
+                          )}
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <div className="flex space-x-2 flex-col-reverse md:flex-col gap-2 space-y-2">
+                      <Button
+                        type="button"
+                        onClick={prevStep}
+                        variant="outline"
+                        className="w-full"
+                      >
+                        Back
+                      </Button>
+                      <Button
+                        type="button"
+                        onClick={nextStep}
+                        className="w-full"
+                      >
+                        Next
                       </Button>
                     </div>
-                  </DialogContent>
-                </Dialog>
-              )}
-            </form>
-          </Form>
+                  </>
+                )}
+
+                {step === 3 && (
+                  <>
+                    <h2 className="text-xl font-semibold">
+                      Step 3: Sign Waiver
+                    </h2>
+                    <FormField
+                      control={signUpForm.control}
+                      name="waiverSignature"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormLabel>Sign the Waiver</FormLabel>
+                          <FormControl>
+                            <div className="border rounded-md">
+                              <SignatureCanvas
+                                ref={sigCanvas}
+                                canvasProps={{ className: "w-full h-32" }}
+                                onEnd={() =>
+                                  field.onChange(
+                                    sigCanvas.current?.toDataURL() || ""
+                                  )
+                                }
+                              />
+                            </div>
+                          </FormControl>
+                          <div className="mt-2 flex space-x-2">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={clearSignature}
+                            >
+                              Clear
+                            </Button>
+                            <Dialog>
+                              <DialogTrigger asChild>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  onClick={() => setHasReadTerms(true)}
+                                >
+                                  Read Terms
+                                </Button>
+                              </DialogTrigger>
+                              <DialogContent>
+                                <DialogHeader>
+                                  <DialogTitle>Waiver</DialogTitle>
+                                </DialogHeader>
+                                <div
+                                  className="max-h-[60vh] overflow-y-auto"
+                                  dangerouslySetInnerHTML={{
+                                    __html: waiverContent || "Loading...",
+                                  }}
+                                />
+                              </DialogContent>
+                            </Dialog>
+                          </div>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    <FormField
+                      control={signUpForm.control}
+                      name="hasReadTerms"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormControl>
+                            <div className="flex items-center space-x-2">
+                              <input
+                                type="checkbox"
+                                checked={field.value}
+                                onChange={(e) => {
+                                  field.onChange(e.target.checked);
+                                  setHasReadTerms(e.target.checked);
+                                }}
+                                className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                              />
+                              <FormLabel>
+                                I have read and agree to the terms
+                              </FormLabel>
+                            </div>
+                          </FormControl>
+                          <FormMessage /> {/* Ensure error displays */}
+                        </FormItem>
+                      )}
+                    />
+                    <div className="flex space-x-2 flex-col-reverse md:flex-col gap-2 space-y-2">
+                      <Button
+                        type="button"
+                        onClick={prevStep}
+                        variant="outline"
+                        className="w-full"
+                      >
+                        Back
+                      </Button>
+                      <Button
+                        type="button"
+                        onClick={nextStep}
+                        className="w-full"
+                        disabled={loading.signup}
+                      >
+                        {loading.signup ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          "Submit"
+                        )}
+                      </Button>
+                    </div>
+                  </>
+                )}
+
+                {step === 4 && (
+                  <Dialog
+                    open={step === 4}
+                    onOpenChange={() => router.push("/dashboard")}
+                  >
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>Confirmation</DialogTitle>
+                      </DialogHeader>
+                      <div className="space-y-4">
+                        <p>
+                          <strong>
+                            Welcome, {signUpForm.getValues("firstName")}!
+                          </strong>
+                        </p>
+                        <p>
+                          Membership:{" "}
+                          {
+                            membershipTypes.find(
+                              (t) =>
+                                t.id.toString() ===
+                                signUpForm.getValues("membershipType")
+                            )?.name
+                          }
+                        </p>
+                        <p>
+                          Location:{" "}
+                          {
+                            locations.find(
+                              (l) =>
+                                l.id.toString() ===
+                                signUpForm.getValues("location")
+                            )?.name
+                          }
+                        </p>
+                        <p>No payment required</p>
+                        <Button onClick={() => router.push("/dashboard")}>
+                          Go to Dashboard
+                        </Button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                )}
+              </form>
+            </Form>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>
