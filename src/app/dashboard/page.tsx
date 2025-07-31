@@ -145,7 +145,7 @@ export default function Dashboard() {
                 free: 0,
                 charged: 0,
               },
-              guestPassCharge: mongoBooking?.guestPassCharge || 25,
+              guestPassCharge: mongoBooking?.guestPassCharge || "",
               day:
                 mongoBooking?.day ||
                 new Date(b.day).toLocaleDateString("en-US", {
@@ -360,8 +360,6 @@ export default function Dashboard() {
                               <span className="font-medium">Guest Passes:</span>{" "}
                               {teeTime.guestPassUsage.free} Free,{" "}
                               {teeTime.guestPassUsage.charged} Charged
-                              {teeTime.guestPassCharge > 0 &&
-                                ` ($${teeTime.guestPassCharge})`}
                             </p>
                           </div>
                         </motion.li>
