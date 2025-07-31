@@ -79,7 +79,6 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
       // Decode JWT to get stable user ID
       const decodedToken = JSON.parse(atob(token.split(".")[1]));
       const stableUserId = Number(decodedToken.id);
-      console.log("Stable User ID in addBooking:", stableUserId);
 
       // Fetch guest data
       const guestData = await fetchGuestData(token);
@@ -188,6 +187,9 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
       while (retryCount < maxRetries) {
         try {
           await updateMemberProfile(token, {
+            customtext3: (
+              guestPassesUsed + calculatedGuestPassUsage.free
+            ).toString(),
             customtext5: JSON.stringify(updatedGuestBookingIds),
           });
           break;
@@ -226,7 +228,7 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
               token,
               updatedGuestPassesUsed,
               referralCodes || guestData.referralCodes,
-              [],
+              updatedGuestBookingIds,
               updatedGuests
             );
             break;
@@ -279,8 +281,12 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
       // Decode JWT to get stable user ID
       const decodedToken = JSON.parse(atob(token.split(".")[1]));
       const stableUserId = Number(decodedToken.id);
-      console.log("Stable User ID in deleteBooking:", stableUserId);
 
+      // Fetch the booking to check if it’s a guest booking
+      const booking = bookings.find((b) => b.id === id);
+      const isGuestBooking = booking && booking.guests.length > 0;
+
+      // Cancel the booking in GymMaster
       const response = await axios.post(
         "/api/gymmaster/v1/member/cancelbooking",
         new URLSearchParams({
@@ -305,10 +311,63 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
         body: JSON.stringify({ bookingId: id, userId: stableUserId }),
       });
 
-      try {
+      // Update guest data if it’s a guest booking
+      if (isGuestBooking) {
         const guestData = await fetchGuestData(token);
         const updatedGuestBookingIds = guestData.guestBookingIds.filter(
-          (bookingId) => bookingId !== id
+          (bookingId: number) => bookingId !== id
+        );
+        const updatedGuests = guestData.guests.filter(
+          (guest: { name: string; email: string; date?: string }) =>
+            !booking.guests.some(
+              (g) =>
+                g.email === guest.email &&
+                g.name === guest.name &&
+                g.date === guest.date
+            )
+        );
+        const updatedReferralCodes = guestData.referralCodes.filter(
+          (code: string) => !booking.referralCodes?.includes(code)
+        );
+        const updatedGuestPassesUsed = Math.max(
+          guestData.guestPassesUsed - (booking.guestPassUsage.free || 0),
+          0
+        );
+
+        let retryCount = 0;
+        const maxRetries = 3;
+        while (retryCount < maxRetries) {
+          try {
+            await updateMemberProfile(token, {
+              customtext3: updatedGuestPassesUsed.toString(),
+              customtext5: JSON.stringify(updatedGuestBookingIds),
+            });
+            await updateGuestData(
+              token,
+              updatedGuestPassesUsed,
+              updatedReferralCodes,
+              updatedGuestBookingIds,
+              updatedGuests
+            );
+            break;
+          } catch (error: any) {
+            if (error.response?.status === 413 && retryCount < maxRetries - 1) {
+              retryCount++;
+              await new Promise((resolve) => setTimeout(resolve, 1000));
+              continue;
+            }
+            console.warn(
+              "Guest data update failed after deletion:",
+              error.message
+            );
+            throw error;
+          }
+        }
+      } else {
+        // Update customtext5 for non-guest bookings
+        const guestData = await fetchGuestData(token);
+        const updatedGuestBookingIds = guestData.guestBookingIds.filter(
+          (bookingId: number) => bookingId !== id
         );
         let retryCount = 0;
         const maxRetries = 3;
@@ -325,13 +384,12 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
               continue;
             }
             console.warn("Booking ID update failed:", error.message);
-            break;
+            throw error;
           }
         }
-      } catch (error) {
-        console.warn("Non-critical error updating booking IDs:", error);
       }
 
+      // Refetch bookings to update state
       let gymMasterBookings: any[] = [];
       try {
         const bookingsResponse = await axios.get(
@@ -397,7 +455,7 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
     } catch (error) {
       console.error("Delete booking error:", error);
       setBookings((prev) => prev.filter((booking) => booking.id !== id));
-      throw new Error(`Failed to delete booking: ${error.message}`);
+      throw new Error(`Failed to delete booking: ${(error as Error).message}`);
     }
   };
 

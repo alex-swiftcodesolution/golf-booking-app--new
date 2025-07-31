@@ -93,8 +93,8 @@ export default function BookTeeTime() {
   const [guestPassesUsed, setGuestPassesUsed] = useState(0);
   const [availableGuestPasses, setAvailableGuestPasses] = useState<number>(0);
   const [guestPassCharge, setGuestPassCharge] = useState<number | null>(null);
-  const [referralCodes, setReferralCodes] = useState<string[]>([]);
-  const [guestBookingIds, setGuestBookingIds] = useState<number[]>([]);
+  const [referralCodes, setReferralCodes] = useState<string[]>([]); // eslint-disable-line @typescript-eslint/no-unused-vars
+  const [guestBookingIds, setGuestBookingIds] = useState<number[]>([]); // eslint-disable-line @typescript-eslint/no-unused-vars
   const [activeTab, setActiveTab] = useState<"self" | "guest">("self");
   const [activeResourceTab, setActiveResourceTab] = useState<string>("");
   const { addBooking } = useBookings();
@@ -274,7 +274,10 @@ export default function BookTeeTime() {
               await new Promise((resolve) => setTimeout(resolve, 1000));
               continue;
             }
-            console.warn("Failed to sync guest data:", error);
+            console.error("Failed to sync guest data:", error);
+            toast.error("Failed to sync initial guest data", {
+              description: error.message,
+            });
             break;
           }
         }
@@ -291,7 +294,7 @@ export default function BookTeeTime() {
     };
 
     fetchInitialData();
-  }, [router, hasFetchedClubs]);
+  }, [router, hasFetchedClubs, clubs]);
 
   useEffect(() => {
     if (!location || !membership) return;
@@ -320,7 +323,6 @@ export default function BookTeeTime() {
         }));
         setServices(memberServices);
 
-        // Only auto-select guest service if no service is selected
         if (activeTab === "guest" && !form.getValues("service")) {
           const guestFreeService = memberServices.find(
             (s) =>
@@ -376,11 +378,13 @@ export default function BookTeeTime() {
   useEffect(() => {
     if (!form.getValues("service") || !date || !membership) return;
 
+    const selectedServiceName = form.getValues("service");
+
     const fetchSlotsData = async () => {
       try {
         setIsFetchingSlots(true);
         const selectedService = services.find(
-          (s) => s.servicename === form.getValues("service")
+          (s) => s.servicename === selectedServiceName
         );
         if (!selectedService) throw new Error("Selected service not found");
         setSelectedService(selectedService);
@@ -427,23 +431,16 @@ export default function BookTeeTime() {
     };
 
     fetchSlotsData();
-  }, [
-    form.getValues("service"),
-    date,
-    services,
-    location,
-    clubs,
-    membership,
-    form,
-  ]);
+  }, [date, services, location, clubs, membership, form]);
 
   const debouncedCheckAvailability = debounce(async () => {
     if (!date || !location || !form.getValues("service") || !resources.length)
       return;
     try {
       const club = clubs.find((c) => c.name === location);
+      const selectedServiceName = form.getValues("service");
       const selectedService = services.find(
-        (s) => s.servicename === form.getValues("service")
+        (s) => s.servicename === selectedServiceName
       );
       if (!club || !selectedService) return;
 
@@ -484,7 +481,6 @@ export default function BookTeeTime() {
   }, [
     date,
     location,
-    form.getValues("service"),
     resources,
     clubs,
     services,
@@ -589,8 +585,13 @@ export default function BookTeeTime() {
       const guestAssignments: number[] = [];
       let guestPassesUsedCurrent = guestPassesUsed;
 
+      // Fetch fresh guest data to ensure accuracy
+      const guestData = await fetchGuestData(token);
+      guestPassesUsedCurrent = guestData.guestPassesUsed || 0;
+      const updatedGuestPassesUsed =
+        guestPassesUsedCurrent + (isGuestService && data.guest ? 1 : 0);
+
       if (isGuestService && data.guest && selectedService) {
-        guestPassesUsedCurrent = guestPassesUsed;
         const freePassesAvailable =
           selectedService.benefitBalance !== null
             ? selectedService.benefitBalance
@@ -662,30 +663,34 @@ export default function BookTeeTime() {
       }
 
       if (isGuestService && data.guest) {
-        const guestData = await fetchGuestData(token);
-        const updatedReferralCodes = [...referralCodes, ...newReferralCodes];
+        const updatedReferralCodes = [
+          ...guestData.referralCodes,
+          ...newReferralCodes,
+        ];
         const updatedBookingIds = [
-          ...guestBookingIds,
+          ...guestData.guestBookingIds,
           ...guestAssignments,
         ].filter((id) => Number.isInteger(id) && id > 0);
         const updatedGuests = [
-          ...(guestData.guests || []),
+          ...guestData.guests,
           {
             name: data.guest.name,
             email: data.guest.email,
             date: data.guest.date,
           },
         ];
+
         let retryCount = 0;
         const maxRetries = 3;
         while (retryCount < maxRetries) {
           try {
             await updateMemberProfile(token, {
+              customtext3: updatedGuestPassesUsed.toString(),
               customtext5: JSON.stringify(updatedBookingIds),
             });
             await updateGuestData(
               token,
-              guestPassesUsedCurrent + guestPassUsage.free,
+              updatedGuestPassesUsed,
               updatedReferralCodes,
               updatedBookingIds,
               updatedGuests
@@ -698,29 +703,31 @@ export default function BookTeeTime() {
               await new Promise((resolve) => setTimeout(resolve, 1000));
               continue;
             }
+            console.error(
+              "Failed to update guest data or custom fields:",
+              error
+            );
+            toast.error("Failed to update guest pass data", {
+              description:
+                "Guest pass count may not be accurate. Please try again or contact support.",
+            });
             throw error;
           }
         }
-        setGuestPassesUsed(guestPassesUsedCurrent + guestPassUsage.free);
+
+        setGuestPassesUsed(updatedGuestPassesUsed);
         setReferralCodes(updatedReferralCodes);
         setGuestBookingIds(updatedBookingIds);
 
-        // Refetch benefit balances to update guest pass balance
-        const benefitBalances = await fetchMemberBenefitBalances(token);
-        const updatedServices = services.map((s) => ({
-          ...s,
-          benefitBalance:
-            benefitBalances.find((b: any) =>
-              b.benefitname.toLowerCase().includes(s.servicename.toLowerCase())
-            )?.balance ?? s.benefitBalance,
-        }));
-        setServices(updatedServices);
-        const guestFreePassBenefit = benefitBalances.find(
-          (benefit: any) =>
-            benefit.benefitname.toLowerCase().includes("guest free visit") &&
-            benefit.balance !== null
-        );
-        setAvailableGuestPasses(guestFreePassBenefit?.balance || 0);
+        const updatedGuestData = await fetchGuestData(token);
+        if (updatedGuestData.guestPassesUsed !== updatedGuestPassesUsed) {
+          console.error(
+            `Mismatch in guestPassesUsed: expected ${updatedGuestPassesUsed}, got ${updatedGuestData.guestPassesUsed}`
+          );
+          toast.error("Guest pass count not updated correctly", {
+            description: "Please contact support to resolve the issue.",
+          });
+        }
       }
 
       const member = await fetchMemberDetails(token);
@@ -729,7 +736,7 @@ export default function BookTeeTime() {
         data,
         newBookingIds,
         isGuestService ? availableGuestPasses : 0,
-        isGuestService ? guestPassesUsedCurrent : 0,
+        isGuestService ? updatedGuestPassesUsed : 0,
         isGuestService && guestPassCharge !== null ? guestPassCharge : 0
       );
 
@@ -767,6 +774,22 @@ export default function BookTeeTime() {
             : undefined,
       });
 
+      const benefitBalances = await fetchMemberBenefitBalances(token);
+      const updatedServices = services.map((s) => ({
+        ...s,
+        benefitBalance:
+          benefitBalances.find((b: any) =>
+            b.benefitname.toLowerCase().includes(s.servicename.toLowerCase())
+          )?.balance ?? s.benefitBalance,
+      }));
+      setServices(updatedServices);
+      const guestFreePassBenefit = benefitBalances.find(
+        (benefit: any) =>
+          benefit.benefitname.toLowerCase().includes("guest free visit") &&
+          benefit.balance !== null
+      );
+      setAvailableGuestPasses(guestFreePassBenefit?.balance || 0);
+
       form.reset({
         location: "",
         service: "",
@@ -800,9 +823,10 @@ export default function BookTeeTime() {
   const selfServices = services.filter(
     (svc) => !svc.servicename.toLowerCase().includes("guest")
   );
-  // const guestServices = services.filter((svc) =>
-  //   svc.servicename.toLowerCase().includes("guest")
-  // );
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const guestServices = services.filter((svc) =>
+    svc.servicename.toLowerCase().includes("guest")
+  );
 
   return (
     <div className="space-y-4">
