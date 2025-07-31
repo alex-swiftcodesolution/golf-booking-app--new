@@ -111,7 +111,7 @@ export default function BookTeeTime() {
     },
   });
 
-  const { location, service, date } = form.watch();
+  const { location, date } = form.watch();
 
   const sendBookingConfirmationEmail = async (
     email: string,
@@ -319,6 +319,47 @@ export default function BookTeeTime() {
             )?.balance ?? null,
         }));
         setServices(memberServices);
+
+        // Only auto-select guest service if no service is selected
+        if (activeTab === "guest" && !form.getValues("service")) {
+          const guestFreeService = memberServices.find(
+            (s) =>
+              s.servicename.toLowerCase().includes("guest free visit") &&
+              s.benefitBalance !== null &&
+              s.benefitBalance > 0
+          );
+          const guestPaidService = memberServices.find((s) =>
+            s.servicename.toLowerCase().includes("guest paid visit")
+          );
+          if (guestFreeService) {
+            form.setValue("service", guestFreeService.servicename);
+            setSelectedService(guestFreeService);
+            setSelectedServiceId(guestFreeService.serviceid);
+            setSelectedBenefitId(
+              guestFreeService.benefitid
+                ? Number(guestFreeService.benefitid)
+                : null
+            );
+          } else if (guestPaidService) {
+            form.setValue("service", guestPaidService.servicename);
+            setSelectedService(guestPaidService);
+            setSelectedServiceId(guestPaidService.serviceid);
+            setSelectedBenefitId(
+              guestPaidService.benefitid
+                ? Number(guestPaidService.benefitid)
+                : null
+            );
+            toast.warning("No free guest passes available", {
+              description: "Guest PAID Visit will be used for this booking.",
+            });
+          } else {
+            form.setValue("service", "");
+            setSelectedService(null);
+            setSelectedServiceId(null);
+            setSelectedBenefitId(null);
+            toast.error("No guest services available");
+          }
+        }
       } catch (err) {
         console.error("Services Fetch Error:", err);
         toast.error("Failed to load services", {
@@ -330,15 +371,17 @@ export default function BookTeeTime() {
     };
 
     fetchServicesData();
-  }, [location, clubs, membership]);
+  }, [location, membership, activeTab, form]);
 
   useEffect(() => {
-    if (!service || !date || !membership) return;
+    if (!form.getValues("service") || !date || !membership) return;
 
     const fetchSlotsData = async () => {
       try {
         setIsFetchingSlots(true);
-        const selectedService = services.find((s) => s.servicename === service);
+        const selectedService = services.find(
+          (s) => s.servicename === form.getValues("service")
+        );
         if (!selectedService) throw new Error("Selected service not found");
         setSelectedService(selectedService);
         setSelectedServiceId(selectedService.serviceid);
@@ -384,13 +427,24 @@ export default function BookTeeTime() {
     };
 
     fetchSlotsData();
-  }, [service, date, services, location, clubs, membership]);
+  }, [
+    form.getValues("service"),
+    date,
+    services,
+    location,
+    clubs,
+    membership,
+    form,
+  ]);
 
   const debouncedCheckAvailability = debounce(async () => {
-    if (!date || !location || !service || !resources.length) return;
+    if (!date || !location || !form.getValues("service") || !resources.length)
+      return;
     try {
       const club = clubs.find((c) => c.name === location);
-      const selectedService = services.find((s) => s.servicename === service);
+      const selectedService = services.find(
+        (s) => s.servicename === form.getValues("service")
+      );
       if (!club || !selectedService) return;
 
       const { dates } = await fetchResourcesAndSessions(
@@ -430,7 +484,7 @@ export default function BookTeeTime() {
   }, [
     date,
     location,
-    service,
+    form.getValues("service"),
     resources,
     clubs,
     services,
@@ -505,6 +559,9 @@ export default function BookTeeTime() {
     setActiveResourceTab("");
     form.setValue("guest", undefined);
     form.clearErrors("guest");
+    if (value === "guest") {
+      handleGuestBooking();
+    }
   };
 
   const onSubmit = async (data: z.infer<typeof teeTimeSchema>) => {
@@ -647,6 +704,23 @@ export default function BookTeeTime() {
         setGuestPassesUsed(guestPassesUsedCurrent + guestPassUsage.free);
         setReferralCodes(updatedReferralCodes);
         setGuestBookingIds(updatedBookingIds);
+
+        // Refetch benefit balances to update guest pass balance
+        const benefitBalances = await fetchMemberBenefitBalances(token);
+        const updatedServices = services.map((s) => ({
+          ...s,
+          benefitBalance:
+            benefitBalances.find((b: any) =>
+              b.benefitname.toLowerCase().includes(s.servicename.toLowerCase())
+            )?.balance ?? s.benefitBalance,
+        }));
+        setServices(updatedServices);
+        const guestFreePassBenefit = benefitBalances.find(
+          (benefit: any) =>
+            benefit.benefitname.toLowerCase().includes("guest free visit") &&
+            benefit.balance !== null
+        );
+        setAvailableGuestPasses(guestFreePassBenefit?.balance || 0);
       }
 
       const member = await fetchMemberDetails(token);
@@ -720,25 +794,15 @@ export default function BookTeeTime() {
 
   const isFormValid = () => {
     const values = form.watch();
-    if (activeTab === "guest") {
-      return (
-        values.location &&
-        values.service &&
-        values.date &&
-        values.timeSlot &&
-        values.guest?.name &&
-        values.guest?.email
-      );
-    }
     return values.location && values.service && values.date && values.timeSlot;
   };
 
   const selfServices = services.filter(
     (svc) => !svc.servicename.toLowerCase().includes("guest")
   );
-  const guestServices = services.filter((svc) =>
-    svc.servicename.toLowerCase().includes("guest")
-  );
+  // const guestServices = services.filter((svc) =>
+  //   svc.servicename.toLowerCase().includes("guest")
+  // );
 
   return (
     <div className="space-y-4">
@@ -914,30 +978,32 @@ export default function BookTeeTime() {
                               </span>
                             </div>
                           ) : (
-                            <select
-                              value={field.value}
-                              onChange={(e) => {
-                                field.onChange(e.target.value);
-                                handleServiceChange(e.target.value);
-                              }}
-                              className="w-full sm:w-64 p-2 border border-input rounded-md focus:border-primary focus:ring-primary bg-background text-foreground"
-                              disabled={!location}
-                            >
-                              <option value="">Select a service</option>
-                              {guestServices.map((svc) => (
-                                <option
-                                  key={svc.serviceid}
-                                  value={svc.servicename}
-                                  disabled={svc.benefitBalance === 0}
-                                >
-                                  {svc.pricedescription || svc.servicename}
-                                  {svc.benefitBalance !== null &&
-                                  svc.benefitBalance !== undefined
-                                    ? ` (${svc.benefitBalance} remaining)`
-                                    : ""}
-                                </option>
-                              ))}
-                            </select>
+                            <div className="text-sm sm:text-base text-foreground">
+                              {selectedService?.servicename
+                                .toLowerCase()
+                                .includes("guest free visit") ? (
+                                <span>
+                                  Guest FREE Visit - $
+                                  {selectedService.pricedescription?.includes(
+                                    "$"
+                                  )
+                                    ? selectedService.pricedescription.split(
+                                        " "
+                                      )[1]
+                                    : "0.00"}{" "}
+                                  ({selectedService.benefitBalance} remaining)
+                                </span>
+                              ) : selectedService?.servicename
+                                  .toLowerCase()
+                                  .includes("guest paid visit") ? (
+                                <span>
+                                  Guest PAID Visit - $
+                                  {guestPassCharge?.toFixed(2)} will be charged
+                                </span>
+                              ) : (
+                                <span>No guest services available</span>
+                              )}
+                            </div>
                           )}
                         </FormControl>
                         <FormMessage className="text-xs sm:text-sm text-destructive" />
@@ -948,7 +1014,7 @@ export default function BookTeeTime() {
               />
             </motion.div>
 
-            {activeTab === "guest" && form.getValues("guest") && (
+            {activeTab === "guest" && (
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -1187,14 +1253,17 @@ export default function BookTeeTime() {
                         </ul>
                       </div>
                     )}
-                    {activeTab === "guest" && form.getValues("guest") && (
+                    {activeTab === "guest" && (
                       <p className="text-sm sm:text-base text-muted-foreground">
                         <strong>Guest Pass Usage:</strong>{" "}
-                        {selectedService?.benefitBalance !== null &&
-                        selectedService?.benefitBalance > 0
-                          ? "1 free pass will be used."
-                          : guestPassCharge !== null
-                            ? `$${guestPassCharge.toFixed(2)} will be charged for 1 extra guest.`
+                        {selectedService?.servicename
+                          .toLowerCase()
+                          .includes("guest free visit")
+                          ? `1 free pass will be used (${selectedService?.benefitBalance} remaining).`
+                          : selectedService?.servicename
+                                .toLowerCase()
+                                .includes("guest paid visit")
+                            ? `$${guestPassCharge?.toFixed(2)} will be charged for 1 extra guest.`
                             : "Guest pass charge unavailable."}
                       </p>
                     )}
