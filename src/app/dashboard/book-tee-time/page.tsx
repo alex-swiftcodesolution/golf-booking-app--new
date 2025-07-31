@@ -1,7 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable @typescript-eslint/no-unused-vars */
 "use client";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
@@ -25,13 +24,7 @@ import {
   DialogDescription,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { motion } from "framer-motion";
 import { useBookings } from "@/context/BookingContext";
 import {
@@ -50,7 +43,6 @@ import { Club, Resource, Service, MemberMembership } from "@/lib/types";
 import { useRouter } from "next/navigation";
 import { generateReferralCode } from "@/lib/utils";
 import { debounce } from "lodash";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 const GYMMASTER_API_KEY = process.env.NEXT_PUBLIC_GYMMASTER_API_KEY;
 const APP_URL =
@@ -70,20 +62,18 @@ const teeTimeSchema = z.object({
       rname: z.string(),
     })
     .nullable(),
-  guests: z
-    .array(
-      z.object({
-        name: z.string().optional(),
-        email: z.string().email("Please enter a valid email").optional(),
-      })
-    )
+  guest: z
+    .object({
+      name: z.string().min(1, "Guest name is required"),
+      email: z.string().email("Please enter a valid email"),
+      date: z.string().optional(),
+    })
     .optional(),
 });
 
 export default function BookTeeTime() {
   const [isLoading, setIsLoading] = useState(false);
   const [showItinerary, setShowItinerary] = useState(false);
-  const [guestCount, setGuestCount] = useState(0);
   const [clubs, setClubs] = useState<Club[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [resources, setResources] = useState<Resource[]>([]);
@@ -94,6 +84,7 @@ export default function BookTeeTime() {
   const [selectedBenefitId, setSelectedBenefitId] = useState<number | null>(
     null
   );
+  const [selectedService, setSelectedService] = useState<Service | null>(null);
   const [membership, setMembership] = useState<MemberMembership | null>(null);
   const [isFetchingClubs, setIsFetchingClubs] = useState(false);
   const [isFetchingServices, setIsFetchingServices] = useState(false);
@@ -101,15 +92,11 @@ export default function BookTeeTime() {
   const [hasFetchedClubs, setHasFetchedClubs] = useState(false);
   const [guestPassesUsed, setGuestPassesUsed] = useState(0);
   const [availableGuestPasses, setAvailableGuestPasses] = useState<number>(0);
-  const [guestPassCharge, setGuestPassCharge] = useState<number>(25);
+  const [guestPassCharge, setGuestPassCharge] = useState<number | null>(null);
   const [referralCodes, setReferralCodes] = useState<string[]>([]);
   const [guestBookingIds, setGuestBookingIds] = useState<number[]>([]);
-  const [showChargeConfirmation, setShowChargeConfirmation] = useState(false);
-  const [pendingGuestCount, setPendingGuestCount] = useState<number | null>(
-    null
-  );
   const [activeTab, setActiveTab] = useState<"self" | "guest">("self");
-  const [activeResourceTab, setActiveResourceTab] = useState<string>(""); // New state for resource tabs
+  const [activeResourceTab, setActiveResourceTab] = useState<string>("");
   const { addBooking } = useBookings();
   const router = useRouter();
 
@@ -120,7 +107,7 @@ export default function BookTeeTime() {
       service: "",
       date: "",
       timeSlot: null,
-      guests: [],
+      guest: undefined,
     },
   });
 
@@ -147,7 +134,15 @@ export default function BookTeeTime() {
           timeSlots: data.timeSlot
             ? [{ time: data.timeSlot.start_str, bay: data.timeSlot.rname }]
             : [],
-          guests: data.guests || [],
+          guests: data.guest
+            ? [
+                {
+                  name: data.guest.name,
+                  email: data.guest.email,
+                  date: data.guest.date,
+                },
+              ]
+            : [],
           bookingIds,
           availableGuestPasses,
           guestPassesUsed,
@@ -197,12 +192,17 @@ export default function BookTeeTime() {
           undefined,
           fetchedClubs[0]?.id
         );
+        setServices(services);
+
         const hasGuestService = services.some((s) =>
           s.servicename.toLowerCase().includes("guest")
         );
 
         let guestFreePassBenefit = null;
         let guestPaidPassBenefit = null;
+        let apiGuestPassesUsed = 0;
+        let totalGuestPasses = 0;
+
         if (hasGuestService) {
           const benefitBalances = await fetchMemberBenefitBalances(token);
           guestFreePassBenefit = benefitBalances.find(
@@ -215,41 +215,69 @@ export default function BookTeeTime() {
               benefit.benefitname.toLowerCase().includes("guest paid visit") &&
               benefit.price !== null
           );
-        }
 
-        if (guestFreePassBenefit && guestFreePassBenefit.balance !== null) {
-          setAvailableGuestPasses(guestFreePassBenefit.balance);
-        } else {
-          setAvailableGuestPasses(0);
-          if (hasGuestService) {
+          setAvailableGuestPasses(guestFreePassBenefit?.balance || 0);
+          if (!guestFreePassBenefit && hasGuestService) {
             toast.warning("No guest pass benefits available", {
               description:
                 "You have no free guest passes. Additional guests will be charged.",
             });
           }
-        }
 
-        if (guestPaidPassBenefit && guestPaidPassBenefit.price) {
-          const price = parseFloat(
-            guestPaidPassBenefit.price.replace(/[^0-9.]/g, "")
-          );
-          setGuestPassCharge(isNaN(price) ? 25 : price);
-        } else {
-          setGuestPassCharge(hasGuestService ? 25 : 0);
-          if (hasGuestService) {
+          const price = guestPaidPassBenefit?.price
+            ? parseFloat(guestPaidPassBenefit.price.replace(/[^0-9.]/g, ""))
+            : null;
+          setGuestPassCharge(price);
+          if (!price && hasGuestService) {
             toast.warning("Unable to fetch guest pass charge", {
-              description: "Using default charge of $25 per additional guest.",
+              description: "Guest pass charges may not be applied correctly.",
             });
           }
+
+          const match =
+            guestFreePassBenefit?.benefitname.match(/\((\d+)\s*sessions/);
+          totalGuestPasses = match ? parseInt(match[1], 10) : 8;
+          apiGuestPassesUsed =
+            totalGuestPasses - (guestFreePassBenefit?.balance || 0);
+        } else {
+          setAvailableGuestPasses(0);
+          setGuestPassCharge(null);
         }
 
-        const { guestPassesUsed, referralCodes, guestBookingIds } =
-          hasGuestService
-            ? await fetchGuestData(token)
-            : { guestPassesUsed: 0, referralCodes: [], guestBookingIds: [] };
-        setGuestPassesUsed(guestPassesUsed);
-        setReferralCodes(referralCodes);
-        setGuestBookingIds(guestBookingIds);
+        const { referralCodes, guestBookingIds, guests } =
+          await fetchGuestData(token);
+        const finalGuestPassesUsed = apiGuestPassesUsed;
+
+        setGuestPassesUsed(finalGuestPassesUsed);
+        setReferralCodes(referralCodes || []);
+        setGuestBookingIds(guestBookingIds || []);
+
+        let retryCount = 0;
+        const maxRetries = 3;
+        while (retryCount < maxRetries) {
+          try {
+            await updateGuestData(
+              token,
+              finalGuestPassesUsed,
+              referralCodes || [],
+              guestBookingIds || [],
+              guests || []
+            );
+            await updateMemberProfile(token, {
+              customtext3: finalGuestPassesUsed.toString(),
+            });
+            break;
+          } catch (error: any) {
+            if (error.response?.status === 413 && retryCount < maxRetries - 1) {
+              console.warn(`Retry ${retryCount + 1} due to 413 error`);
+              retryCount++;
+              await new Promise((resolve) => setTimeout(resolve, 1000));
+              continue;
+            }
+            console.warn("Failed to sync guest data:", error);
+            break;
+          }
+        }
 
         setHasFetchedClubs(true);
       } catch (err) {
@@ -279,9 +307,16 @@ export default function BookTeeTime() {
           undefined,
           club.id
         );
+        const benefitBalances = await fetchMemberBenefitBalances(
+          localStorage.getItem("authToken")!
+        );
         const memberServices = fetchedServices.map((s) => ({
           ...s,
           servicename: s.servicename.trim(),
+          benefitBalance:
+            benefitBalances.find((b: any) =>
+              b.benefitname.toLowerCase().includes(s.servicename.toLowerCase())
+            )?.balance ?? null,
         }));
         setServices(memberServices);
       } catch (err) {
@@ -305,6 +340,7 @@ export default function BookTeeTime() {
         setIsFetchingSlots(true);
         const selectedService = services.find((s) => s.servicename === service);
         if (!selectedService) throw new Error("Selected service not found");
+        setSelectedService(selectedService);
         setSelectedServiceId(selectedService.serviceid);
         setSelectedBenefitId(
           selectedService.benefitid ? Number(selectedService.benefitid) : null
@@ -325,7 +361,6 @@ export default function BookTeeTime() {
         if (dateData) {
           const slots = dateData[date].filter((slot: any) => !slot.bookingid);
           setTimeSlots(slots);
-          // Set the first resource with available slots as the active tab
           const firstResourceWithSlots = resources.find((r: any) =>
             slots.some((slot: any) => slot.rname === r.name)
           );
@@ -351,102 +386,65 @@ export default function BookTeeTime() {
     fetchSlotsData();
   }, [service, date, services, location, clubs, membership]);
 
-  const debouncedCheckAvailability = useCallback(
-    debounce(async () => {
-      if (!date || !location || !service || !resources.length) return;
-      try {
-        const club = clubs.find((c) => c.name === location);
-        const selectedService = services.find((s) => s.servicename === service);
-        if (!club || !selectedService) return;
+  const debouncedCheckAvailability = debounce(async () => {
+    if (!date || !location || !service || !resources.length) return;
+    try {
+      const club = clubs.find((c) => c.name === location);
+      const selectedService = services.find((s) => s.servicename === service);
+      if (!club || !selectedService) return;
 
-        const { dates } = await fetchResourcesAndSessions(
-          localStorage.getItem("authToken")!,
-          selectedService.serviceid,
-          date,
-          club.id,
-          true
+      const { dates } = await fetchResourcesAndSessions(
+        localStorage.getItem("authToken")!,
+        selectedService.serviceid,
+        date,
+        club.id,
+        true
+      );
+      const dateData = dates.find((d: any) => Object.keys(d)[0] === date);
+      if (dateData) {
+        const slots = dateData[date].filter((slot: any) => !slot.bookingid);
+        setTimeSlots(slots);
+        const firstResourceWithSlots = resources.find((r: any) =>
+          slots.some((slot: any) => slot.rname === r.name)
         );
-        const dateData = dates.find((d: any) => Object.keys(d)[0] === date);
-        if (dateData) {
-          const slots = dateData[date].filter((slot: any) => !slot.bookingid);
-          setTimeSlots(slots);
-          // Update active resource tab if necessary
-          const firstResourceWithSlots = resources.find((r: any) =>
-            slots.some((slot: any) => slot.rname === r.name)
-          );
-          if (
-            firstResourceWithSlots &&
-            !slots.some((slot: any) => slot.rname === activeResourceTab)
-          ) {
-            setActiveResourceTab(firstResourceWithSlots.name);
-          }
-        } else {
-          setTimeSlots([]);
-          setActiveResourceTab("");
+        if (
+          firstResourceWithSlots &&
+          !slots.some((slot: any) => slot.rname === activeResourceTab)
+        ) {
+          setActiveResourceTab(firstResourceWithSlots.name);
         }
-      } catch (error) {
-        console.error("Error fetching slot availability:", error);
+      } else {
         setTimeSlots([]);
         setActiveResourceTab("");
       }
-    }, 500),
-    [date, location, service, resources, clubs, services, activeResourceTab]
-  );
+    } catch (error) {
+      console.error("Error fetching slot availability:", error);
+      setTimeSlots([]);
+      setActiveResourceTab("");
+    }
+  }, 500);
 
   useEffect(() => {
     debouncedCheckAvailability();
     return () => debouncedCheckAvailability.cancel();
-  }, [debouncedCheckAvailability]);
+  }, [
+    date,
+    location,
+    service,
+    resources,
+    clubs,
+    services,
+    activeResourceTab,
+    debouncedCheckAvailability,
+  ]);
 
-  const handleGuestCountChange = (count: number) => {
+  const handleGuestBooking = () => {
     if (activeTab !== "guest") {
-      setGuestCount(0);
-      form.setValue("guests", []);
-      form.clearErrors("guests");
-      if (count > 0) {
-        toast.warning("Guests can only be added in the Guest tab");
-      }
+      form.setValue("guest", undefined);
+      form.clearErrors("guest");
       return;
     }
-
-    const freePassesAvailable = Math.max(
-      availableGuestPasses - guestPassesUsed,
-      0
-    );
-    if (count > freePassesAvailable) {
-      setPendingGuestCount(count);
-      setShowChargeConfirmation(true);
-    } else {
-      setGuestCount(count);
-      const currentGuests = form.getValues("guests") || [];
-      form.setValue(
-        "guests",
-        Array(count)
-          .fill(null)
-          .map((_, i) => currentGuests[i] || { name: "", email: "" })
-      );
-      if (count === 0) form.clearErrors("guests");
-    }
-  };
-
-  const handleChargeConfirmation = (confirmed: boolean) => {
-    if (confirmed && pendingGuestCount !== null) {
-      setGuestCount(pendingGuestCount);
-      const currentGuests = form.getValues("guests") || [];
-      form.setValue(
-        "guests",
-        Array(pendingGuestCount)
-          .fill(null)
-          .map((_, i) => currentGuests[i] || { name: "", email: "" })
-      );
-      if (pendingGuestCount === 0) form.clearErrors("guests");
-    } else {
-      setGuestCount(0);
-      form.setValue("guests", []);
-      form.clearErrors("guests");
-    }
-    setShowChargeConfirmation(false);
-    setPendingGuestCount(null);
+    form.setValue("guest", { name: "", email: "" });
   };
 
   const handleLocationChange = () => {
@@ -457,22 +455,41 @@ export default function BookTeeTime() {
     setTimeSlots([]);
     setSelectedServiceId(null);
     setSelectedBenefitId(null);
-    setGuestCount(0);
+    setSelectedService(null);
     setActiveResourceTab("");
-    form.setValue("guests", []);
+    form.setValue("guest", undefined);
   };
 
-  const handleServiceChange = () => {
+  const handleServiceChange = (value: string) => {
+    const selectedService = services.find((s) => s.servicename === value);
+    if (selectedService && selectedService.benefitBalance === 0) {
+      toast.warning("No free passes available", {
+        description: "Contact support to purchase additional passes.",
+      });
+      form.setValue("service", "");
+      form.setValue("timeSlot", null);
+      setResources([]);
+      setTimeSlots([]);
+      setSelectedServiceId(null);
+      setSelectedBenefitId(null);
+      setSelectedService(null);
+      setActiveResourceTab("");
+      form.setValue("guest", undefined);
+      form.clearErrors("guest");
+      return;
+    }
     form.setValue("timeSlot", null);
     setResources([]);
     setTimeSlots([]);
     setSelectedServiceId(null);
     setSelectedBenefitId(null);
+    setSelectedService(selectedService || null);
     setActiveResourceTab("");
     if (activeTab === "self") {
-      setGuestCount(0);
-      form.setValue("guests", []);
-      form.clearErrors("guests");
+      form.setValue("guest", undefined);
+      form.clearErrors("guest");
+    } else {
+      handleGuestBooking();
     }
   };
 
@@ -484,10 +501,10 @@ export default function BookTeeTime() {
     setTimeSlots([]);
     setSelectedServiceId(null);
     setSelectedBenefitId(null);
-    setGuestCount(0);
+    setSelectedService(null);
     setActiveResourceTab("");
-    form.setValue("guests", []);
-    form.clearErrors("guests");
+    form.setValue("guest", undefined);
+    form.clearErrors("guest");
   };
 
   const onSubmit = async (data: z.infer<typeof teeTimeSchema>) => {
@@ -499,33 +516,34 @@ export default function BookTeeTime() {
       if (!GYMMASTER_API_KEY) throw new Error("API key missing in environment");
       if (!membership) throw new Error("No active membership found");
       if (!data.timeSlot) throw new Error("Please select a time slot");
+      if (activeTab === "guest" && !data.guest)
+        throw new Error("Guest details are required");
 
       const club = clubs.find((c) => c.name === data.location);
       if (!club) throw new Error("Selected club not found");
 
       const isGuestService = activeTab === "guest";
+      const selectedService = services.find(
+        (s) => s.servicename === data.service
+      );
       let guestPassUsage = { free: 0, charged: 0 };
       const newReferralCodes: string[] = [];
       const newBookingIds: number[] = [];
       const guestAssignments: number[] = [];
-      let guestPassesUsed = 0;
+      let guestPassesUsedCurrent = guestPassesUsed;
 
-      if (isGuestService && data.guests?.length) {
-        const guestData = await fetchGuestData(token);
-        guestPassesUsed = guestData.guestPassesUsed || 0;
-        const freePassesAvailable = Math.max(
-          availableGuestPasses - guestPassesUsed,
-          0
-        );
+      if (isGuestService && data.guest && selectedService) {
+        guestPassesUsedCurrent = guestPassesUsed;
+        const freePassesAvailable =
+          selectedService.benefitBalance !== null
+            ? selectedService.benefitBalance
+            : 0;
         guestPassUsage = {
-          free: Math.min(data.guests.length, freePassesAvailable),
-          charged: Math.max(data.guests.length - freePassesAvailable, 0),
+          free: freePassesAvailable > 0 ? 1 : 0,
+          charged: freePassesAvailable === 0 ? 1 : 0,
         };
-
-        data.guests.forEach(() => {
-          const code = generateReferralCode();
-          newReferralCodes.push(code);
-        });
+        const code = generateReferralCode();
+        newReferralCodes.push(code);
       }
 
       const bookingId = await addBooking(
@@ -539,13 +557,22 @@ export default function BookTeeTime() {
           location: data.location,
           bay: data.timeSlot.rname,
           servicename: data.service,
-          guests: (data.guests || []) as { name: string; email: string }[],
+          guests: data.guest
+            ? [
+                {
+                  name: data.guest.name,
+                  email: data.guest.email,
+                  date: data.guest.date,
+                },
+              ]
+            : [],
           guestPassUsage,
           referralCodes: newReferralCodes,
           rid: data.timeSlot.rid,
           bookingstart: data.timeSlot.bookingstart,
           bookingend: data.timeSlot.bookingend,
-          guestPassCharge: isGuestService ? guestPassCharge : 0,
+          guestPassCharge:
+            isGuestService && guestPassCharge !== null ? guestPassCharge : 0,
         },
         token,
         selectedServiceId,
@@ -553,32 +580,45 @@ export default function BookTeeTime() {
         membership.id,
         selectedBenefitId || undefined,
         isGuestService ? availableGuestPasses : 0,
-        isGuestService ? guestPassCharge : 0
+        isGuestService && guestPassCharge !== null ? guestPassCharge : 0
       );
 
       newBookingIds.push(bookingId);
-      if (isGuestService && data.guests?.length) {
-        data.guests.forEach(() => guestAssignments.push(bookingId));
+      if (isGuestService && data.guest) {
+        guestAssignments.push(bookingId);
       }
 
-      if (isGuestService && guestPassUsage.charged > 0) {
+      if (
+        isGuestService &&
+        guestPassUsage.charged > 0 &&
+        guestPassCharge !== null
+      ) {
         const totalCharge = guestPassUsage.charged * guestPassCharge;
         await logGuestPassCharge(
           token,
           totalCharge,
-          `Guest PAID Visit for ${guestPassUsage.charged} guest(s) on ${data.date}`
+          `Guest PAID Visit for 1 guest on ${data.date}`
         );
         toast.success("Guest pass charges applied", {
-          description: `Charged $${totalCharge.toFixed(2)} for ${guestPassUsage.charged} extra guest(s).`,
+          description: `Charged $${totalCharge.toFixed(2)} for 1 extra guest.`,
         });
       }
 
-      if (isGuestService && data.guests?.length) {
+      if (isGuestService && data.guest) {
+        const guestData = await fetchGuestData(token);
         const updatedReferralCodes = [...referralCodes, ...newReferralCodes];
         const updatedBookingIds = [
           ...guestBookingIds,
           ...guestAssignments,
         ].filter((id) => Number.isInteger(id) && id > 0);
+        const updatedGuests = [
+          ...(guestData.guests || []),
+          {
+            name: data.guest.name,
+            email: data.guest.email,
+            date: data.guest.date,
+          },
+        ];
         let retryCount = 0;
         const maxRetries = 3;
         while (retryCount < maxRetries) {
@@ -588,14 +628,10 @@ export default function BookTeeTime() {
             });
             await updateGuestData(
               token,
-              guestPassesUsed + guestPassUsage.free,
+              guestPassesUsedCurrent + guestPassUsage.free,
               updatedReferralCodes,
-              [],
-              (data.guests || []) as {
-                name: string;
-                email: string;
-                date?: string;
-              }[]
+              updatedBookingIds,
+              updatedGuests
             );
             break;
           } catch (error: any) {
@@ -608,7 +644,7 @@ export default function BookTeeTime() {
             throw error;
           }
         }
-        setGuestPassesUsed(guestPassesUsed + guestPassUsage.free);
+        setGuestPassesUsed(guestPassesUsedCurrent + guestPassUsage.free);
         setReferralCodes(updatedReferralCodes);
         setGuestBookingIds(updatedBookingIds);
       }
@@ -619,42 +655,41 @@ export default function BookTeeTime() {
         data,
         newBookingIds,
         isGuestService ? availableGuestPasses : 0,
-        isGuestService ? guestPassesUsed : 0,
-        isGuestService ? guestPassCharge : 0
+        isGuestService ? guestPassesUsedCurrent : 0,
+        isGuestService && guestPassCharge !== null ? guestPassCharge : 0
       );
 
-      if (isGuestService && data.guests?.length) {
-        for (let i = 0; i < data.guests.length; i++) {
-          const guest = data.guests[i];
-          const referralCode = newReferralCodes[i];
-          const referralLink = `${APP_URL}`;
-          try {
-            await fetch("/api/send-email", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                emailType: "invite",
-                to: guest.email,
-                name: guest.name || "Guest",
-                referralCode,
-                referralLink,
-              }),
-            });
-            toast.success(`Invite email sent to ${guest.email}`);
-          } catch (error) {
-            console.error(
-              `Failed to send invite email to ${guest.email}:`,
-              error
-            );
-            toast.error(`Failed to send invite email to ${guest.email}`);
-          }
+      if (isGuestService && data.guest) {
+        const referralCode = newReferralCodes[0];
+        const referralLink = `${APP_URL}`;
+        try {
+          await fetch("/api/send-email", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              emailType: "invite",
+              to: data.guest.email,
+              name: data.guest.name || "Guest",
+              referralCode,
+              referralLink,
+            }),
+          });
+          toast.success(`Invite email sent to ${data.guest.email}`);
+        } catch (error) {
+          console.error(
+            `Failed to send invite email to ${data.guest.email}:`,
+            error
+          );
+          toast.error(`Failed to send invite email to ${data.guest.email}`);
         }
       }
 
       toast.success("Tee time booked!", {
         description:
-          isGuestService && guestPassUsage.charged > 0
-            ? `Charged $${(guestPassUsage.charged * guestPassCharge).toFixed(2)} for ${guestPassUsage.charged} extra guest(s).`
+          isGuestService &&
+          guestPassUsage.charged > 0 &&
+          guestPassCharge !== null
+            ? `Charged $${(guestPassUsage.charged * guestPassCharge).toFixed(2)} for 1 extra guest.`
             : undefined,
       });
 
@@ -663,13 +698,13 @@ export default function BookTeeTime() {
         service: "",
         date: "",
         timeSlot: null,
-        guests: [],
+        guest: undefined,
       });
       setTimeSlots([]);
-      setGuestCount(0);
       setShowItinerary(false);
       setActiveTab("self");
       setActiveResourceTab("");
+      setSelectedService(null);
       setTimeout(() => {
         router.push("/dashboard/my-tee-times");
       }, 1000);
@@ -685,6 +720,16 @@ export default function BookTeeTime() {
 
   const isFormValid = () => {
     const values = form.watch();
+    if (activeTab === "guest") {
+      return (
+        values.location &&
+        values.service &&
+        values.date &&
+        values.timeSlot &&
+        values.guest?.name &&
+        values.guest?.email
+      );
+    }
     return values.location && values.service && values.date && values.timeSlot;
   };
 
@@ -835,7 +880,7 @@ export default function BookTeeTime() {
                               value={field.value}
                               onChange={(e) => {
                                 field.onChange(e.target.value);
-                                handleServiceChange();
+                                handleServiceChange(e.target.value);
                               }}
                               className="w-full sm:w-64 p-2 border border-input rounded-md focus:border-primary focus:ring-primary bg-background text-foreground"
                               disabled={!location}
@@ -845,8 +890,13 @@ export default function BookTeeTime() {
                                 <option
                                   key={svc.serviceid}
                                   value={svc.servicename}
+                                  disabled={svc.benefitBalance === 0}
                                 >
-                                  {svc.servicename}
+                                  {svc.pricedescription || svc.servicename}
+                                  {svc.benefitBalance !== null &&
+                                  svc.benefitBalance !== undefined
+                                    ? ` (${svc.benefitBalance} remaining)`
+                                    : ""}
                                 </option>
                               ))}
                             </select>
@@ -868,7 +918,7 @@ export default function BookTeeTime() {
                               value={field.value}
                               onChange={(e) => {
                                 field.onChange(e.target.value);
-                                handleServiceChange();
+                                handleServiceChange(e.target.value);
                               }}
                               className="w-full sm:w-64 p-2 border border-input rounded-md focus:border-primary focus:ring-primary bg-background text-foreground"
                               disabled={!location}
@@ -878,8 +928,13 @@ export default function BookTeeTime() {
                                 <option
                                   key={svc.serviceid}
                                   value={svc.servicename}
+                                  disabled={svc.benefitBalance === 0}
                                 >
-                                  {svc.servicename}
+                                  {svc.pricedescription || svc.servicename}
+                                  {svc.benefitBalance !== null &&
+                                  svc.benefitBalance !== undefined
+                                    ? ` (${svc.benefitBalance} remaining)`
+                                    : ""}
                                 </option>
                               ))}
                             </select>
@@ -893,7 +948,7 @@ export default function BookTeeTime() {
               />
             </motion.div>
 
-            {activeTab === "guest" && (
+            {activeTab === "guest" && form.getValues("guest") && (
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -904,147 +959,56 @@ export default function BookTeeTime() {
                     className="h-5 w-5 text-foreground"
                     aria-hidden="true"
                   />{" "}
-                  Invite Guests
+                  Guest Details (Required)
                 </FormLabel>
-                <div className="flex gap-2 sm:gap-4">
-                  {[0, 1, 2, 3].map((count) => (
-                    <Button
-                      key={count}
-                      type="button"
-                      variant={guestCount === count ? "default" : "outline"}
-                      onClick={() => handleGuestCountChange(count)}
-                      className="text-sm sm:text-base"
-                    >
-                      {count === 0 ? "None" : count}
-                    </Button>
-                  ))}
-                </div>
-                {guestCount > 0 && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: "auto" }}
-                    transition={{ duration: 0.3 }}
-                    className="space-y-4"
-                  >
-                    {Array.from({ length: guestCount }).map((_, index) => (
-                      <motion.div
-                        key={index}
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ duration: 0.3, delay: 0.1 * index }}
-                        className="space-y-2 border border-input p-4 rounded-md bg-muted"
-                      >
-                        <h4 className="text-sm font-medium text-foreground">
-                          Guest {index + 1}
-                        </h4>
-                        <FormField
-                          control={form.control}
-                          name={`guests.${index}.name`}
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel className="text-xs sm:text-sm text-muted-foreground">
-                                Name
-                              </FormLabel>
-                              <FormControl>
-                                <Input
-                                  placeholder="Guest Name"
-                                  {...field}
-                                  className="border-input focus:border-primary focus:ring-primary bg-background text-foreground"
-                                />
-                              </FormControl>
-                              <FormMessage className="text-xs sm:text-sm text-destructive" />
-                            </FormItem>
-                          )}
-                        />
-                        <FormField
-                          control={form.control}
-                          name={`guests.${index}.email`}
-                          render={({ field }) => (
-                            <FormItem>
-                              <FormLabel className="text-xs sm:text-sm text-muted-foreground">
-                                Email
-                              </FormLabel>
-                              <FormControl>
-                                <Input
-                                  placeholder="guest@example.com"
-                                  {...field}
-                                  className="border-input focus:border-primary focus:ring-primary bg-background text-foreground"
-                                />
-                              </FormControl>
-                              <FormMessage className="text-xs sm:text-sm text-destructive" />
-                            </FormItem>
-                          )}
-                        />
-                      </motion.div>
-                    ))}
-                  </motion.div>
-                )}
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  transition={{ duration: 0.3 }}
+                  className="space-y-4 border border-input p-4 rounded-md bg-muted"
+                >
+                  <h4 className="text-sm font-medium text-foreground">Guest</h4>
+                  <FormField
+                    control={form.control}
+                    name="guest.name"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs sm:text-sm text-muted-foreground">
+                          Name
+                        </FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="Guest Name"
+                            {...field}
+                            className="border-input focus:border-primary focus:ring-primary bg-background text-foreground"
+                          />
+                        </FormControl>
+                        <FormMessage className="text-xs sm:text-sm text-destructive" />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="guest.email"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel className="text-xs sm:text-sm text-muted-foreground">
+                          Email
+                        </FormLabel>
+                        <FormControl>
+                          <Input
+                            placeholder="guest@example.com"
+                            {...field}
+                            className="border-input focus:border-primary focus:ring-primary bg-background text-foreground"
+                          />
+                        </FormControl>
+                        <FormMessage className="text-xs sm:text-sm text-destructive" />
+                      </FormItem>
+                    )}
+                  />
+                </motion.div>
               </motion.div>
             )}
-
-            <Dialog
-              open={showChargeConfirmation}
-              onOpenChange={setShowChargeConfirmation}
-            >
-              <DialogContent className="sm:max-w-md">
-                <DialogHeader>
-                  <DialogTitle className="text-xl text-foreground">
-                    Confirm Additional Guest Charges
-                  </DialogTitle>
-                  <DialogDescription className="text-muted-foreground">
-                    You have used {guestPassesUsed} of {availableGuestPasses}{" "}
-                    free guest passes.
-                    {pendingGuestCount &&
-                    pendingGuestCount >
-                      Math.max(availableGuestPasses - guestPassesUsed, 0) ? (
-                      <>
-                        Adding {pendingGuestCount} guest(s) will use{" "}
-                        {Math.min(
-                          pendingGuestCount,
-                          Math.max(availableGuestPasses - guestPassesUsed, 0)
-                        )}{" "}
-                        free pass(es) and charge $
-                        {(
-                          (pendingGuestCount -
-                            Math.max(
-                              availableGuestPasses - guestPassesUsed,
-                              0
-                            )) *
-                          guestPassCharge
-                        ).toFixed(2)}{" "}
-                        for{" "}
-                        {pendingGuestCount -
-                          Math.max(
-                            availableGuestPasses - guestPassesUsed,
-                            0
-                          )}{" "}
-                        additional guest(s) at ${guestPassCharge.toFixed(2)}{" "}
-                        each.
-                      </>
-                    ) : (
-                      "Please confirm to proceed."
-                    )}
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="flex flex-col sm:flex-row gap-2 mt-4">
-                  <Button
-                    type="button"
-                    className="w-full sm:w-auto"
-                    onClick={() => handleChargeConfirmation(true)}
-                  >
-                    Confirm
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="w-full sm:w-auto"
-                    onClick={() => handleChargeConfirmation(false)}
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
 
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -1210,63 +1174,30 @@ export default function BookTeeTime() {
                         </span>
                       )}
                     </div>
-                    {activeTab === "guest" &&
-                      (form.getValues("guests") || []).length > 0 && (
-                        <div>
-                          <strong className="text-sm sm:text-base text-foreground">
-                            Guests:
-                          </strong>
-                          <ul className="list-disc pl-5 mt-1">
-                            {(form.getValues("guests") || []).map(
-                              (guest, index) => (
-                                <li
-                                  key={index}
-                                  className="text-sm sm:text-base text-muted-foreground"
-                                >
-                                  {guest.name} ({guest.email})
-                                </li>
-                              )
-                            )}
-                          </ul>
-                        </div>
-                      )}
-                    {activeTab === "guest" &&
-                      (form.getValues("guests") || []).length > 0 && (
-                        <p className="text-sm sm:text-base text-muted-foreground">
-                          <strong>Guest Pass Usage:</strong>{" "}
-                          {Math.min(
-                            (form.getValues("guests") || []).length,
-                            Math.max(availableGuestPasses - guestPassesUsed, 0)
-                          )}{" "}
-                          free pass(es) used.
-                          {Math.max(
-                            (form.getValues("guests") || []).length -
-                              Math.max(
-                                availableGuestPasses - guestPassesUsed,
-                                0
-                              ),
-                            0
-                          ) > 0
-                            ? ` $${(
-                                Math.max(
-                                  (form.getValues("guests") || []).length -
-                                    Math.max(
-                                      availableGuestPasses - guestPassesUsed,
-                                      0
-                                    ),
-                                  0
-                                ) * guestPassCharge
-                              ).toFixed(2)} for ${Math.max(
-                                (form.getValues("guests") || []).length -
-                                  Math.max(
-                                    availableGuestPasses - guestPassesUsed,
-                                    0
-                                  ),
-                                0
-                              )} extra guest(s) at $${guestPassCharge.toFixed(2)} each.`
-                            : ""}
-                        </p>
-                      )}
+                    {activeTab === "guest" && form.getValues("guest") && (
+                      <div>
+                        <strong className="text-sm sm:text-base text-foreground">
+                          Guest:
+                        </strong>
+                        <ul className="list-disc pl-5 mt-1">
+                          <li className="text-sm sm:text-base text-muted-foreground">
+                            {form.getValues("guest")!.name} (
+                            {form.getValues("guest")!.email})
+                          </li>
+                        </ul>
+                      </div>
+                    )}
+                    {activeTab === "guest" && form.getValues("guest") && (
+                      <p className="text-sm sm:text-base text-muted-foreground">
+                        <strong>Guest Pass Usage:</strong>{" "}
+                        {selectedService?.benefitBalance !== null &&
+                        selectedService?.benefitBalance > 0
+                          ? "1 free pass will be used."
+                          : guestPassCharge !== null
+                            ? `$${guestPassCharge.toFixed(2)} will be charged for 1 extra guest.`
+                            : "Guest pass charge unavailable."}
+                      </p>
+                    )}
                   </div>
                   <div className="flex flex-col sm:flex-row gap-2 mt-4">
                     <Button

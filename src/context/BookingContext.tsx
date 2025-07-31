@@ -17,7 +17,7 @@ export interface Booking {
   servicename: string;
   guests: { name: string; email: string; date?: string }[];
   guestPassUsage: { free: number; charged: number };
-  guestPassCharge: number;
+  guestPassCharge: number | null;
   day: string;
   starttime: string;
   referralCodes?: string[];
@@ -36,7 +36,7 @@ interface BookingContextType {
     membershipId: number,
     benefitId?: number,
     availableGuestPasses?: number,
-    guestPassCharge?: number
+    guestPassCharge?: number | null
   ) => Promise<number>;
   deleteBooking: (id: number, token: string) => Promise<void>;
   updateBooking: (id: number, updatedBooking: Partial<Booking>) => void;
@@ -58,7 +58,7 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
     membershipId: number,
     benefitId?: number,
     availableGuestPasses: number = 0
-    // guestPassCharge: number = 25
+    // guestPassCharge: number | null = null
   ): Promise<number> => {
     try {
       const {
@@ -73,7 +73,7 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
         bookingend,
         referralCodes,
         rid,
-        guestPassCharge: bookingGuestPassCharge, // Rename to avoid conflict
+        guestPassCharge: bookingGuestPassCharge,
       } = booking;
 
       // Decode JWT to get stable user ID
@@ -381,7 +381,7 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
               free: 0,
               charged: 0,
             },
-            guestPassCharge: mongoBooking?.guestPassCharge || 25,
+            guestPassCharge: mongoBooking?.guestPassCharge || null,
             day:
               mongoBooking?.day ||
               new Date(b.day).toLocaleDateString("en-US", { weekday: "long" }),

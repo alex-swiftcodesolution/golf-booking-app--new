@@ -126,6 +126,8 @@ export interface Service {
   servicename: string;
   membershipid?: number;
   benefitid?: number;
+  pricedescription?: string;
+  benefitBalance?: number | null;
 }
 
 export interface MemberServiceBooking {
