@@ -16,7 +16,11 @@ import {
 import { toast } from "sonner";
 import { Loader2, Copy } from "lucide-react";
 import { motion } from "framer-motion";
-import { storeReferralCode, updateGuestData } from "@/api/gymmaster";
+import {
+  storeReferralCode,
+  updateGuestData,
+  fetchGuestData,
+} from "@/api/gymmaster"; // Added fetchGuestData
 import { generateReferralCode } from "@/lib/utils";
 
 const inviteSchema = z.object({
@@ -44,14 +48,18 @@ export default function Invite() {
       const token = localStorage.getItem("authToken")!;
       await storeReferralCode(newReferralCode, memberId, token);
 
+      // Fetch current guest data to get purchasedGuestPasses
+      const guestData = await fetchGuestData(token);
+
       // Store guest data with invite date
       const inviteDate = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
       await updateGuestData(
         token,
-        0,
-        [newReferralCode],
-        [],
-        [{ name: data.name, email: data.email, date: inviteDate }]
+        0, // guestPassesUsed
+        [newReferralCode], // referralCodes
+        [], // guestBookingIds
+        [{ name: data.name, email: data.email, date: inviteDate }], // guests
+        guestData.purchasedGuestPasses // Preserve purchasedGuestPasses
       );
 
       // Send email with referral link
