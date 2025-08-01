@@ -268,25 +268,45 @@ export default function MyTeeTimes() {
           (bookingId: number) => bookingId !== id
         );
         const updatedGuestPassesUsed = Math.max(
-          guestData.guestPassesUsed - (booking.guests.length || 0),
+          guestData.guestPassesUsed - (booking.guestPassUsage.free || 0),
           0
         );
-        const guestIndices = guestData.guestBookingIds
-          .map((bookingId: number, index: number) =>
-            bookingId === id ? index : -1
-          )
-          .filter((index: number) => index !== -1);
         const updatedGuests = guestData.guests.filter(
-          (_: { name: string; email: string }, index: number) =>
-            !guestIndices.includes(index)
+          (guest: { name: string; email: string; date?: string }) =>
+            !booking.guests.some(
+              (g) =>
+                g.email === guest.email &&
+                g.name === guest.name &&
+                g.date === guest.date
+            )
         );
+        const updatedReferralCodes = guestData.referralCodes.filter(
+          (code: string) => !booking.referralCodes?.includes(code)
+        );
+
+        // Update GymMaster and MongoDB guest data
         await updateGuestData(
           token,
           updatedGuestPassesUsed,
-          guestData.referralCodes,
+          updatedReferralCodes,
           updatedGuestBookingIds,
-          updatedGuests
+          updatedGuests,
+          guestData.purchasedGuestPasses // Preserve purchasedGuestPasses
         );
+
+        // Update MongoDB guest data
+        await fetch("/api/bookings/update-guest-data", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userId: stableUserId,
+            guestPassesUsed: updatedGuestPassesUsed,
+            referralCodes: updatedReferralCodes,
+            guestBookingIds: updatedGuestBookingIds,
+            guests: updatedGuests,
+            purchasedGuestPasses: guestData.purchasedGuestPasses,
+          }),
+        });
       } catch (guestError) {
         console.warn(
           "Guest data update failed, but booking was cancelled:",
