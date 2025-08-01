@@ -658,6 +658,7 @@ export default function BookTeeTime() {
     }
   };
 
+  /*
   const onSubmit = async (data: z.infer<typeof teeTimeSchema>) => {
     setIsLoading(true);
     try {
@@ -821,6 +822,244 @@ export default function BookTeeTime() {
         guestPassesUsed +
           (data.service.toLowerCase().includes("guest free visit") ? 1 : 0),
         purchasedGuestPasses // Send purchased passes without deduction
+      );
+
+      if (isGuestService && data.guest) {
+        const referralCode = newReferralCodes[0];
+        const referralLink = `${APP_URL}`;
+        try {
+          await fetch("/api/send-email", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              emailType: "invite",
+              to: data.guest.email,
+              name: data.guest.name || "Guest",
+              referralCode,
+              referralLink,
+            }),
+          });
+          toast.success(`Invite email sent to ${data.guest.email}`);
+        } catch (error) {
+          console.error(
+            `Failed to send invite email to ${data.guest.email}:`,
+            error
+          );
+          toast.error(`Failed to send invite email to ${data.guest.email}`);
+        }
+      }
+
+      const benefitBalances = await fetchMemberBenefitBalances(token);
+      const updatedServices = services.map((s) => ({
+        ...s,
+        benefitBalance:
+          benefitBalances.find((b: any) =>
+            b.benefitname.toLowerCase().includes(s.servicename.toLowerCase())
+          )?.balance ?? s.benefitBalance,
+      }));
+      setServices(updatedServices);
+      const guestFreePassBenefit = benefitBalances.find(
+        (benefit: any) =>
+          benefit.benefitname.toLowerCase().includes("guest free visit") &&
+          benefit.balance !== null
+      );
+      setAvailableGuestPasses(guestFreePassBenefit?.balance || 0);
+
+      toast.success("Tee time booked!");
+
+      form.reset({
+        location: "",
+        service: "",
+        date: "",
+        timeSlot: null,
+        guest: undefined,
+      });
+      setTimeSlots([]);
+      setShowItinerary(false);
+      setActiveTab("self");
+      setActiveResourceTab("");
+      setSelectedService(null);
+      setShowPurchaseDialog(false);
+      setTimeout(() => {
+        router.push("/dashboard/my-tee-times");
+      }, 1000);
+    } catch (err) {
+      console.error("Booking Error:", err);
+      toast.error("Failed to book tee time", {
+        description: (err as Error).message,
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  */
+
+  const onSubmit = async (data: z.infer<typeof teeTimeSchema>) => {
+    setIsLoading(true);
+    try {
+      const token = localStorage.getItem("authToken");
+      if (!token) throw new Error("Not authenticated - no token");
+      if (!selectedServiceId) throw new Error("Service ID not loaded");
+      if (!GYMMASTER_API_KEY) throw new Error("API key missing");
+      if (!membership) throw new Error("No active membership found");
+      if (!data.timeSlot) throw new Error("Please select a time slot");
+      if (activeTab === "guest" && !data.guest)
+        throw new Error("Guest details are required");
+
+      const club = clubs.find((c) => c.name === data.location);
+      if (!club) throw new Error("Selected club not found");
+
+      const isGuestService = activeTab === "guest";
+      const selectedService = services.find(
+        (s) => s.servicename === data.service
+      );
+      if (
+        isGuestService &&
+        !selectedService?.servicename.toLowerCase().includes("guest")
+      ) {
+        throw new Error("Invalid guest service selected");
+      }
+
+      const isPaidGuestVisit = selectedService?.servicename
+        .toLowerCase()
+        .includes("guest paid visit");
+
+      if (isPaidGuestVisit && purchasedGuestPasses <= 0) {
+        throw new Error("No purchased guest passes available");
+      }
+
+      const newReferralCodes: string[] = [];
+      const newBookingIds: number[] = [];
+      const guestAssignments: number[] = [];
+
+      const guestData = await fetchGuestData(token);
+
+      const bookingId = await addBooking(
+        {
+          date: data.date,
+          day: new Date(data.date).toLocaleDateString("en-US", {
+            weekday: "long",
+          }),
+          time: data.timeSlot.start_str,
+          starttime: data.timeSlot.bookingstart,
+          location: data.location,
+          bay: data.timeSlot.rname,
+          servicename: data.service,
+          guests: data.guest
+            ? [
+                {
+                  name: data.guest.name,
+                  email: data.guest.email,
+                  date: data.guest.date,
+                },
+              ]
+            : [],
+          guestPassUsage: {
+            free: data.service.toLowerCase().includes("guest free visit")
+              ? 1
+              : 0,
+            charged: isPaidGuestVisit ? 1 : 0,
+          },
+          referralCodes: newReferralCodes,
+          rid: data.timeSlot.rid,
+          bookingstart: data.timeSlot.bookingstart,
+          bookingend: data.timeSlot.bookingend,
+          guestPassCharge: isPaidGuestVisit
+            ? parseFloat(selectedService?.price.replace(/[^0-9.]/g, "") || "0")
+            : 0,
+        },
+        token,
+        selectedServiceId,
+        data.timeSlot.rid,
+        membership.id,
+        selectedBenefitId || undefined
+      );
+
+      if (!Number.isInteger(bookingId) || bookingId <= 0) {
+        throw new Error(`Invalid booking ID: ${bookingId}`);
+      }
+
+      newBookingIds.push(bookingId);
+      if (isGuestService && data.guest) {
+        guestAssignments.push(bookingId);
+        newReferralCodes.push(generateReferralCode());
+      }
+
+      if (isGuestService && data.guest) {
+        const updatedGuestPassesUsed =
+          guestData.guestPassesUsed +
+          (data.service.toLowerCase().includes("guest free visit") ? 1 : 0);
+        const updatedReferralCodes = [
+          ...guestData.referralCodes,
+          ...newReferralCodes,
+        ];
+        const updatedBookingIds = [
+          ...guestData.guestBookingIds,
+          ...guestAssignments,
+        ].filter((id) => Number.isInteger(id) && id > 0);
+        const updatedGuests = [
+          ...guestData.guests,
+          {
+            name: data.guest.name,
+            email: data.guest.email,
+            date: data.guest.date,
+          },
+        ];
+        const updatedPurchasedGuestPasses = isPaidGuestVisit
+          ? Math.max(purchasedGuestPasses - 1, 0) // Deduct 1 from purchased passes
+          : guestData.purchasedGuestPasses;
+
+        let retryCount = 0;
+        const maxRetries = 3;
+        while (retryCount < maxRetries) {
+          try {
+            await updateGuestData(
+              token,
+              updatedGuestPassesUsed,
+              updatedReferralCodes,
+              updatedBookingIds,
+              updatedGuests,
+              updatedPurchasedGuestPasses
+            );
+            const reconciledData = await reconcileGuestData(
+              token,
+              updatedGuestPassesUsed,
+              updatedReferralCodes,
+              updatedBookingIds,
+              updatedGuests,
+              updatedPurchasedGuestPasses
+            );
+            setGuestPassesUsed(reconciledData.guestPassesUsed);
+            setReferralCodes(reconciledData.referralCodes);
+            setGuestBookingIds(reconciledData.guestBookingIds);
+            setPurchasedGuestPasses(reconciledData.purchasedGuestPasses);
+            break;
+          } catch (error: any) {
+            if (error.response?.status === 413 && retryCount < maxRetries - 1) {
+              console.warn(`Retry ${retryCount + 1} due to 413 error`);
+              retryCount++;
+              await new Promise((resolve) => setTimeout(resolve, 1000));
+              continue;
+            }
+            console.error("Failed to update guest data:", error);
+            toast.error("Failed to update guest pass data", {
+              description:
+                "Guest pass count may not be accurate. Please contact support.",
+            });
+            throw error;
+          }
+        }
+      }
+
+      const member = await fetchMemberDetails(token);
+      await sendBookingConfirmationEmail(
+        member.email,
+        data,
+        newBookingIds,
+        availableGuestPasses,
+        guestPassesUsed +
+          (data.service.toLowerCase().includes("guest free visit") ? 1 : 0),
+        purchasedGuestPasses - (isPaidGuestVisit ? 1 : 0) // Reflect deduction in email
       );
 
       if (isGuestService && data.guest) {
