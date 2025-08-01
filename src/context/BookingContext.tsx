@@ -34,8 +34,7 @@ interface BookingContextType {
     serviceId: number,
     resourceId: number,
     membershipId: number,
-    benefitId?: number,
-    availableGuestPasses?: number
+    benefitId?: number
   ) => Promise<number>;
   deleteBooking: (id: number, token: string) => Promise<void>;
   updateBooking: (id: number, updatedBooking: Partial<Booking>) => void;
@@ -55,8 +54,7 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
     serviceId: number,
     resourceId: number,
     membershipId: number,
-    benefitId?: number,
-    availableGuestPasses: number = 0
+    benefitId?: number
   ): Promise<number> => {
     try {
       const {
@@ -78,15 +76,17 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
       const decodedToken = JSON.parse(atob(token.split(".")[1]));
       const stableUserId = Number(decodedToken.id);
 
-      // Fetch and reconcile guest data
+      // Fetch guest data
       const guestData = await fetchGuestData(token);
-      const freePassesAvailable = Math.max(
-        availableGuestPasses - guestData.guestPassesUsed,
-        0
-      );
+
+      // Determine guest pass usage based on service name
       const calculatedGuestPassUsage = {
-        free: Math.min(guests.length, freePassesAvailable),
-        charged: Math.max(guests.length - freePassesAvailable, 0),
+        free: servicename.toLowerCase().includes("guest free visit")
+          ? guests.length
+          : 0,
+        charged: servicename.toLowerCase().includes("guest paid visit")
+          ? guests.length
+          : 0,
       };
 
       const bookingParams: Record<string, string> = {
@@ -208,11 +208,15 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
               updatedGuestPassesUsed,
               updatedReferralCodes,
               updatedGuestBookingIds,
-              updatedGuests
+              updatedGuests,
+              guestData.purchasedGuestPasses // Do not deduct purchasedGuestPasses
             );
             await updateMemberProfile(token, {
-              customtext3: reconciledData.guestPassesUsed.toString(),
+              customtext3: reconciledData.guestPassesUsed.toString(), // Only updates for free guest passes
+              customtext4: JSON.stringify(reconciledData.referralCodes),
               customtext5: JSON.stringify(reconciledData.guestBookingIds),
+              customtext6: JSON.stringify(reconciledData.guests),
+              customtext8: reconciledData.purchasedGuestPasses.toString(),
             });
             break;
           } catch (error: any) {
@@ -239,7 +243,7 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
               customtext5: JSON.stringify(updatedGuestBookingIds),
             });
             break;
-          } catch (error) {
+          } catch (error: any) {
             if (error.response?.status === 413 && retryCount < maxRetries - 1) {
               retryCount++;
               await new Promise((resolve) => setTimeout(resolve, 1000));
@@ -283,6 +287,7 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  /*
   const deleteBooking = async (id: number, token: string): Promise<void> => {
     try {
       // Decode JWT to get stable user ID
@@ -350,11 +355,15 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
               updatedGuestPassesUsed,
               updatedReferralCodes,
               updatedGuestBookingIds,
-              updatedGuests
+              updatedGuests,
+              guestData.purchasedGuestPasses // Do not deduct purchasedGuestPasses
             );
             await updateMemberProfile(token, {
-              customtext3: reconciledData.guestPassesUsed.toString(),
+              customtext3: reconciledData.guestPassesUsed.toString(), // Only updates for free guest passes
+              customtext4: JSON.stringify(reconciledData.referralCodes),
               customtext5: JSON.stringify(reconciledData.guestBookingIds),
+              customtext6: JSON.stringify(reconciledData.guests),
+              customtext8: reconciledData.purchasedGuestPasses.toString(),
             });
             break;
           } catch (error: any) {
@@ -382,6 +391,219 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
           try {
             await updateMemberProfile(token, {
               customtext5: JSON.stringify(updatedGuestBookingIds),
+            });
+            break;
+          } catch (error: any) {
+            if (error.response?.status === 413 && retryCount < maxRetries - 1) {
+              retryCount++;
+              await new Promise((resolve) => setTimeout(resolve, 1000));
+              continue;
+            }
+            console.error("Booking ID update failed:", error.message);
+            throw new Error(`Failed to update booking IDs: ${error.message}`);
+          }
+        }
+      }
+
+      // Refetch bookings to update state
+      let gymMasterBookings: any[] = [];
+      try {
+        const bookingsResponse = await axios.get(
+          "/api/gymmaster/v2/member/bookings",
+          {
+            params: { api_key: GYMMASTER_API_KEY || "", token },
+          }
+        );
+        gymMasterBookings = bookingsResponse.data.result?.servicebookings || [];
+      } catch (error) {
+        console.warn("Failed to fetch GymMaster bookings:", error);
+      }
+
+      let mongoBookings: Booking[] = [];
+      try {
+        const mongoFetchResponse = await fetch("/api/bookings/fetch", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId: stableUserId }),
+        });
+        if (!mongoFetchResponse.ok) {
+          throw new Error("Failed to fetch bookings from MongoDB");
+        }
+        const { bookings } = await mongoFetchResponse.json();
+        mongoBookings = bookings;
+      } catch (error) {
+        console.warn("Failed to fetch MongoDB bookings:", error);
+      }
+
+      const updatedBookings = gymMasterBookings
+        .filter((b: any) =>
+          mongoBookings.some((mb: Booking) => mb.id === Number(b.id))
+        )
+        .map((b: any) => {
+          const mongoBooking = mongoBookings.find(
+            (mb: Booking) => mb.id === Number(b.id)
+          );
+          return {
+            id: Number(b.id),
+            date: b.day,
+            time: mongoBooking?.time || b.starttime,
+            location: b.location || mongoBooking?.location || "",
+            bay: b.name,
+            servicename: b.servicename,
+            guests: mongoBooking?.guests || [],
+            guestPassUsage: mongoBooking?.guestPassUsage || {
+              free: 0,
+              charged: 0,
+            },
+            guestPassCharge: mongoBooking?.guestPassCharge || null,
+            day:
+              mongoBooking?.day ||
+              new Date(b.day).toLocaleDateString("en-US", { weekday: "long" }),
+            starttime: b.starttime,
+            referralCodes: mongoBooking?.referralCodes || [],
+            rid: Number(b.resourceid),
+            bookingstart: b.starttime,
+            bookingend: b.endtime,
+          };
+        });
+
+      setBookings(updatedBookings);
+    } catch (error) {
+      console.error("Delete booking error:", error);
+      setBookings((prev) => prev.filter((booking) => booking.id !== id));
+      throw new Error(`Failed to delete booking: ${(error as Error).message}`);
+    }
+  };
+  */
+
+  const deleteBooking = async (id: number, token: string): Promise<void> => {
+    try {
+      // Decode JWT to get stable user ID
+      const decodedToken = JSON.parse(atob(token.split(".")[1]));
+      const stableUserId = Number(decodedToken.id);
+
+      // Fetch the booking to check if it’s a guest booking
+      const booking = bookings.find((b) => b.id === id);
+      const isGuestBooking = booking && booking.guests.length > 0;
+
+      // Cancel the booking in GymMaster
+      const response = await axios.post(
+        "/api/gymmaster/v1/member/cancelbooking",
+        new URLSearchParams({
+          api_key: GYMMASTER_API_KEY || "",
+          token,
+          bookingid: id.toString(),
+          list: "0",
+        }),
+        {
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        }
+      );
+
+      if (response.data.error) {
+        throw new Error(response.data.error || "Failed to cancel booking");
+      }
+
+      // Delete from MongoDB using stable userId
+      await fetch("/api/bookings/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ bookingId: id, userId: stableUserId }),
+      });
+
+      // Update guest data if it’s a guest booking
+      if (isGuestBooking) {
+        const guestData = await fetchGuestData(token);
+        const updatedGuestBookingIds = guestData.guestBookingIds.filter(
+          (bookingId: number) => bookingId !== id
+        );
+        const updatedGuests = guestData.guests.filter(
+          (guest: { name: string; email: string; date?: string }) =>
+            !booking.guests.some(
+              (g) =>
+                g.email === guest.email &&
+                g.name === guest.name &&
+                g.date === guest.date
+            )
+        );
+        const updatedReferralCodes = guestData.referralCodes.filter(
+          (code: string) => !booking.referralCodes?.includes(code)
+        );
+        const updatedGuestPassesUsed = Math.max(
+          guestData.guestPassesUsed - (booking.guestPassUsage.free || 0),
+          0
+        );
+
+        let retryCount = 0;
+        const maxRetries = 3;
+        while (retryCount < maxRetries) {
+          try {
+            // Reconcile and update guest data
+            const reconciledData = await reconcileGuestData(
+              token,
+              updatedGuestPassesUsed,
+              updatedReferralCodes,
+              updatedGuestBookingIds,
+              updatedGuests,
+              guestData.purchasedGuestPasses // Do not deduct purchasedGuestPasses
+            );
+            // Update GymMaster custom fields
+            await updateMemberProfile(token, {
+              customtext3: reconciledData.guestPassesUsed.toString(), // Update free guest passes used
+              customtext4: JSON.stringify(reconciledData.referralCodes),
+              customtext5: JSON.stringify(reconciledData.guestBookingIds),
+              customtext6: JSON.stringify(reconciledData.guests),
+              customtext8: reconciledData.purchasedGuestPasses.toString(),
+            });
+            // Update MongoDB guest data
+            await fetch("/api/bookings/update-guest-data", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                userId: stableUserId,
+                guestPassesUsed: reconciledData.guestPassesUsed,
+                referralCodes: reconciledData.referralCodes,
+                guestBookingIds: reconciledData.guestBookingIds,
+                guests: reconciledData.guests,
+                purchasedGuestPasses: reconciledData.purchasedGuestPasses,
+              }),
+            });
+            break;
+          } catch (error: any) {
+            if (error.response?.status === 413 && retryCount < maxRetries - 1) {
+              retryCount++;
+              await new Promise((resolve) => setTimeout(resolve, 1000));
+              continue;
+            }
+            console.error(
+              "Guest data update failed after deletion:",
+              error.message
+            );
+            throw new Error(`Failed to update guest data: ${error.message}`);
+          }
+        }
+      } else {
+        // Update customtext5 for non-guest bookings
+        const guestData = await fetchGuestData(token);
+        const updatedGuestBookingIds = guestData.guestBookingIds.filter(
+          (bookingId: number) => bookingId !== id
+        );
+        let retryCount = 0;
+        const maxRetries = 3;
+        while (retryCount < maxRetries) {
+          try {
+            // Update GymMaster customtext5
+            await updateMemberProfile(token, {
+              customtext5: JSON.stringify(updatedGuestBookingIds),
+            });
+            // Update MongoDB guest data (only guestBookingIds)
+            await fetch("/api/bookings/update-guest-data", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                userId: stableUserId,
+                guestBookingIds: updatedGuestBookingIds,
+              }),
             });
             break;
           } catch (error: any) {

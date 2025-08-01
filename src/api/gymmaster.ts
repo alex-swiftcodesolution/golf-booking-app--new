@@ -4,6 +4,7 @@ import { getConfig, postConfig } from "@/lib/utils";
 import {
   Club,
   Door,
+  GuestData,
   KioskCheckinResponse,
   LoginResponse,
   Member,
@@ -11,6 +12,7 @@ import {
   MemberMembership,
   MemberServiceBooking,
   Membership,
+  Product,
   Resource,
   Service,
   Session,
@@ -648,6 +650,7 @@ export const fetchGuestData = async (
 };
 */
 
+/*
 export const fetchGuestData = async (
   token: string
 ): Promise<{
@@ -727,7 +730,33 @@ export const fetchGuestData = async (
     };
   }
 };
+*/
+export const fetchGuestData = async (token: string): Promise<GuestData> => {
+  try {
+    const response = await axios.get("/api/gymmaster/v1/member/profile", {
+      params: { api_key: GYMMASTER_API_KEY, token },
+    });
 
+    if (response.data.error) {
+      throw new Error(response.data.error);
+    }
+
+    const { customtext3, customtext4, customtext5, customtext6, customtext8 } =
+      response.data.result;
+
+    return {
+      guests: customtext6 ? JSON.parse(customtext6) : [],
+      guestPassesUsed: customtext3 ? parseInt(customtext3, 10) : 0,
+      referralCodes: customtext4 ? JSON.parse(customtext4) : [],
+      guestBookingIds: customtext5 ? JSON.parse(customtext5) : [],
+      purchasedGuestPasses: customtext8 ? parseInt(customtext8, 10) : 0,
+    };
+  } catch (error: any) {
+    throw new Error(`Failed to fetch guest data: ${error.message}`);
+  }
+};
+
+/*
 export const updateGuestData = async (
   token: string,
   guestPassesUsed: number,
@@ -755,6 +784,27 @@ export const updateGuestData = async (
       throw new Error("Payload too large");
     }
     throw new Error("Failed to update guest data");
+  }
+};
+*/
+export const updateGuestData = async (
+  token: string,
+  guestPassesUsed: number,
+  referralCodes: string[],
+  guestBookingIds: number[],
+  guests: { name: string; email: string; date?: string }[],
+  purchasedGuestPasses: number
+): Promise<void> => {
+  try {
+    await updateMemberProfile(token, {
+      customtext3: guestPassesUsed.toString(),
+      customtext4: JSON.stringify(referralCodes),
+      customtext5: JSON.stringify(guestBookingIds),
+      customtext6: JSON.stringify(guests),
+      customtext8: purchasedGuestPasses.toString(),
+    });
+  } catch (error: any) {
+    throw new Error(`Failed to update guest data: ${error.message}`);
   }
 };
 
@@ -1129,47 +1179,96 @@ export const logGuestPassCharge = async (
 
 export const reconcileGuestData = async (
   token: string,
-  localGuestPassesUsed: number,
-  localReferralCodes: string[],
-  localGuestBookingIds: number[],
-  localGuests: { name: string; email: string; date?: string }[]
-): Promise<{
-  guestPassesUsed: number;
-  referralCodes: string[];
-  guestBookingIds: number[];
-  guests: { name: string; email: string; date?: string }[];
-}> => {
+  guestPassesUsed: number,
+  referralCodes: string[],
+  guestBookingIds: number[],
+  guests: { name: string; email: string; date?: string }[],
+  purchasedGuestPasses: number
+): Promise<GuestData> => {
   try {
-    const apiData = await fetchGuestData(token);
-    const reconciledData = {
-      guestPassesUsed: Math.max(apiData.guestPassesUsed, localGuestPassesUsed),
-      referralCodes: Array.from(
-        new Set([...apiData.referralCodes, ...localReferralCodes])
-      ),
-      guestBookingIds: Array.from(
-        new Set([...apiData.guestBookingIds, ...localGuestBookingIds])
-      ).filter((id): id is number => Number.isInteger(id) && id > 0),
-      guests: Array.from(
-        new Set(
-          [...apiData.guests, ...localGuests].map(
-            (g) => `${g.email}:${g.name}:${g.date || ""}`
+    const currentData = await fetchGuestData(token);
+
+    const reconciledGuests = [
+      ...currentData.guests,
+      ...guests.filter(
+        (newGuest) =>
+          !currentData.guests.some(
+            (existing) =>
+              existing.email === newGuest.email &&
+              existing.name === newGuest.name &&
+              existing.date === newGuest.date
           )
-        )
-      ).map((key) => {
-        const [email, name, date] = key.split(":");
-        return { email, name, date: date || undefined };
-      }),
-    };
-    await updateGuestData(
-      token,
-      reconciledData.guestPassesUsed,
-      reconciledData.referralCodes,
-      reconciledData.guestBookingIds,
-      reconciledData.guests
+      ),
+    ];
+
+    const reconciledReferralCodes = Array.from(
+      new Set([...currentData.referralCodes, ...referralCodes])
     );
-    return reconciledData;
-  } catch (error) {
-    console.error("Reconcile guest data error:", error);
-    throw new Error("Failed to reconcile guest data");
+
+    const reconciledGuestBookingIds = Array.from(
+      new Set([...currentData.guestBookingIds, ...guestBookingIds])
+    ).filter((id): id is number => Number.isInteger(id) && id > 0);
+
+    const reconciledGuestPassesUsed = Math.max(
+      currentData.guestPassesUsed,
+      guestPassesUsed
+    );
+
+    const reconciledPurchasedGuestPasses = Math.max(
+      currentData.purchasedGuestPasses,
+      purchasedGuestPasses
+    );
+
+    return {
+      guests: reconciledGuests,
+      guestPassesUsed: reconciledGuestPassesUsed,
+      referralCodes: reconciledReferralCodes,
+      guestBookingIds: reconciledGuestBookingIds,
+      purchasedGuestPasses: reconciledPurchasedGuestPasses,
+    };
+  } catch (error: any) {
+    throw new Error(`Failed to reconcile guest data: ${error.message}`);
+  }
+};
+
+export const fetchProducts = async (): Promise<Product[]> => {
+  try {
+    const response = await axios.get("/api/gymmaster/v2/products", {
+      params: { api_key: GYMMASTER_API_KEY },
+    });
+
+    if (response.data.error) {
+      throw new Error(response.data.error);
+    }
+
+    return response.data.result || [];
+  } catch (error: any) {
+    throw new Error(`Failed to fetch products: ${error.message}`);
+  }
+};
+
+export const purchaseProduct = async (
+  token: string,
+  productId: number,
+  quantity: number
+): Promise<void> => {
+  try {
+    const response = await axios.post(
+      "/api/gymmaster/v2/products",
+      {
+        api_key: GYMMASTER_API_KEY,
+        token,
+        products: [{ productid: productId, quantity }],
+      },
+      {
+        headers: { "Content-Type": "application/json" },
+      }
+    );
+
+    if (response.data.error) {
+      throw new Error(response.data.error);
+    }
+  } catch (error: any) {
+    throw new Error(`Failed to purchase product: ${error.message}`);
   }
 };

@@ -35,12 +35,18 @@ import {
   fetchGuestData,
   updateGuestData,
   fetchMemberDetails,
-  updateMemberProfile,
   fetchMemberBenefitBalances,
-  logGuestPassCharge,
+  fetchProducts,
+  purchaseProduct,
   reconcileGuestData,
 } from "@/api/gymmaster";
-import { Club, Resource, Service, MemberMembership } from "@/lib/types";
+import {
+  Club,
+  Resource,
+  Service,
+  MemberMembership,
+  Product,
+} from "@/lib/types";
 import { useRouter } from "next/navigation";
 import { generateReferralCode } from "@/lib/utils";
 import { debounce } from "lodash";
@@ -75,6 +81,11 @@ const teeTimeSchema = z.object({
 export default function BookTeeTime() {
   const [isLoading, setIsLoading] = useState(false);
   const [showItinerary, setShowItinerary] = useState(false);
+  const [showPurchaseDialog, setShowPurchaseDialog] = useState(false);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [guestPassProductId, setGuestPassProductId] = useState<number | null>(
+    null
+  );
   const [clubs, setClubs] = useState<Club[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [resources, setResources] = useState<Resource[]>([]);
@@ -91,13 +102,10 @@ export default function BookTeeTime() {
   const [isFetchingServices, setIsFetchingServices] = useState(false);
   const [isFetchingSlots, setIsFetchingSlots] = useState(false);
   const [hasFetchedClubs, setHasFetchedClubs] = useState(false);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [guestPassesUsed, setGuestPassesUsed] = useState(0);
   const [availableGuestPasses, setAvailableGuestPasses] = useState<number>(0);
-  const [guestPassCharge, setGuestPassCharge] = useState<number | null>(null);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [purchasedGuestPasses, setPurchasedGuestPasses] = useState<number>(0);
   const [referralCodes, setReferralCodes] = useState<string[]>([]);
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [guestBookingIds, setGuestBookingIds] = useState<number[]>([]);
   const [activeTab, setActiveTab] = useState<"self" | "guest">("self");
   const [activeResourceTab, setActiveResourceTab] = useState<string>("");
@@ -123,7 +131,7 @@ export default function BookTeeTime() {
     bookingIds: number[],
     availableGuestPasses: number,
     guestPassesUsed: number,
-    guestPassCharge: number
+    purchasedGuestPasses: number
   ) => {
     try {
       const response = await fetch("/api/send-email", {
@@ -150,7 +158,7 @@ export default function BookTeeTime() {
           bookingIds,
           availableGuestPasses,
           guestPassesUsed,
-          guestPassCharge,
+          purchasedGuestPasses,
         }),
       });
       if (!response.ok) throw new Error("Failed to send confirmation email");
@@ -203,7 +211,6 @@ export default function BookTeeTime() {
         );
 
         let guestFreePassBenefit = null;
-        let guestPaidPassBenefit = null;
 
         if (hasGuestService) {
           const benefitBalances = await fetchMemberBenefitBalances(token);
@@ -212,46 +219,44 @@ export default function BookTeeTime() {
               benefit.benefitname.toLowerCase().includes("guest free visit") &&
               benefit.balance !== null
           );
-          guestPaidPassBenefit = benefitBalances.find(
-            (benefit: any) =>
-              benefit.benefitname.toLowerCase().includes("guest paid visit") &&
-              benefit.price !== null
-          );
 
           setAvailableGuestPasses(guestFreePassBenefit?.balance || 0);
           if (!guestFreePassBenefit && hasGuestService) {
             toast.warning("No guest pass benefits available", {
-              description: "Additional guests will be charged.",
-            });
-          }
-
-          const price = guestPaidPassBenefit?.price
-            ? parseFloat(guestPaidPassBenefit.price.replace(/[^0-9.]/g, ""))
-            : null;
-          setGuestPassCharge(price);
-          if (!price && hasGuestService) {
-            toast.warning("Unable to fetch guest pass charge", {
-              description: "Guest pass charges may not be applied correctly.",
+              description: "You may need to purchase guest passes.",
             });
           }
         } else {
           setAvailableGuestPasses(0);
-          setGuestPassCharge(null);
         }
 
-        const { guestPassesUsed, referralCodes, guestBookingIds, guests } =
-          await fetchGuestData(token);
+        const products = await fetchProducts();
+        setProducts(products);
+        const guestPassProduct = products.find((p) =>
+          p.name.toLowerCase().includes("guest pass")
+        );
+        setGuestPassProductId(guestPassProduct?.productid || null);
+
+        const {
+          guestPassesUsed,
+          referralCodes,
+          guestBookingIds,
+          guests,
+          purchasedGuestPasses,
+        } = await fetchGuestData(token);
         const reconciledData = await reconcileGuestData(
           token,
           guestPassesUsed,
           referralCodes,
           guestBookingIds,
-          guests
+          guests,
+          purchasedGuestPasses
         );
 
         setGuestPassesUsed(reconciledData.guestPassesUsed);
         setReferralCodes(reconciledData.referralCodes);
         setGuestBookingIds(reconciledData.guestBookingIds);
+        setPurchasedGuestPasses(reconciledData.purchasedGuestPasses);
         setHasFetchedClubs(true);
       } catch (err) {
         console.error("Initial Fetch Error:", err);
@@ -264,7 +269,7 @@ export default function BookTeeTime() {
     };
 
     fetchInitialData();
-  }, [router, hasFetchedClubs, clubs]);
+  }, [router, hasFetchedClubs]);
 
   useEffect(() => {
     if (!location || !membership) return;
@@ -303,8 +308,8 @@ export default function BookTeeTime() {
           );
           const guestPaidService = memberServices.find(
             (s) =>
-              s.benefitid &&
-              s.servicename.toLowerCase().includes("guest paid visit")
+              s.servicename.toLowerCase().includes("guest paid visit") &&
+              purchasedGuestPasses > 0
           );
           if (guestFreeService) {
             form.setValue("service", guestFreeService.servicename);
@@ -315,16 +320,17 @@ export default function BookTeeTime() {
             form.setValue("service", guestPaidService.servicename);
             setSelectedService(guestPaidService);
             setSelectedServiceId(guestPaidService.serviceid);
-            setSelectedBenefitId(Number(guestPaidService.benefitid));
-            toast.warning("No free guest passes available", {
-              description: "Guest PAID Visit will be used for this booking.",
-            });
+            setSelectedBenefitId(
+              guestPaidService.benefitid
+                ? Number(guestPaidService.benefitid)
+                : null
+            );
           } else {
             form.setValue("service", "");
             setSelectedService(null);
             setSelectedServiceId(null);
             setSelectedBenefitId(null);
-            toast.error("No guest services available");
+            setShowPurchaseDialog(true);
           }
         } else if (activeTab === "self" && !form.getValues("service")) {
           const defaultSelfService = memberServices.find(
@@ -358,7 +364,7 @@ export default function BookTeeTime() {
     };
 
     fetchServicesData();
-  }, [location, membership, activeTab, form, clubs]);
+  }, [location, membership, activeTab, form, clubs, purchasedGuestPasses]);
 
   useEffect(() => {
     if (
@@ -503,21 +509,34 @@ export default function BookTeeTime() {
     if (
       activeTab === "guest" &&
       selectedService &&
+      selectedService.servicename.toLowerCase().includes("guest free visit") &&
       selectedService.benefitBalance === 0
     ) {
-      toast.warning("No free passes available", {
-        description: "Contact support to purchase additional passes.",
-      });
-      form.setValue("service", "");
-      form.setValue("timeSlot", null);
-      setResources([]);
-      setTimeSlots([]);
-      setSelectedServiceId(null);
-      setSelectedBenefitId(null);
-      setSelectedService(null);
-      setActiveResourceTab("");
-      form.setValue("guest", undefined);
-      form.clearErrors("guest");
+      const guestPaidService = services.find(
+        (s) =>
+          s.servicename.toLowerCase().includes("guest paid visit") &&
+          purchasedGuestPasses > 0
+      );
+      if (guestPaidService) {
+        form.setValue("service", guestPaidService.servicename);
+        setSelectedService(guestPaidService);
+        setSelectedServiceId(guestPaidService.serviceid);
+        setSelectedBenefitId(
+          guestPaidService.benefitid ? Number(guestPaidService.benefitid) : null
+        );
+      } else {
+        setShowPurchaseDialog(true);
+        form.setValue("service", "");
+        form.setValue("timeSlot", null);
+        setResources([]);
+        setTimeSlots([]);
+        setSelectedServiceId(null);
+        setSelectedBenefitId(null);
+        setSelectedService(null);
+        setActiveResourceTab("");
+        form.setValue("guest", undefined);
+        form.clearErrors("guest");
+      }
       return;
     }
     form.setValue("timeSlot", null);
@@ -554,6 +573,91 @@ export default function BookTeeTime() {
     }
   };
 
+  const handlePurchaseGuestPass = async () => {
+    const token = localStorage.getItem("authToken");
+    if (!token || !guestPassProductId) {
+      toast.error("Unable to purchase guest pass", {
+        description: "Product not available or not logged in.",
+      });
+      return;
+    }
+
+    try {
+      setIsLoading(true);
+      await purchaseProduct(token, guestPassProductId, 1);
+      toast.success("Guest pass purchased successfully");
+
+      const newPurchasedGuestPasses = purchasedGuestPasses + 1;
+      setPurchasedGuestPasses(newPurchasedGuestPasses);
+      await updateGuestData(
+        token,
+        guestPassesUsed,
+        referralCodes,
+        guestBookingIds,
+        (await fetchGuestData(token)).guests,
+        newPurchasedGuestPasses
+      );
+
+      const club = clubs.find((c) => c.name === location);
+      if (club) {
+        const fetchedServices = await fetchServices(token, undefined, club.id);
+        const benefitBalances = await fetchMemberBenefitBalances(token);
+        const memberServices = fetchedServices.map((s) => ({
+          ...s,
+          servicename: s.servicename.trim(),
+          benefitBalance:
+            benefitBalances.find((b: any) =>
+              b.benefitname.toLowerCase().includes(s.servicename.toLowerCase())
+            )?.balance ?? null,
+        }));
+        setServices(memberServices);
+
+        const guestFreeService = memberServices.find(
+          (s) =>
+            s.benefitid &&
+            s.servicename.toLowerCase().includes("guest free visit") &&
+            s.benefitBalance !== null &&
+            s.benefitBalance > 0
+        );
+        const guestPaidService = memberServices.find(
+          (s) =>
+            s.servicename.toLowerCase().includes("guest paid visit") &&
+            newPurchasedGuestPasses > 0
+        );
+        if (guestFreeService) {
+          form.setValue("service", guestFreeService.servicename);
+          setSelectedService(guestFreeService);
+          setSelectedServiceId(guestFreeService.serviceid);
+          setSelectedBenefitId(Number(guestFreeService.benefitid));
+          setShowPurchaseDialog(false);
+          handleGuestBooking();
+        } else if (guestPaidService) {
+          form.setValue("service", guestPaidService.servicename);
+          setSelectedService(guestPaidService);
+          setSelectedServiceId(guestPaidService.serviceid);
+          setSelectedBenefitId(
+            guestPaidService.benefitid
+              ? Number(guestPaidService.benefitid)
+              : null
+          );
+          setShowPurchaseDialog(false);
+          handleGuestBooking();
+        } else {
+          toast.warning("No guest services available after purchase", {
+            description: "Please contact support.",
+          });
+        }
+      }
+    } catch (error: any) {
+      console.error("Purchase guest pass error:", error);
+      toast.error("Failed to purchase guest pass", {
+        description: error.message,
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const onSubmit = async (data: z.infer<typeof teeTimeSchema>) => {
     setIsLoading(true);
     try {
@@ -573,20 +677,26 @@ export default function BookTeeTime() {
       const selectedService = services.find(
         (s) => s.servicename === data.service
       );
-      let guestPassUsage = { free: 0, charged: 0 };
+      if (
+        isGuestService &&
+        !selectedService?.servicename.toLowerCase().includes("guest")
+      ) {
+        throw new Error("Invalid guest service selected");
+      }
+
+      const isPaidGuestVisit = selectedService?.servicename
+        .toLowerCase()
+        .includes("guest paid visit");
+
+      if (isPaidGuestVisit && purchasedGuestPasses <= 0) {
+        throw new Error("No purchased guest passes available");
+      }
+
       const newReferralCodes: string[] = [];
       const newBookingIds: number[] = [];
       const guestAssignments: number[] = [];
 
       const guestData = await fetchGuestData(token);
-      const freePassesAvailable = selectedService?.benefitBalance ?? 0;
-      if (isGuestService && data.guest && selectedService) {
-        guestPassUsage = {
-          free: freePassesAvailable > 0 ? 1 : 0,
-          charged: freePassesAvailable === 0 ? 1 : 0,
-        };
-        newReferralCodes.push(generateReferralCode());
-      }
 
       const bookingId = await addBooking(
         {
@@ -608,21 +718,25 @@ export default function BookTeeTime() {
                 },
               ]
             : [],
-          guestPassUsage,
+          guestPassUsage: {
+            free: data.service.toLowerCase().includes("guest free visit")
+              ? 1
+              : 0,
+            charged: isPaidGuestVisit ? 1 : 0,
+          },
           referralCodes: newReferralCodes,
           rid: data.timeSlot.rid,
           bookingstart: data.timeSlot.bookingstart,
           bookingend: data.timeSlot.bookingend,
-          guestPassCharge:
-            isGuestService && guestPassCharge !== null ? guestPassCharge : 0,
+          guestPassCharge: isPaidGuestVisit
+            ? parseFloat(selectedService?.price.replace(/[^0-9.]/g, "") || "0")
+            : 0,
         },
         token,
         selectedServiceId,
         data.timeSlot.rid,
         membership.id,
-        selectedBenefitId || undefined,
-        isGuestService ? availableGuestPasses : 0
-        // isGuestService && guestPassCharge !== null ? guestPassCharge : 0
+        selectedBenefitId || undefined
       );
 
       if (!Number.isInteger(bookingId) || bookingId <= 0) {
@@ -632,27 +746,13 @@ export default function BookTeeTime() {
       newBookingIds.push(bookingId);
       if (isGuestService && data.guest) {
         guestAssignments.push(bookingId);
-      }
-
-      if (
-        isGuestService &&
-        guestPassUsage.charged > 0 &&
-        guestPassCharge !== null
-      ) {
-        const totalCharge = guestPassUsage.charged * guestPassCharge;
-        await logGuestPassCharge(
-          token,
-          totalCharge,
-          `Guest PAID Visit for 1 guest on ${data.date}`
-        );
-        toast.success("Guest pass charges applied", {
-          description: `Charged $${totalCharge.toFixed(2)} for 1 extra guest.`,
-        });
+        newReferralCodes.push(generateReferralCode());
       }
 
       if (isGuestService && data.guest) {
         const updatedGuestPassesUsed =
-          guestData.guestPassesUsed + guestPassUsage.free;
+          guestData.guestPassesUsed +
+          (data.service.toLowerCase().includes("guest free visit") ? 1 : 0);
         const updatedReferralCodes = [
           ...guestData.referralCodes,
           ...newReferralCodes,
@@ -679,21 +779,21 @@ export default function BookTeeTime() {
               updatedGuestPassesUsed,
               updatedReferralCodes,
               updatedBookingIds,
-              updatedGuests
+              updatedGuests,
+              guestData.purchasedGuestPasses // Do not deduct purchasedGuestPasses
             );
-            await updateMemberProfile(token, {
-              customtext3: updatedGuestPassesUsed.toString(),
-            });
             const reconciledData = await reconcileGuestData(
               token,
               updatedGuestPassesUsed,
               updatedReferralCodes,
               updatedBookingIds,
-              updatedGuests
+              updatedGuests,
+              guestData.purchasedGuestPasses // Do not deduct purchasedGuestPasses
             );
             setGuestPassesUsed(reconciledData.guestPassesUsed);
             setReferralCodes(reconciledData.referralCodes);
             setGuestBookingIds(reconciledData.guestBookingIds);
+            setPurchasedGuestPasses(reconciledData.purchasedGuestPasses);
             break;
           } catch (error: any) {
             if (error.response?.status === 413 && retryCount < maxRetries - 1) {
@@ -717,9 +817,10 @@ export default function BookTeeTime() {
         member.email,
         data,
         newBookingIds,
-        isGuestService ? availableGuestPasses : 0,
-        isGuestService ? guestData.guestPassesUsed + guestPassUsage.free : 0,
-        isGuestService && guestPassCharge !== null ? guestPassCharge : 0
+        availableGuestPasses,
+        guestPassesUsed +
+          (data.service.toLowerCase().includes("guest free visit") ? 1 : 0),
+        purchasedGuestPasses // Send purchased passes without deduction
       );
 
       if (isGuestService && data.guest) {
@@ -763,14 +864,7 @@ export default function BookTeeTime() {
       );
       setAvailableGuestPasses(guestFreePassBenefit?.balance || 0);
 
-      toast.success("Tee time booked!", {
-        description:
-          isGuestService &&
-          guestPassUsage.charged > 0 &&
-          guestPassCharge !== null
-            ? `Charged $${(guestPassUsage.charged * guestPassCharge).toFixed(2)} for 1 extra guest.`
-            : undefined,
-      });
+      toast.success("Tee time booked!");
 
       form.reset({
         location: "",
@@ -784,6 +878,7 @@ export default function BookTeeTime() {
       setActiveTab("self");
       setActiveResourceTab("");
       setSelectedService(null);
+      setShowPurchaseDialog(false);
       setTimeout(() => {
         router.push("/dashboard/my-tee-times");
       }, 1000);
@@ -804,6 +899,13 @@ export default function BookTeeTime() {
 
   const selfServices = services.filter(
     (svc) => !svc.servicename.toLowerCase().includes("guest")
+  );
+  const guestServices = services.filter(
+    (svc) =>
+      svc.servicename.toLowerCase().includes("guest") &&
+      (svc.servicename.toLowerCase().includes("guest free visit")
+        ? svc.benefitBalance !== null && svc.benefitBalance > 0
+        : purchasedGuestPasses > 0)
   );
 
   return (
@@ -979,32 +1081,30 @@ export default function BookTeeTime() {
                               </span>
                             </div>
                           ) : (
-                            <div className="text-sm sm:text-base text-foreground">
-                              {selectedService?.servicename
-                                .toLowerCase()
-                                .includes("guest free visit") ? (
-                                <span>
-                                  Guest FREE Visit - $
-                                  {selectedService.pricedescription?.includes(
-                                    "$"
-                                  )
-                                    ? selectedService.pricedescription.split(
-                                        " "
-                                      )[1]
-                                    : "0.00"}{" "}
-                                  ({selectedService.benefitBalance} remaining)
-                                </span>
-                              ) : selectedService?.servicename
-                                  .toLowerCase()
-                                  .includes("guest paid visit") ? (
-                                <span>
-                                  Guest PAID Visit - $
-                                  {guestPassCharge?.toFixed(2)} will be charged
-                                </span>
-                              ) : (
-                                <span>No guest services available</span>
-                              )}
-                            </div>
+                            <select
+                              value={field.value}
+                              onChange={(e) => {
+                                field.onChange(e.target.value);
+                                handleServiceChange(e.target.value);
+                              }}
+                              className="w-full sm:w-64 p-2 border border-input rounded-md focus:border-primary focus:ring-primary bg-background text-foreground"
+                              disabled={!location}
+                            >
+                              <option value="">Select a guest service</option>
+                              {guestServices.map((svc) => (
+                                <option
+                                  key={svc.serviceid}
+                                  value={svc.servicename}
+                                >
+                                  {svc.pricedescription || svc.servicename}
+                                  {svc.servicename
+                                    .toLowerCase()
+                                    .includes("guest free visit")
+                                    ? ` (${svc.benefitBalance} remaining)`
+                                    : ` (${purchasedGuestPasses} purchased)`}
+                                </option>
+                              ))}
+                            </select>
                           )}
                         </FormControl>
                         <FormMessage className="text-xs sm:text-sm text-destructive" />
@@ -1185,6 +1285,73 @@ export default function BookTeeTime() {
               />
             </motion.div>
 
+            <Dialog
+              open={showPurchaseDialog}
+              onOpenChange={setShowPurchaseDialog}
+            >
+              <DialogContent className="sm:max-w-lg">
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ duration: 0.3 }}
+                >
+                  <DialogHeader>
+                    <DialogTitle className="text-xl text-foreground">
+                      No Guest Passes Available
+                    </DialogTitle>
+                    <DialogDescription className="text-muted-foreground">
+                      You have no guest passes available. Purchase additional
+                      guest passes to enable Guest Paid Visit bookings.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <p className="text-sm sm:text-base text-foreground">
+                      <strong>Available Product:</strong>{" "}
+                      {guestPassProductId
+                        ? products.find(
+                            (p) => p.productid === guestPassProductId
+                          )?.name || "Guest Pass Add-On"
+                        : "No guest pass product available"}
+                    </p>
+                    <p className="text-sm sm:text-base text-foreground">
+                      <strong>Price:</strong>{" "}
+                      {guestPassProductId
+                        ? products.find(
+                            (p) => p.productid === guestPassProductId
+                          )?.price || "Contact support"
+                        : "Contact support"}
+                    </p>
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-2 mt-4">
+                    <Button
+                      type="button"
+                      className="w-full sm:w-auto"
+                      disabled={isLoading || !guestPassProductId}
+                      onClick={handlePurchaseGuestPass}
+                    >
+                      {isLoading ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      ) : (
+                        "Purchase Guest Pass"
+                      )}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full sm:w-auto"
+                      onClick={() => {
+                        setShowPurchaseDialog(false);
+                        setActiveTab("self");
+                      }}
+                      disabled={isLoading}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </motion.div>
+              </DialogContent>
+            </Dialog>
+
             <Dialog open={showItinerary} onOpenChange={setShowItinerary}>
               <DialogTrigger asChild>
                 <Button
@@ -1264,8 +1431,8 @@ export default function BookTeeTime() {
                           : selectedService?.servicename
                                 .toLowerCase()
                                 .includes("guest paid visit")
-                            ? `$${guestPassCharge?.toFixed(2)} will be charged for 1 extra guest.`
-                            : "Guest pass charge unavailable."}
+                            ? `1 purchased pass will be used (${purchasedGuestPasses} purchased).`
+                            : "Please purchase a guest pass to continue."}
                       </p>
                     )}
                   </div>

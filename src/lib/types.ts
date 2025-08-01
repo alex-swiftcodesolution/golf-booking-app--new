@@ -106,6 +106,7 @@ export interface Member {
   customtext5?: string;
   customtext6?: string;
   customtext7?: string;
+  customtext8?: string;
 }
 
 export interface Resource {
@@ -128,6 +129,7 @@ export interface Service {
   benefitid?: number;
   pricedescription?: string;
   benefitBalance?: number | null;
+  price?: string | null;
 }
 
 export interface MemberServiceBooking {
@@ -152,4 +154,20 @@ export interface Booking {
   day: string;
   starttime: string;
   referralCodes?: string[]; // Add referralCodes to interface
+}
+
+export interface Product {
+  productid: number;
+  name: string;
+  producttype: string;
+  price: string;
+  image?: string;
+}
+
+export interface GuestData {
+  guests: { name: string; email: string; date?: string }[];
+  guestPassesUsed: number;
+  referralCodes: string[];
+  guestBookingIds: number[];
+  purchasedGuestPasses: number; // Tracks purchased guest passes
 }
