@@ -1670,7 +1670,7 @@ export default function BookTeeTime() {
                           : selectedService?.servicename
                                 .toLowerCase()
                                 .includes("guest paid visit")
-                            ? `1 purchased pass will be used (${purchasedGuestPasses} purchased).`
+                            ? `1 purchased pass will be used.`
                             : "Please purchase a guest pass to continue."}
                       </p>
                     )}
