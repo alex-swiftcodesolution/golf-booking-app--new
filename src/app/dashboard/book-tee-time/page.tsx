@@ -38,6 +38,7 @@ import {
   updateMemberProfile,
   fetchMemberBenefitBalances,
   logGuestPassCharge,
+  reconcileGuestData,
 } from "@/api/gymmaster";
 import { Club, Resource, Service, MemberMembership } from "@/lib/types";
 import { useRouter } from "next/navigation";
@@ -90,11 +91,14 @@ export default function BookTeeTime() {
   const [isFetchingServices, setIsFetchingServices] = useState(false);
   const [isFetchingSlots, setIsFetchingSlots] = useState(false);
   const [hasFetchedClubs, setHasFetchedClubs] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [guestPassesUsed, setGuestPassesUsed] = useState(0);
   const [availableGuestPasses, setAvailableGuestPasses] = useState<number>(0);
   const [guestPassCharge, setGuestPassCharge] = useState<number | null>(null);
-  const [referralCodes, setReferralCodes] = useState<string[]>([]); // eslint-disable-line @typescript-eslint/no-unused-vars
-  const [guestBookingIds, setGuestBookingIds] = useState<number[]>([]); // eslint-disable-line @typescript-eslint/no-unused-vars
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [referralCodes, setReferralCodes] = useState<string[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [guestBookingIds, setGuestBookingIds] = useState<number[]>([]);
   const [activeTab, setActiveTab] = useState<"self" | "guest">("self");
   const [activeResourceTab, setActiveResourceTab] = useState<string>("");
   const { addBooking } = useBookings();
@@ -200,8 +204,6 @@ export default function BookTeeTime() {
 
         let guestFreePassBenefit = null;
         let guestPaidPassBenefit = null;
-        let apiGuestPassesUsed = 0;
-        let totalGuestPasses = 0;
 
         if (hasGuestService) {
           const benefitBalances = await fetchMemberBenefitBalances(token);
@@ -219,8 +221,7 @@ export default function BookTeeTime() {
           setAvailableGuestPasses(guestFreePassBenefit?.balance || 0);
           if (!guestFreePassBenefit && hasGuestService) {
             toast.warning("No guest pass benefits available", {
-              description:
-                "You have no free guest passes. Additional guests will be charged.",
+              description: "Additional guests will be charged.",
             });
           }
 
@@ -233,55 +234,24 @@ export default function BookTeeTime() {
               description: "Guest pass charges may not be applied correctly.",
             });
           }
-
-          const match =
-            guestFreePassBenefit?.benefitname.match(/\((\d+)\s*sessions/);
-          totalGuestPasses = match ? parseInt(match[1], 10) : 8;
-          apiGuestPassesUsed =
-            totalGuestPasses - (guestFreePassBenefit?.balance || 0);
         } else {
           setAvailableGuestPasses(0);
           setGuestPassCharge(null);
         }
 
-        const { referralCodes, guestBookingIds, guests } =
+        const { guestPassesUsed, referralCodes, guestBookingIds, guests } =
           await fetchGuestData(token);
-        const finalGuestPassesUsed = apiGuestPassesUsed;
+        const reconciledData = await reconcileGuestData(
+          token,
+          guestPassesUsed,
+          referralCodes,
+          guestBookingIds,
+          guests
+        );
 
-        setGuestPassesUsed(finalGuestPassesUsed);
-        setReferralCodes(referralCodes || []);
-        setGuestBookingIds(guestBookingIds || []);
-
-        let retryCount = 0;
-        const maxRetries = 3;
-        while (retryCount < maxRetries) {
-          try {
-            await updateGuestData(
-              token,
-              finalGuestPassesUsed,
-              referralCodes || [],
-              guestBookingIds || [],
-              guests || []
-            );
-            await updateMemberProfile(token, {
-              customtext3: finalGuestPassesUsed.toString(),
-            });
-            break;
-          } catch (error: any) {
-            if (error.response?.status === 413 && retryCount < maxRetries - 1) {
-              console.warn(`Retry ${retryCount + 1} due to 413 error`);
-              retryCount++;
-              await new Promise((resolve) => setTimeout(resolve, 1000));
-              continue;
-            }
-            console.error("Failed to sync guest data:", error);
-            toast.error("Failed to sync initial guest data", {
-              description: error.message,
-            });
-            break;
-          }
-        }
-
+        setGuestPassesUsed(reconciledData.guestPassesUsed);
+        setReferralCodes(reconciledData.referralCodes);
+        setGuestBookingIds(reconciledData.guestBookingIds);
         setHasFetchedClubs(true);
       } catch (err) {
         console.error("Initial Fetch Error:", err);
@@ -326,31 +296,26 @@ export default function BookTeeTime() {
         if (activeTab === "guest" && !form.getValues("service")) {
           const guestFreeService = memberServices.find(
             (s) =>
+              s.benefitid &&
               s.servicename.toLowerCase().includes("guest free visit") &&
               s.benefitBalance !== null &&
               s.benefitBalance > 0
           );
-          const guestPaidService = memberServices.find((s) =>
-            s.servicename.toLowerCase().includes("guest paid visit")
+          const guestPaidService = memberServices.find(
+            (s) =>
+              s.benefitid &&
+              s.servicename.toLowerCase().includes("guest paid visit")
           );
           if (guestFreeService) {
             form.setValue("service", guestFreeService.servicename);
             setSelectedService(guestFreeService);
             setSelectedServiceId(guestFreeService.serviceid);
-            setSelectedBenefitId(
-              guestFreeService.benefitid
-                ? Number(guestFreeService.benefitid)
-                : null
-            );
+            setSelectedBenefitId(Number(guestFreeService.benefitid));
           } else if (guestPaidService) {
             form.setValue("service", guestPaidService.servicename);
             setSelectedService(guestPaidService);
             setSelectedServiceId(guestPaidService.serviceid);
-            setSelectedBenefitId(
-              guestPaidService.benefitid
-                ? Number(guestPaidService.benefitid)
-                : null
-            );
+            setSelectedBenefitId(Number(guestPaidService.benefitid));
             toast.warning("No free guest passes available", {
               description: "Guest PAID Visit will be used for this booking.",
             });
@@ -360,6 +325,26 @@ export default function BookTeeTime() {
             setSelectedServiceId(null);
             setSelectedBenefitId(null);
             toast.error("No guest services available");
+          }
+        } else if (activeTab === "self" && !form.getValues("service")) {
+          const defaultSelfService = memberServices.find(
+            (s) => !s.servicename.toLowerCase().includes("guest")
+          );
+          if (defaultSelfService) {
+            form.setValue("service", defaultSelfService.servicename);
+            setSelectedService(defaultSelfService);
+            setSelectedServiceId(defaultSelfService.serviceid);
+            setSelectedBenefitId(
+              defaultSelfService.benefitid
+                ? Number(defaultSelfService.benefitid)
+                : null
+            );
+          } else {
+            form.setValue("service", "");
+            setSelectedService(null);
+            setSelectedServiceId(null);
+            setSelectedBenefitId(null);
+            toast.error("No self services available");
           }
         }
       } catch (err) {
@@ -373,16 +358,21 @@ export default function BookTeeTime() {
     };
 
     fetchServicesData();
-  }, [location, membership, activeTab, form]);
+  }, [location, membership, activeTab, form, clubs]);
 
   useEffect(() => {
-    if (!form.getValues("service") || !date || !membership) return;
-
-    const selectedServiceName = form.getValues("service");
+    if (
+      !form.getValues("service") ||
+      !date ||
+      !membership ||
+      !selectedServiceId
+    )
+      return;
 
     const fetchSlotsData = async () => {
       try {
         setIsFetchingSlots(true);
+        const selectedServiceName = form.getValues("service");
         const selectedService = services.find(
           (s) => s.servicename === selectedServiceName
         );
@@ -411,11 +401,9 @@ export default function BookTeeTime() {
           const firstResourceWithSlots = resources.find((r: any) =>
             slots.some((slot: any) => slot.rname === r.name)
           );
-          if (firstResourceWithSlots) {
-            setActiveResourceTab(firstResourceWithSlots.name);
-          } else {
-            setActiveResourceTab("");
-          }
+          setActiveResourceTab(
+            firstResourceWithSlots ? firstResourceWithSlots.name : ""
+          );
         } else {
           setTimeSlots([]);
           setActiveResourceTab("");
@@ -431,7 +419,7 @@ export default function BookTeeTime() {
     };
 
     fetchSlotsData();
-  }, [date, services, location, clubs, membership, form]);
+  }, [date, services, location, clubs, membership, form, selectedServiceId]);
 
   const debouncedCheckAvailability = debounce(async () => {
     if (!date || !location || !form.getValues("service") || !resources.length)
@@ -512,7 +500,11 @@ export default function BookTeeTime() {
 
   const handleServiceChange = (value: string) => {
     const selectedService = services.find((s) => s.servicename === value);
-    if (selectedService && selectedService.benefitBalance === 0) {
+    if (
+      activeTab === "guest" &&
+      selectedService &&
+      selectedService.benefitBalance === 0
+    ) {
       toast.warning("No free passes available", {
         description: "Contact support to purchase additional passes.",
       });
@@ -531,8 +523,10 @@ export default function BookTeeTime() {
     form.setValue("timeSlot", null);
     setResources([]);
     setTimeSlots([]);
-    setSelectedServiceId(null);
-    setSelectedBenefitId(null);
+    setSelectedServiceId(selectedService?.serviceid || null);
+    setSelectedBenefitId(
+      selectedService?.benefitid ? Number(selectedService.benefitid) : null
+    );
     setSelectedService(selectedService || null);
     setActiveResourceTab("");
     if (activeTab === "self") {
@@ -566,7 +560,7 @@ export default function BookTeeTime() {
       const token = localStorage.getItem("authToken");
       if (!token) throw new Error("Not authenticated - no token");
       if (!selectedServiceId) throw new Error("Service ID not loaded");
-      if (!GYMMASTER_API_KEY) throw new Error("API key missing in environment");
+      if (!GYMMASTER_API_KEY) throw new Error("API key missing");
       if (!membership) throw new Error("No active membership found");
       if (!data.timeSlot) throw new Error("Please select a time slot");
       if (activeTab === "guest" && !data.guest)
@@ -583,25 +577,15 @@ export default function BookTeeTime() {
       const newReferralCodes: string[] = [];
       const newBookingIds: number[] = [];
       const guestAssignments: number[] = [];
-      let guestPassesUsedCurrent = guestPassesUsed;
 
-      // Fetch fresh guest data to ensure accuracy
       const guestData = await fetchGuestData(token);
-      guestPassesUsedCurrent = guestData.guestPassesUsed || 0;
-      const updatedGuestPassesUsed =
-        guestPassesUsedCurrent + (isGuestService && data.guest ? 1 : 0);
-
+      const freePassesAvailable = selectedService?.benefitBalance ?? 0;
       if (isGuestService && data.guest && selectedService) {
-        const freePassesAvailable =
-          selectedService.benefitBalance !== null
-            ? selectedService.benefitBalance
-            : 0;
         guestPassUsage = {
           free: freePassesAvailable > 0 ? 1 : 0,
           charged: freePassesAvailable === 0 ? 1 : 0,
         };
-        const code = generateReferralCode();
-        newReferralCodes.push(code);
+        newReferralCodes.push(generateReferralCode());
       }
 
       const bookingId = await addBooking(
@@ -637,9 +621,13 @@ export default function BookTeeTime() {
         data.timeSlot.rid,
         membership.id,
         selectedBenefitId || undefined,
-        isGuestService ? availableGuestPasses : 0,
-        isGuestService && guestPassCharge !== null ? guestPassCharge : 0
+        isGuestService ? availableGuestPasses : 0
+        // isGuestService && guestPassCharge !== null ? guestPassCharge : 0
       );
+
+      if (!Number.isInteger(bookingId) || bookingId <= 0) {
+        throw new Error(`Invalid booking ID: ${bookingId}`);
+      }
 
       newBookingIds.push(bookingId);
       if (isGuestService && data.guest) {
@@ -663,6 +651,8 @@ export default function BookTeeTime() {
       }
 
       if (isGuestService && data.guest) {
+        const updatedGuestPassesUsed =
+          guestData.guestPassesUsed + guestPassUsage.free;
         const updatedReferralCodes = [
           ...guestData.referralCodes,
           ...newReferralCodes,
@@ -684,10 +674,6 @@ export default function BookTeeTime() {
         const maxRetries = 3;
         while (retryCount < maxRetries) {
           try {
-            await updateMemberProfile(token, {
-              customtext3: updatedGuestPassesUsed.toString(),
-              customtext5: JSON.stringify(updatedBookingIds),
-            });
             await updateGuestData(
               token,
               updatedGuestPassesUsed,
@@ -695,6 +681,19 @@ export default function BookTeeTime() {
               updatedBookingIds,
               updatedGuests
             );
+            await updateMemberProfile(token, {
+              customtext3: updatedGuestPassesUsed.toString(),
+            });
+            const reconciledData = await reconcileGuestData(
+              token,
+              updatedGuestPassesUsed,
+              updatedReferralCodes,
+              updatedBookingIds,
+              updatedGuests
+            );
+            setGuestPassesUsed(reconciledData.guestPassesUsed);
+            setReferralCodes(reconciledData.referralCodes);
+            setGuestBookingIds(reconciledData.guestBookingIds);
             break;
           } catch (error: any) {
             if (error.response?.status === 413 && retryCount < maxRetries - 1) {
@@ -703,30 +702,13 @@ export default function BookTeeTime() {
               await new Promise((resolve) => setTimeout(resolve, 1000));
               continue;
             }
-            console.error(
-              "Failed to update guest data or custom fields:",
-              error
-            );
+            console.error("Failed to update guest data:", error);
             toast.error("Failed to update guest pass data", {
               description:
-                "Guest pass count may not be accurate. Please try again or contact support.",
+                "Guest pass count may not be accurate. Please contact support.",
             });
             throw error;
           }
-        }
-
-        setGuestPassesUsed(updatedGuestPassesUsed);
-        setReferralCodes(updatedReferralCodes);
-        setGuestBookingIds(updatedBookingIds);
-
-        const updatedGuestData = await fetchGuestData(token);
-        if (updatedGuestData.guestPassesUsed !== updatedGuestPassesUsed) {
-          console.error(
-            `Mismatch in guestPassesUsed: expected ${updatedGuestPassesUsed}, got ${updatedGuestData.guestPassesUsed}`
-          );
-          toast.error("Guest pass count not updated correctly", {
-            description: "Please contact support to resolve the issue.",
-          });
         }
       }
 
@@ -736,7 +718,7 @@ export default function BookTeeTime() {
         data,
         newBookingIds,
         isGuestService ? availableGuestPasses : 0,
-        isGuestService ? updatedGuestPassesUsed : 0,
+        isGuestService ? guestData.guestPassesUsed + guestPassUsage.free : 0,
         isGuestService && guestPassCharge !== null ? guestPassCharge : 0
       );
 
@@ -765,15 +747,6 @@ export default function BookTeeTime() {
         }
       }
 
-      toast.success("Tee time booked!", {
-        description:
-          isGuestService &&
-          guestPassUsage.charged > 0 &&
-          guestPassCharge !== null
-            ? `Charged $${(guestPassUsage.charged * guestPassCharge).toFixed(2)} for 1 extra guest.`
-            : undefined,
-      });
-
       const benefitBalances = await fetchMemberBenefitBalances(token);
       const updatedServices = services.map((s) => ({
         ...s,
@@ -789,6 +762,15 @@ export default function BookTeeTime() {
           benefit.balance !== null
       );
       setAvailableGuestPasses(guestFreePassBenefit?.balance || 0);
+
+      toast.success("Tee time booked!", {
+        description:
+          isGuestService &&
+          guestPassUsage.charged > 0 &&
+          guestPassCharge !== null
+            ? `Charged $${(guestPassUsage.charged * guestPassCharge).toFixed(2)} for 1 extra guest.`
+            : undefined,
+      });
 
       form.reset({
         location: "",
@@ -822,10 +804,6 @@ export default function BookTeeTime() {
 
   const selfServices = services.filter(
     (svc) => !svc.servicename.toLowerCase().includes("guest")
-  );
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const guestServices = services.filter((svc) =>
-    svc.servicename.toLowerCase().includes("guest")
   );
 
   return (
@@ -861,7 +839,7 @@ export default function BookTeeTime() {
                       <Calendar
                         className="h-5 w-5 text-foreground"
                         aria-hidden="true"
-                      />{" "}
+                      />
                       Choose Date
                     </FormLabel>
                     <FormControl>
@@ -892,7 +870,7 @@ export default function BookTeeTime() {
                       <MapPin
                         className="h-5 w-5 text-foreground"
                         aria-hidden="true"
-                      />{" "}
+                      />
                       Choose Location
                     </FormLabel>
                     <FormControl>
@@ -941,7 +919,7 @@ export default function BookTeeTime() {
                       <MapPin
                         className="h-5 w-5 text-foreground"
                         aria-hidden="true"
-                      />{" "}
+                      />
                       Choose Service
                     </FormLabel>
                     <Tabs
@@ -978,7 +956,6 @@ export default function BookTeeTime() {
                                 <option
                                   key={svc.serviceid}
                                   value={svc.servicename}
-                                  disabled={svc.benefitBalance === 0}
                                 >
                                   {svc.pricedescription || svc.servicename}
                                   {svc.benefitBalance !== null &&
@@ -1048,7 +1025,7 @@ export default function BookTeeTime() {
                   <Users
                     className="h-5 w-5 text-foreground"
                     aria-hidden="true"
-                  />{" "}
+                  />
                   Guest Details (Required)
                 </FormLabel>
                 <motion.div

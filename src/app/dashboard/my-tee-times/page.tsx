@@ -18,6 +18,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { Loader2, RefreshCw } from "lucide-react";
 import { motion } from "framer-motion";
@@ -51,6 +52,7 @@ export default function MyTeeTimes() {
   const [isLoading, setIsLoading] = useState(false);
   const [deleteBookingId, setDeleteBookingId] = useState<number | null>(null);
   const [isFetching, setIsFetching] = useState(false);
+  const [activeTab, setActiveTab] = useState<"self" | "guest">("self");
 
   const formatTime = (time: string, str?: string): string => {
     let formattedTime = time?.slice(0, 5) || "00:00";
@@ -88,12 +90,10 @@ export default function MyTeeTimes() {
         throw new Error("Not authenticated");
       }
 
-      // Decode JWT to get stable user ID
       const decodedToken = JSON.parse(atob(token.split(".")[1]));
-      const stableUserId = Number(decodedToken.id); // e.g., 268638
+      const stableUserId = Number(decodedToken.id);
       console.log("Auth Token:", token, "Stable User ID:", stableUserId);
 
-      // Fetch bookings from GymMaster API
       const bookingsRes = await axios.get("/api/gymmaster/v2/member/bookings", {
         params: {
           api_key: GYMMASTER_API_KEY,
@@ -105,7 +105,6 @@ export default function MyTeeTimes() {
         bookingsRes.data.result?.servicebookings
       );
 
-      // Fetch guest data from MongoDB
       const mongoFetchResponse = await fetch("/api/bookings/fetch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -119,7 +118,6 @@ export default function MyTeeTimes() {
       const { bookings: mongoBookings } = await mongoFetchResponse.json();
       console.log("MongoDB Bookings:", mongoBookings);
 
-      // Create a map of MongoDB bookings for quick lookup of guest data
       const guestDataMap = new Map<number, Partial<Booking>>();
       mongoBookings.forEach((b: Booking) => {
         guestDataMap.set(b.id, {
@@ -130,7 +128,6 @@ export default function MyTeeTimes() {
       });
       console.log("Guest Data Map:", Array.from(guestDataMap.entries()));
 
-      // Fetch clubs for mapping locations
       const clubs = await fetchClubs();
       const clubMap = Object.fromEntries(
         clubs.map((club) => [club.name, club.id])
@@ -172,7 +169,6 @@ export default function MyTeeTimes() {
               ? serviceMaps[clubName][b.serviceid]
               : b.servicename || "Unknown Service");
 
-          // Get guest data from MongoDB
           const mongoGuestData = guestDataMap.get(b.id) || {
             guests: [],
             guestPassUsage: { free: 0, charged: 0 },
@@ -243,9 +239,8 @@ export default function MyTeeTimes() {
       const token = localStorage.getItem("authToken");
       if (!token) throw new Error("Not authenticated");
 
-      // Decode JWT to get stable user ID
       const decodedToken = JSON.parse(atob(token.split(".")[1]));
-      const stableUserId = Number(decodedToken.id); // e.g., 268638
+      const stableUserId = Number(decodedToken.id);
       console.log("Stable User ID in handleDelete:", stableUserId);
 
       const response = await axios.post(
@@ -314,7 +309,14 @@ export default function MyTeeTimes() {
     }
   };
 
-  const sortedBookings = [...bookings].sort((a, b) => {
+  const selfBookings = bookings.filter((b) => b.guests.length === 0);
+  const guestBookings = bookings.filter((b) => b.guests.length > 0);
+  const sortedSelfBookings = [...selfBookings].sort((a, b) => {
+    const dateA = new Date(`${a.date} ${a.time.split(" - ")[0]}`);
+    const dateB = new Date(`${b.date} ${b.time.split(" - ")[0]}`);
+    return dateA.getTime() - dateB.getTime();
+  });
+  const sortedGuestBookings = [...guestBookings].sort((a, b) => {
     const dateA = new Date(`${a.date} ${a.time.split(" - ")[0]}`);
     const dateB = new Date(`${b.date} ${b.time.split(" - ")[0]}`);
     return dateA.getTime() - dateB.getTime();
@@ -354,276 +356,529 @@ export default function MyTeeTimes() {
           </Button>
         </div>
 
-        {isFetching ? (
-          <div className="space-y-2">
-            {Array(3)
-              .fill(null)
-              .map((_, i) => (
-                <div key={i} className="h-12 bg-muted animate-pulse rounded" />
-              ))}
-          </div>
-        ) : sortedBookings.length === 0 ? (
-          <p className="text-center text-muted-foreground">
-            You have no booked tee times.
-          </p>
-        ) : (
-          <div className="overflow-x-auto">
-            {/* Desktop Table */}
-            <Table className="hidden sm:table w-full">
-              <TableHeader>
-                <TableRow className="bg-muted">
-                  <TableHead className="text-sm font-semibold text-foreground">
-                    Date
-                  </TableHead>
-                  <TableHead className="text-sm font-semibold text-foreground">
-                    Time
-                  </TableHead>
-                  <TableHead className="text-sm font-semibold text-foreground">
-                    Location
-                  </TableHead>
-                  <TableHead className="text-sm font-semibold text-foreground">
-                    Service
-                  </TableHead>
-                  <TableHead className="text-sm font-semibold text-foreground">
-                    Bay
-                  </TableHead>
-                  <TableHead className="text-sm font-semibold text-foreground">
-                    Guests
-                  </TableHead>
-                  <TableHead className="text-sm font-semibold text-foreground">
-                    Guest Passes
-                  </TableHead>
-                  <TableHead className="text-sm font-semibold text-foreground">
-                    Actions
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {sortedBookings.map((booking, index) => (
-                  <motion.tr
-                    key={booking.id}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.3, delay: index * 0.1 }}
-                    className="border-b border-input"
-                  >
-                    <TableCell className="text-sm text-foreground">
-                      {booking.date}
-                    </TableCell>
-                    <TableCell className="text-sm text-foreground">
-                      {booking.time}
-                    </TableCell>
-                    <TableCell className="text-sm text-foreground">
-                      {booking.location}
-                    </TableCell>
-                    <TableCell className="text-sm text-foreground">
-                      {booking.servicename}
-                    </TableCell>
-                    <TableCell className="text-sm text-foreground">
-                      {booking.bay}
-                    </TableCell>
-                    <TableCell className="text-sm text-foreground">
-                      {booking.guests.length > 0
-                        ? booking.guests
-                            .map((g) => g.name || g.email)
-                            .join(", ")
-                        : "None"}
-                    </TableCell>
-                    <TableCell className="text-sm text-foreground">
-                      {booking.guestPassUsage.free > 0 ||
-                      booking.guestPassUsage.charged > 0
-                        ? `${booking.guestPassUsage.free} free, ${booking.guestPassUsage.charged} charged`
-                        : "None"}
-                    </TableCell>
-                    <TableCell>
-                      <Dialog
-                        open={deleteBookingId === booking.id}
-                        onOpenChange={(open) =>
-                          !open && setDeleteBookingId(null)
-                        }
-                      >
-                        <DialogTrigger asChild>
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => setDeleteBookingId(booking.id)}
-                            aria-label={`Cancel tee time for ${booking.date} at ${booking.time}`}
-                          >
-                            Cancel
-                          </Button>
-                        </DialogTrigger>
-                        <DialogContent>
-                          <DialogHeader>
-                            <DialogTitle className="text-foreground">
-                              Confirm Cancellation
-                            </DialogTitle>
-                            <DialogDescription className="text-muted-foreground">
-                              Are you sure you want to cancel the booking for{" "}
-                              {booking.date} at {booking.time}?
-                            </DialogDescription>
-                          </DialogHeader>
-                          <DialogFooter className="flex flex-col sm:flex-row gap-2">
-                            <Button
-                              variant="outline"
-                              className="w-full sm:w-auto"
-                              onClick={() => setDeleteBookingId(null)}
-                              disabled={isLoading}
-                            >
-                              Cancel
-                            </Button>
-                            <Button
-                              variant="destructive"
-                              className="w-full sm:w-auto"
-                              onClick={() => handleDelete(booking.id)}
-                              disabled={isLoading}
-                            >
-                              {isLoading ? (
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                              ) : (
-                                "Confirm"
-                              )}
-                            </Button>
-                          </DialogFooter>
-                        </DialogContent>
-                      </Dialog>
-                    </TableCell>
-                  </motion.tr>
-                ))}
-              </TableBody>
-            </Table>
+        <Tabs
+          defaultValue="self"
+          value={activeTab}
+          onValueChange={(value) => setActiveTab(value as "self" | "guest")}
+          className="w-full"
+        >
+          <TabsList className="grid w-full sm:w-64 grid-cols-2 mb-4">
+            <TabsTrigger value="self">Self</TabsTrigger>
+            <TabsTrigger value="guest">Guest</TabsTrigger>
+          </TabsList>
 
-            {/* Mobile Cards */}
-            <div className="sm:hidden space-y-4">
-              {sortedBookings.map((booking, index) => (
-                <motion.div
-                  key={booking.id}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.3, delay: index * 0.1 }}
-                  className="border border-input rounded-lg p-4 shadow-md bg-background hover:shadow-lg transition-shadow duration-200"
-                >
-                  <div className="grid grid-cols-1 gap-2">
-                    <div className="flex flex-col items-start justify-start gap-0">
-                      <span className="text-sm font-semibold text-muted-foreground">
+          {/* Self Bookings Tab */}
+          <TabsContent value="self">
+            {isFetching ? (
+              <div className="space-y-2">
+                {Array(3)
+                  .fill(null)
+                  .map((_, i) => (
+                    <div
+                      key={i}
+                      className="h-12 bg-muted animate-pulse rounded"
+                    />
+                  ))}
+              </div>
+            ) : sortedSelfBookings.length === 0 ? (
+              <p className="text-center text-muted-foreground">
+                You have no self-booked tee times.
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                {/* Desktop Table */}
+                <Table className="hidden sm:table w-full">
+                  <TableHeader>
+                    <TableRow className="bg-muted">
+                      <TableHead className="text-sm font-semibold text-foreground">
                         Date
-                      </span>
-                      <span className="text-sm text-foreground">
-                        {booking.date}
-                      </span>
-                    </div>
-                    <div className="flex flex-col items-start justify-start gap-0">
-                      <span className="text-sm font-semibold text-muted-foreground">
+                      </TableHead>
+                      <TableHead className="text-sm font-semibold text-foreground">
                         Time
-                      </span>
-                      <span className="text-sm text-foreground">
-                        {booking.time}
-                      </span>
-                    </div>
-                    <div className="flex flex-col items-start justify-start gap-0">
-                      <span className="text-sm font-semibold text-muted-foreground">
+                      </TableHead>
+                      <TableHead className="text-sm font-semibold text-foreground">
                         Location
-                      </span>
-                      <span className="text-sm text-foreground">
-                        {booking.location}
-                      </span>
-                    </div>
-                    <div className="flex flex-col items-start justify-start gap-0">
-                      <span className="text-sm font-semibold text-muted-foreground">
+                      </TableHead>
+                      <TableHead className="text-sm font-semibold text-foreground">
                         Service
-                      </span>
-                      <span className="text-sm text-foreground">
-                        {booking.servicename}
-                      </span>
-                    </div>
-                    <div className="flex flex-col items-start justify-start gap-0">
-                      <span className="text-sm font-semibold text-muted-foreground">
+                      </TableHead>
+                      <TableHead className="text-sm font-semibold text-foreground">
                         Bay
-                      </span>
-                      <span className="text-sm text-foreground">
-                        {booking.bay}
-                      </span>
-                    </div>
-                    <div className="flex flex-col items-start justify-start gap-0">
-                      <span className="text-sm font-semibold text-muted-foreground">
-                        Guests
-                      </span>
-                      <span className="text-sm text-foreground">
-                        {booking.guests.length > 0
-                          ? booking.guests
-                              .map((g) => g.name || g.email)
-                              .join(", ")
-                          : "None"}
-                      </span>
-                    </div>
-                    <div className="flex flex-col items-start justify-start gap-0">
-                      <span className="text-sm font-semibold text-muted-foreground">
-                        Guest Passes
-                      </span>
-                      <span className="text-sm text-foreground">
-                        {booking.guestPassUsage.free > 0 ||
-                        booking.guestPassUsage.charged > 0
-                          ? `${booking.guestPassUsage.free} free, ${booking.guestPassUsage.charged} charged`
-                          : "None"}
-                      </span>
-                    </div>
-                    <div className="flex justify-end mt-2">
-                      <Dialog
-                        open={deleteBookingId === booking.id}
-                        onOpenChange={(open) =>
-                          !open && setDeleteBookingId(null)
-                        }
+                      </TableHead>
+                      <TableHead className="text-sm font-semibold text-foreground">
+                        Actions
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {sortedSelfBookings.map((booking, index) => (
+                      <motion.tr
+                        key={booking.id}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.3, delay: index * 0.1 }}
+                        className="border-b border-input"
                       >
-                        <DialogTrigger asChild>
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            onClick={() => setDeleteBookingId(booking.id)}
-                            aria-label={`Cancel tee time for ${booking.date} at ${booking.time}`}
+                        <TableCell className="text-sm text-foreground">
+                          {booking.date}
+                        </TableCell>
+                        <TableCell className="text-sm text-foreground">
+                          {booking.time}
+                        </TableCell>
+                        <TableCell className="text-sm text-foreground">
+                          {booking.location}
+                        </TableCell>
+                        <TableCell className="text-sm text-foreground">
+                          {booking.servicename}
+                        </TableCell>
+                        <TableCell className="text-sm text-foreground">
+                          {booking.bay}
+                        </TableCell>
+                        <TableCell>
+                          <Dialog
+                            open={deleteBookingId === booking.id}
+                            onOpenChange={(open) =>
+                              !open && setDeleteBookingId(null)
+                            }
                           >
-                            Cancel
-                          </Button>
-                        </DialogTrigger>
-                        <DialogContent>
-                          <DialogHeader>
-                            <DialogTitle className="text-foreground">
-                              Confirm Cancellation
-                            </DialogTitle>
-                            <DialogDescription className="text-muted-foreground">
-                              Are you sure you want to cancel the booking for{" "}
-                              {booking.date} at {booking.time}?
-                            </DialogDescription>
-                          </DialogHeader>
-                          <DialogFooter className="flex flex-col sm:flex-row gap-2">
-                            <Button
-                              variant="outline"
-                              className="w-full sm:w-auto"
-                              onClick={() => setDeleteBookingId(null)}
-                              disabled={isLoading}
-                            >
-                              Cancel
-                            </Button>
-                            <Button
-                              variant="destructive"
-                              className="w-full sm:w-auto"
-                              onClick={() => handleDelete(booking.id)}
-                              disabled={isLoading}
-                            >
-                              {isLoading ? (
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                              ) : (
-                                "Confirm"
-                              )}
-                            </Button>
-                          </DialogFooter>
-                        </DialogContent>
-                      </Dialog>
-                    </div>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-          </div>
-        )}
+                            <DialogTrigger asChild>
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => setDeleteBookingId(booking.id)}
+                                aria-label={`Cancel tee time for ${booking.date} at ${booking.time}`}
+                              >
+                                Cancel
+                              </Button>
+                            </DialogTrigger>
+                            <DialogContent>
+                              <DialogHeader>
+                                <DialogTitle className="text-foreground">
+                                  Confirm Cancellation
+                                </DialogTitle>
+                                <DialogDescription className="text-muted-foreground">
+                                  Are you sure you want to cancel the booking
+                                  for {booking.date} at {booking.time}?
+                                </DialogDescription>
+                              </DialogHeader>
+                              <DialogFooter className="flex flex-col sm:flex-row gap-2">
+                                <Button
+                                  variant="outline"
+                                  className="w-full sm:w-auto"
+                                  onClick={() => setDeleteBookingId(null)}
+                                  disabled={isLoading}
+                                >
+                                  Cancel
+                                </Button>
+                                <Button
+                                  variant="destructive"
+                                  className="w-full sm:w-auto"
+                                  onClick={() => handleDelete(booking.id)}
+                                  disabled={isLoading}
+                                >
+                                  {isLoading ? (
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                  ) : (
+                                    "Confirm"
+                                  )}
+                                </Button>
+                              </DialogFooter>
+                            </DialogContent>
+                          </Dialog>
+                        </TableCell>
+                      </motion.tr>
+                    ))}
+                  </TableBody>
+                </Table>
+
+                {/* Mobile Cards */}
+                <div className="sm:hidden space-y-4">
+                  {sortedSelfBookings.map((booking, index) => (
+                    <motion.div
+                      key={booking.id}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.3, delay: index * 0.1 }}
+                      className="border border-input rounded-lg p-4 shadow-md bg-background hover:shadow-lg transition-shadow duration-200"
+                    >
+                      <div className="grid grid-cols-1 gap-2">
+                        <div className="flex flex-col items-start justify-start gap-0">
+                          <span className="text-sm font-semibold text-muted-foreground">
+                            Date
+                          </span>
+                          <span className="text-sm text-foreground">
+                            {booking.date}
+                          </span>
+                        </div>
+                        <div className="flex flex-col items-start justify-start gap-0">
+                          <span className="text-sm font-semibold text-muted-foreground">
+                            Time
+                          </span>
+                          <span className="text-sm text-foreground">
+                            {booking.time}
+                          </span>
+                        </div>
+                        <div className="flex flex-col items-start justify-start gap-0">
+                          <span className="text-sm font-semibold text-muted-foreground">
+                            Location
+                          </span>
+                          <span className="text-sm text-foreground">
+                            {booking.location}
+                          </span>
+                        </div>
+                        <div className="flex flex-col items-start justify-start gap-0">
+                          <span className="text-sm font-semibold text-muted-foreground">
+                            Service
+                          </span>
+                          <span className="text-sm text-foreground">
+                            {booking.servicename}
+                          </span>
+                        </div>
+                        <div className="flex flex-col items-start justify-start gap-0">
+                          <span className="text-sm font-semibold text-muted-foreground">
+                            Bay
+                          </span>
+                          <span className="text-sm text-foreground">
+                            {booking.bay}
+                          </span>
+                        </div>
+                        <div className="flex justify-end mt-2">
+                          <Dialog
+                            open={deleteBookingId === booking.id}
+                            onOpenChange={(open) =>
+                              !open && setDeleteBookingId(null)
+                            }
+                          >
+                            <DialogTrigger asChild>
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => setDeleteBookingId(booking.id)}
+                                aria-label={`Cancel tee time for ${booking.date} at ${booking.time}`}
+                              >
+                                Cancel
+                              </Button>
+                            </DialogTrigger>
+                            <DialogContent>
+                              <DialogHeader>
+                                <DialogTitle className="text-foreground">
+                                  Confirm Cancellation
+                                </DialogTitle>
+                                <DialogDescription className="text-muted-foreground">
+                                  Are you sure you want to cancel the booking
+                                  for {booking.date} at {booking.time}?
+                                </DialogDescription>
+                              </DialogHeader>
+                              <DialogFooter className="flex flex-col sm:flex-row gap-2">
+                                <Button
+                                  variant="outline"
+                                  className="w-full sm:w-auto"
+                                  onClick={() => setDeleteBookingId(null)}
+                                  disabled={isLoading}
+                                >
+                                  Cancel
+                                </Button>
+                                <Button
+                                  variant="destructive"
+                                  className="w-full sm:w-auto"
+                                  onClick={() => handleDelete(booking.id)}
+                                  disabled={isLoading}
+                                >
+                                  {isLoading ? (
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                  ) : (
+                                    "Confirm"
+                                  )}
+                                </Button>
+                              </DialogFooter>
+                            </DialogContent>
+                          </Dialog>
+                        </div>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </TabsContent>
+
+          {/* Guest Bookings Tab */}
+          <TabsContent value="guest">
+            {isFetching ? (
+              <div className="space-y-2">
+                {Array(3)
+                  .fill(null)
+                  .map((_, i) => (
+                    <div
+                      key={i}
+                      className="h-12 bg-muted animate-pulse rounded"
+                    />
+                  ))}
+              </div>
+            ) : sortedGuestBookings.length === 0 ? (
+              <p className="text-center text-muted-foreground">
+                You have no guest-booked tee times.
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                {/* Desktop Table */}
+                <Table className="hidden sm:table w-full">
+                  <TableHeader>
+                    <TableRow className="bg-muted">
+                      <TableHead className="text-sm font-semibold text-foreground">
+                        Date
+                      </TableHead>
+                      <TableHead className="text-sm font-semibold text-foreground">
+                        Time
+                      </TableHead>
+                      <TableHead className="text-sm font-semibold text-foreground">
+                        Location
+                      </TableHead>
+                      <TableHead className="text-sm font-semibold text-foreground">
+                        Service
+                      </TableHead>
+                      <TableHead className="text-sm font-semibold text-foreground">
+                        Bay
+                      </TableHead>
+                      <TableHead className="text-sm font-semibold text-foreground">
+                        Guests
+                      </TableHead>
+                      <TableHead className="text-sm font-semibold text-foreground">
+                        Guest Passes
+                      </TableHead>
+                      <TableHead className="text-sm font-semibold text-foreground">
+                        Actions
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {sortedGuestBookings.map((booking, index) => (
+                      <motion.tr
+                        key={booking.id}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.3, delay: index * 0.1 }}
+                        className="border-b border-input"
+                      >
+                        <TableCell className="text-sm text-foreground">
+                          {booking.date}
+                        </TableCell>
+                        <TableCell className="text-sm text-foreground">
+                          {booking.time}
+                        </TableCell>
+                        <TableCell className="text-sm text-foreground">
+                          {booking.location}
+                        </TableCell>
+                        <TableCell className="text-sm text-foreground">
+                          {booking.servicename}
+                        </TableCell>
+                        <TableCell className="text-sm text-foreground">
+                          {booking.bay}
+                        </TableCell>
+                        <TableCell className="text-sm text-foreground">
+                          {booking.guests.length > 0
+                            ? booking.guests
+                                .map((g) => g.name || g.email)
+                                .join(", ")
+                            : "None"}
+                        </TableCell>
+                        <TableCell className="text-sm text-foreground">
+                          {booking.guestPassUsage.free > 0 ||
+                          booking.guestPassUsage.charged > 0
+                            ? `${booking.guestPassUsage.free} free, ${booking.guestPassUsage.charged} charged`
+                            : "None"}
+                        </TableCell>
+                        <TableCell>
+                          <Dialog
+                            open={deleteBookingId === booking.id}
+                            onOpenChange={(open) =>
+                              !open && setDeleteBookingId(null)
+                            }
+                          >
+                            <DialogTrigger asChild>
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => setDeleteBookingId(booking.id)}
+                                aria-label={`Cancel tee time for ${booking.date} at ${booking.time}`}
+                              >
+                                Cancel
+                              </Button>
+                            </DialogTrigger>
+                            <DialogContent>
+                              <DialogHeader>
+                                <DialogTitle className="text-foreground">
+                                  Confirm Cancellation
+                                </DialogTitle>
+                                <DialogDescription className="text-muted-foreground">
+                                  Are you sure you want to cancel the booking
+                                  for {booking.date} at {booking.time}?
+                                </DialogDescription>
+                              </DialogHeader>
+                              <DialogFooter className="flex flex-col sm:flex-row gap-2">
+                                <Button
+                                  variant="outline"
+                                  className="w-full sm:w-auto"
+                                  onClick={() => setDeleteBookingId(null)}
+                                  disabled={isLoading}
+                                >
+                                  Cancel
+                                </Button>
+                                <Button
+                                  variant="destructive"
+                                  className="w-full sm:w-auto"
+                                  onClick={() => handleDelete(booking.id)}
+                                  disabled={isLoading}
+                                >
+                                  {isLoading ? (
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                  ) : (
+                                    "Confirm"
+                                  )}
+                                </Button>
+                              </DialogFooter>
+                            </DialogContent>
+                          </Dialog>
+                        </TableCell>
+                      </motion.tr>
+                    ))}
+                  </TableBody>
+                </Table>
+
+                {/* Mobile Cards */}
+                <div className="sm:hidden space-y-4">
+                  {sortedGuestBookings.map((booking, index) => (
+                    <motion.div
+                      key={booking.id}
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.3, delay: index * 0.1 }}
+                      className="border border-input rounded-lg p-4 shadow-md bg-background hover:shadow-lg transition-shadow duration-200"
+                    >
+                      <div className="grid grid-cols-1 gap-2">
+                        <div className="flex flex-col items-start justify-start gap-0">
+                          <span className="text-sm font-semibold text-muted-foreground">
+                            Date
+                          </span>
+                          <span className="text-sm text-foreground">
+                            {booking.date}
+                          </span>
+                        </div>
+                        <div className="flex flex-col items-start justify-start gap-0">
+                          <span className="text-sm font-semibold text-muted-foreground">
+                            Time
+                          </span>
+                          <span className="text-sm text-foreground">
+                            {booking.time}
+                          </span>
+                        </div>
+                        <div className="flex flex-col items-start justify-start gap-0">
+                          <span className="text-sm font-semibold text-muted-foreground">
+                            Location
+                          </span>
+                          <span className="text-sm text-foreground">
+                            {booking.location}
+                          </span>
+                        </div>
+                        <div className="flex flex-col items-start justify-start gap-0">
+                          <span className="text-sm font-semibold text-muted-foreground">
+                            Service
+                          </span>
+                          <span className="text-sm text-foreground">
+                            {booking.servicename}
+                          </span>
+                        </div>
+                        <div className="flex flex-col items-start justify-start gap-0">
+                          <span className="text-sm font-semibold text-muted-foreground">
+                            Bay
+                          </span>
+                          <span className="text-sm text-foreground">
+                            {booking.bay}
+                          </span>
+                        </div>
+                        <div className="flex flex-col items-start justify-start gap-0">
+                          <span className="text-sm font-semibold text-muted-foreground">
+                            Guests
+                          </span>
+                          <span className="text-sm text-foreground">
+                            {booking.guests.length > 0
+                              ? booking.guests
+                                  .map((g) => g.name || g.email)
+                                  .join(", ")
+                              : "None"}
+                          </span>
+                        </div>
+                        <div className="flex flex-col items-start justify-start gap-0">
+                          <span className="text-sm font-semibold text-muted-foreground">
+                            Guest Passes
+                          </span>
+                          <span className="text-sm text-foreground">
+                            {booking.guestPassUsage.free > 0 ||
+                            booking.guestPassUsage.charged > 0
+                              ? `${booking.guestPassUsage.free} free, ${booking.guestPassUsage.charged} charged`
+                              : "None"}
+                          </span>
+                        </div>
+                        <div className="flex justify-end mt-2">
+                          <Dialog
+                            open={deleteBookingId === booking.id}
+                            onOpenChange={(open) =>
+                              !open && setDeleteBookingId(null)
+                            }
+                          >
+                            <DialogTrigger asChild>
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => setDeleteBookingId(booking.id)}
+                                aria-label={`Cancel tee time for ${booking.date} at ${booking.time}`}
+                              >
+                                Cancel
+                              </Button>
+                            </DialogTrigger>
+                            <DialogContent>
+                              <DialogHeader>
+                                <DialogTitle className="text-foreground">
+                                  Confirm Cancellation
+                                </DialogTitle>
+                                <DialogDescription className="text-muted-foreground">
+                                  Are you sure you want to cancel the booking
+                                  for {booking.date} at {booking.time}?
+                                </DialogDescription>
+                              </DialogHeader>
+                              <DialogFooter className="flex flex-col sm:flex-row gap-2">
+                                <Button
+                                  variant="outline"
+                                  className="w-full sm:w-auto"
+                                  onClick={() => setDeleteBookingId(null)}
+                                  disabled={isLoading}
+                                >
+                                  Cancel
+                                </Button>
+                                <Button
+                                  variant="destructive"
+                                  className="w-full sm:w-auto"
+                                  onClick={() => handleDelete(booking.id)}
+                                  disabled={isLoading}
+                                >
+                                  {isLoading ? (
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                  ) : (
+                                    "Confirm"
+                                  )}
+                                </Button>
+                              </DialogFooter>
+                            </DialogContent>
+                          </Dialog>
+                        </div>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
       </motion.div>
     </div>
   );

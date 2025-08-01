@@ -436,25 +436,22 @@ export const updateMemberProfile = async (
   data: Partial<Member>
 ): Promise<string> => {
   try {
-    if (!GYMMASTER_API_KEY) {
-      throw new Error("GYMMASTER_API_KEY is missing in environment");
+    if (!process.env.NEXT_PUBLIC_GYMMASTER_API_KEY) {
+      throw new Error("GYMMASTER_API_KEY is missing");
     }
-
     const formData = new FormData();
-    formData.append("api_key", GYMMASTER_API_KEY);
+    formData.append("api_key", process.env.NEXT_PUBLIC_GYMMASTER_API_KEY);
     formData.append("token", token);
     Object.entries(data).forEach(([key, value]) => {
       if (value != null) {
         formData.append(key, String(value));
       }
     });
-
     const res = await axios.post<{ result: string; error: string | null }>(
       "/api/gymmaster/v1/member/profile",
       formData,
       { headers: { "Content-Type": "multipart/form-data" } }
     );
-
     if (res.data.error) throw new Error(res.data.error);
     return res.data.result;
   } catch (error) {
@@ -662,57 +659,56 @@ export const fetchGuestData = async (
 }> => {
   try {
     const profile = await fetchMemberDetails(token);
-
     let guestPassesUsed = 0;
     let referralCodes: string[] = [];
     let guestBookingIds: number[] = [];
     let guests: { name: string; email: string; date?: string }[] = [];
     let referringMemberName = "";
-
     try {
       guestPassesUsed = profile.customtext3
         ? Number(JSON.parse(profile.customtext3))
         : 0;
+      if (isNaN(guestPassesUsed)) throw new Error("Invalid guestPassesUsed");
     } catch (e) {
-      console.error("Error parsing customtext3 (guestPassesUsed):", e);
+      console.error("Error parsing customtext3:", e);
+      guestPassesUsed = 0;
     }
-
     try {
-      if (profile.customtext4) {
-        const parsed = JSON.parse(profile.customtext4);
-        referralCodes = Array.isArray(parsed) ? parsed : [profile.customtext4];
+      referralCodes = profile.customtext4
+        ? JSON.parse(profile.customtext4)
+        : [];
+      if (!Array.isArray(referralCodes)) {
+        referralCodes = [profile.customtext4];
       }
     } catch (e) {
-      console.error("Error parsing customtext4 (referralCodes):", e);
+      console.error("Error parsing customtext4:", e);
       referralCodes = profile.customtext4 ? [profile.customtext4] : [];
     }
-
     try {
-      if (profile.customtext5) {
-        const parsed = JSON.parse(profile.customtext5);
-        guestBookingIds = Array.isArray(parsed)
-          ? parsed
-              .filter((id: any) => Number.isInteger(id) && id > 0)
-              .map(Number)
-          : [];
-      }
+      guestBookingIds = profile.customtext5
+        ? JSON.parse(profile.customtext5)
+        : [];
+      guestBookingIds = guestBookingIds
+        .filter((id: any) => Number.isInteger(id) && id > 0)
+        .map(Number);
     } catch (e) {
-      console.error("Error parsing customtext5 (guestBookingIds):", e);
+      console.error("Error parsing customtext5:", e);
       guestBookingIds = [];
     }
-
     try {
       guests = profile.customtext6 ? JSON.parse(profile.customtext6) : [];
+      if (!Array.isArray(guests)) {
+        guests = [];
+      }
     } catch (e) {
-      console.error("Error parsing customtext6 (guests):", e);
+      console.error("Error parsing customtext6:", e);
+      guests = [];
     }
-
     try {
       referringMemberName = profile.customtext2 || "";
     } catch (e) {
-      console.error("Error parsing customtext2 (referringMemberName):", e);
+      console.error("Error parsing customtext2:", e);
     }
-
     return {
       guestPassesUsed,
       referralCodes,
@@ -740,72 +736,23 @@ export const updateGuestData = async (
   guests: { name: string; email: string; date?: string }[]
 ): Promise<void> => {
   try {
-    // Fetch existing guest data to merge
-    const existingData = await fetchGuestData(token);
-
-    const updatedGuestPassesUsed =
-      guestPassesUsed ?? existingData.guestPassesUsed;
-    const updatedReferralCodes =
-      referralCodes.length > 0
-        ? [...new Set([...existingData.referralCodes, ...referralCodes])]
-        : existingData.referralCodes;
-    // Filter out invalid booking IDs (null, 0, or non-positive)
-    const validGuestBookingIds = guestBookingIds.filter(
-      (id) => Number.isInteger(id) && id > 0
-    );
-    const updatedBookingIds =
-      validGuestBookingIds.length > 0
-        ? [
-            ...new Set([
-              ...existingData.guestBookingIds,
-              ...validGuestBookingIds,
-            ]),
-          ]
-        : existingData.guestBookingIds;
-    const updatedGuests =
-      guests.length > 0
-        ? [
-            ...existingData.guests,
-            ...guests.filter(
-              (newGuest) =>
-                !existingData.guests.some(
-                  (existingGuest) =>
-                    existingGuest.email === newGuest.email &&
-                    existingGuest.name === newGuest.name &&
-                    existingGuest.date === newGuest.date
-                )
-            ),
-          ]
-        : existingData.guests;
-
-    // Optimize payload
     const formData = new FormData();
-    formData.append("api_key", GYMMASTER_API_KEY || "");
+    formData.append("api_key", process.env.NEXT_PUBLIC_GYMMASTER_API_KEY || "");
     formData.append("token", token);
-    formData.append("customtext3", JSON.stringify(updatedGuestPassesUsed));
-    formData.append("customtext4", JSON.stringify(updatedReferralCodes));
-    formData.append("customtext5", JSON.stringify(updatedBookingIds));
-    formData.append("customtext6", JSON.stringify(updatedGuests));
-
-    // Log payload size for debugging
-    const payloadSize = JSON.stringify(Object.fromEntries(formData)).length;
-    console.log("Payload size:", payloadSize);
-
-    // Update profile
-    await axios.post("/api/gymmaster/v1/member/profile", formData, {
-      headers: { "Content-Type": "multipart/form-data" },
-    });
-
-    console.log("Updated guest data fields:", {
-      customtext3: updatedGuestPassesUsed,
-      customtext4: updatedReferralCodes,
-      customtext5: updatedBookingIds,
-      customtext6: updatedGuests,
-    });
+    formData.append("customtext3", JSON.stringify(guestPassesUsed));
+    formData.append("customtext4", JSON.stringify(referralCodes));
+    formData.append("customtext5", JSON.stringify(guestBookingIds));
+    formData.append("customtext6", JSON.stringify(guests));
+    const res = await axios.post<{ result: string; error: string | null }>(
+      "/api/gymmaster/v1/member/profile",
+      formData,
+      { headers: { "Content-Type": "multipart/form-data" } }
+    );
+    if (res.data.error) throw new Error(res.data.error);
   } catch (error: any) {
     console.error("Update guest data error:", error);
     if (error.response?.status === 413) {
-      console.error("Payload too large. Consider reducing data size.");
+      throw new Error("Payload too large");
     }
     throw new Error("Failed to update guest data");
   }
@@ -1177,5 +1124,52 @@ export const logGuestPassCharge = async (
   } catch (error) {
     console.error("Log guest pass charge error:", error);
     throw new Error(`Failed to log guest pass charge: ${String(error)}`);
+  }
+};
+
+export const reconcileGuestData = async (
+  token: string,
+  localGuestPassesUsed: number,
+  localReferralCodes: string[],
+  localGuestBookingIds: number[],
+  localGuests: { name: string; email: string; date?: string }[]
+): Promise<{
+  guestPassesUsed: number;
+  referralCodes: string[];
+  guestBookingIds: number[];
+  guests: { name: string; email: string; date?: string }[];
+}> => {
+  try {
+    const apiData = await fetchGuestData(token);
+    const reconciledData = {
+      guestPassesUsed: Math.max(apiData.guestPassesUsed, localGuestPassesUsed),
+      referralCodes: Array.from(
+        new Set([...apiData.referralCodes, ...localReferralCodes])
+      ),
+      guestBookingIds: Array.from(
+        new Set([...apiData.guestBookingIds, ...localGuestBookingIds])
+      ).filter((id): id is number => Number.isInteger(id) && id > 0),
+      guests: Array.from(
+        new Set(
+          [...apiData.guests, ...localGuests].map(
+            (g) => `${g.email}:${g.name}:${g.date || ""}`
+          )
+        )
+      ).map((key) => {
+        const [email, name, date] = key.split(":");
+        return { email, name, date: date || undefined };
+      }),
+    };
+    await updateGuestData(
+      token,
+      reconciledData.guestPassesUsed,
+      reconciledData.referralCodes,
+      reconciledData.guestBookingIds,
+      reconciledData.guests
+    );
+    return reconciledData;
+  } catch (error) {
+    console.error("Reconcile guest data error:", error);
+    throw new Error("Failed to reconcile guest data");
   }
 };

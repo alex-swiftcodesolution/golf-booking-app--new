@@ -4,8 +4,8 @@ import { createContext, useContext, useState, ReactNode } from "react";
 import axios from "axios";
 import {
   fetchGuestData,
-  updateGuestData,
   updateMemberProfile,
+  reconcileGuestData,
 } from "@/api/gymmaster";
 
 export interface Booking {
@@ -35,8 +35,7 @@ interface BookingContextType {
     resourceId: number,
     membershipId: number,
     benefitId?: number,
-    availableGuestPasses?: number,
-    guestPassCharge?: number | null
+    availableGuestPasses?: number
   ) => Promise<number>;
   deleteBooking: (id: number, token: string) => Promise<void>;
   updateBooking: (id: number, updatedBooking: Partial<Booking>) => void;
@@ -58,7 +57,6 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
     membershipId: number,
     benefitId?: number,
     availableGuestPasses: number = 0
-    // guestPassCharge: number | null = null
   ): Promise<number> => {
     try {
       const {
@@ -80,11 +78,10 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
       const decodedToken = JSON.parse(atob(token.split(".")[1]));
       const stableUserId = Number(decodedToken.id);
 
-      // Fetch guest data
+      // Fetch and reconcile guest data
       const guestData = await fetchGuestData(token);
-      const guestPassesUsed = guestData.guestPassesUsed || 0;
       const freePassesAvailable = Math.max(
-        availableGuestPasses - guestPassesUsed,
+        availableGuestPasses - guestData.guestPassesUsed,
         0
       );
       const calculatedGuestPassUsage = {
@@ -177,33 +174,6 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
         }),
       });
 
-      // Update customtext5 with bookingId for all bookings
-      const updatedGuestBookingIds = [
-        ...guestData.guestBookingIds,
-        newId,
-      ].filter((id) => Number.isInteger(id) && id > 0);
-      let retryCount = 0;
-      const maxRetries = 3;
-      while (retryCount < maxRetries) {
-        try {
-          await updateMemberProfile(token, {
-            customtext3: (
-              guestPassesUsed + calculatedGuestPassUsage.free
-            ).toString(),
-            customtext5: JSON.stringify(updatedGuestBookingIds),
-          });
-          break;
-        } catch (error: any) {
-          if (error.response?.status === 413 && retryCount < maxRetries - 1) {
-            retryCount++;
-            await new Promise((resolve) => setTimeout(resolve, 1000));
-            continue;
-          }
-          console.warn("Booking ID update failed:", error.message);
-          break;
-        }
-      }
-
       // Update guest data in GymMaster if guests exist
       if (guests.length > 0) {
         const updatedGuests = [
@@ -219,18 +189,31 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
           ),
         ];
         const updatedGuestPassesUsed =
-          guestPassesUsed + calculatedGuestPassUsage.free;
+          guestData.guestPassesUsed + calculatedGuestPassUsage.free;
+        const updatedReferralCodes = [
+          ...guestData.referralCodes,
+          ...(referralCodes || []),
+        ];
+        const updatedGuestBookingIds = [
+          ...guestData.guestBookingIds,
+          newId,
+        ].filter((id): id is number => Number.isInteger(id) && id > 0);
 
-        retryCount = 0;
+        let retryCount = 0;
+        const maxRetries = 3;
         while (retryCount < maxRetries) {
           try {
-            await updateGuestData(
+            const reconciledData = await reconcileGuestData(
               token,
               updatedGuestPassesUsed,
-              referralCodes || guestData.referralCodes,
+              updatedReferralCodes,
               updatedGuestBookingIds,
               updatedGuests
             );
+            await updateMemberProfile(token, {
+              customtext3: reconciledData.guestPassesUsed.toString(),
+              customtext5: JSON.stringify(reconciledData.guestBookingIds),
+            });
             break;
           } catch (error: any) {
             if (error.response?.status === 413 && retryCount < maxRetries - 1) {
@@ -238,8 +221,32 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
               await new Promise((resolve) => setTimeout(resolve, 1000));
               continue;
             }
-            console.warn("Guest data update failed:", error.message);
+            console.error("Guest data update failed:", error.message);
+            throw new Error(`Failed to update guest data: ${error.message}`);
+          }
+        }
+      } else {
+        // Update customtext5 for non-guest bookings
+        const updatedGuestBookingIds = [
+          ...guestData.guestBookingIds,
+          newId,
+        ].filter((id): id is number => Number.isInteger(id) && id > 0);
+        let retryCount = 0;
+        const maxRetries = 3;
+        while (retryCount < maxRetries) {
+          try {
+            await updateMemberProfile(token, {
+              customtext5: JSON.stringify(updatedGuestBookingIds),
+            });
             break;
+          } catch (error) {
+            if (error.response?.status === 413 && retryCount < maxRetries - 1) {
+              retryCount++;
+              await new Promise((resolve) => setTimeout(resolve, 1000));
+              continue;
+            }
+            console.error("Booking ID update failed:", error.message);
+            throw new Error(`Failed to update booking IDs: ${error.message}`);
           }
         }
       }
@@ -338,17 +345,17 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
         const maxRetries = 3;
         while (retryCount < maxRetries) {
           try {
-            await updateMemberProfile(token, {
-              customtext3: updatedGuestPassesUsed.toString(),
-              customtext5: JSON.stringify(updatedGuestBookingIds),
-            });
-            await updateGuestData(
+            const reconciledData = await reconcileGuestData(
               token,
               updatedGuestPassesUsed,
               updatedReferralCodes,
               updatedGuestBookingIds,
               updatedGuests
             );
+            await updateMemberProfile(token, {
+              customtext3: reconciledData.guestPassesUsed.toString(),
+              customtext5: JSON.stringify(reconciledData.guestBookingIds),
+            });
             break;
           } catch (error: any) {
             if (error.response?.status === 413 && retryCount < maxRetries - 1) {
@@ -356,11 +363,11 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
               await new Promise((resolve) => setTimeout(resolve, 1000));
               continue;
             }
-            console.warn(
+            console.error(
               "Guest data update failed after deletion:",
               error.message
             );
-            throw error;
+            throw new Error(`Failed to update guest data: ${error.message}`);
           }
         }
       } else {
@@ -383,8 +390,8 @@ export const BookingProvider = ({ children }: { children: ReactNode }) => {
               await new Promise((resolve) => setTimeout(resolve, 1000));
               continue;
             }
-            console.warn("Booking ID update failed:", error.message);
-            throw error;
+            console.error("Booking ID update failed:", error.message);
+            throw new Error(`Failed to update booking IDs: ${error.message}`);
           }
         }
       }
