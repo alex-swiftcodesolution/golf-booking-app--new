@@ -207,9 +207,9 @@ function HomeContent() {
   const onLoginSubmit = async (data: LoginFormData) => {
     setLoading((prev) => ({ ...prev, login: true }));
     try {
-      const { token, mid, expires } = await login(data.email, data.password);
+      const { token, expires } = await login(data.email, data.password);
       localStorage.setItem("authToken", token);
-      localStorage.setItem("memberId", mid.toString());
+      // localStorage.setItem("memberId", mid.toString());
       localStorage.setItem(
         "tokenExpires",
         (Date.now() + expires * 1000).toString()
